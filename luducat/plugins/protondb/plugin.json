@@ -1,0 +1,67 @@
+{
+  "name": "protondb",
+  "display_name": "ProtonDB",
+  "version": "1.2.3",
+  "author": "luducat",
+  "description": "ProtonDB compatibility ratings for Steam games on Linux",
+  "min_luducat_version": "0.2.9.24",
+  "plugin_types": ["metadata"],
+  "provider_class": "provider.ProtonDbProvider",
+  "capabilities": {
+    "enrich_metadata": true,
+    "search_games": false,
+    "fetch_metadata": true
+  },
+  "provides_fields": {
+    "protondb_rating": {"priority": 10},
+    "protondb_score": {"priority": 10}
+  },
+  "auth": {
+    "type": "none"
+  },
+  "network": {
+    "allowed_domains": [
+      "www.protondb.com"
+    ],
+    "rate_limits": {
+      "www.protondb.com": {"requests": 10, "window": 1}
+    }
+  },
+
+  "privacy": {
+    "telemetry": false,
+    "data_collection": "none",
+    "third_party_services": []
+  },
+
+  "config_actions": [
+    {
+      "id": "protondb_sync",
+      "label": "Sync ProtonDB Data...",
+      "callback": "_open_protondb_sync",
+      "group": "data"
+    }
+  ],
+
+  "settings_schema": {
+    "auto_enrich": {
+      "type": "boolean",
+      "label": "Auto-enrich during synchronization",
+      "description": "Fetch ProtonDB ratings during store sync",
+      "default": true
+    },
+    "skip_on_sync": {
+      "type": "boolean",
+      "label": "Skip during synchronization",
+      "description": "Load data on-demand instead of during sync",
+      "default": false
+    },
+    "rate_limit_delay": {
+      "type": "number",
+      "label": "Delay between requests to ProtonDB",
+      "description": "Delay between API requests",
+      "default": 0.1,
+      "suffix": "seconds"
+    }
+  }
+}

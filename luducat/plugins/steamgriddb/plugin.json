@@ -1,0 +1,134 @@
+{
+  "name": "steamgriddb",
+  "display_name": "SteamGridDB",
+  "version": "1.7.3",
+  "author": "luducat",
+  "description": "SteamGridDB metadata provider - community-sourced hero banners, covers, and logos",
+  "min_luducat_version": "0.2.9.24",
+  "plugin_types": ["metadata"],
+  "provider_class": "provider.SgdbProvider",
+  "capabilities": {
+    "enrich_metadata": true,
+    "search_games": true,
+    "fetch_metadata": true,
+    "heroes": true,
+    "grids": true,
+    "logos": true,
+    "icons": true,
+    "two_column_settings": false
+  },
+  "provides_fields": {
+    "cover": {"priority": 10},
+    "hero": {"priority": 10}
+  },
+  "auth": {
+    "type": "api_key",
+    "fields": ["api_key"],
+    "help_url": "https://www.steamgriddb.com/profile/preferences/api",
+    "help_text": "Get SteamGridDB API Key"
+  },
+
+  "config_actions": [
+    {
+      "id": "author_lists",
+      "label": "Filter...",
+      "callback": "_open_author_lists",
+      "group": "data"
+    }
+  ],
+
+  "settings_schema": {
+    "api_key": {
+      "type": "string",
+      "label": "API Key",
+      "label_above": true,
+      "secret": true,
+      "required": true,
+      "description_link": {
+        "url": "https://www.steamgriddb.com/profile/preferences/api",
+        "text": "Get your SteamGridDB API Key"
+      }
+    },
+    "auto_enrich": {
+      "type": "boolean",
+      "label": "Auto-enrich during synchronization",
+      "description": "Fetch SteamGridDB images during store sync",
+      "default": true
+    },
+    "skip_on_sync": {
+      "type": "boolean",
+      "label": "Skip during synchronization",
+      "description": "Load data on-demand instead of during sync",
+      "default": false
+    },
+    "grid_style": {
+      "type": "choice",
+      "label": "Cover style",
+      "description": "Filter grid/cover images by visual style",
+      "choices": ["Any", "Alternate", "Blurred", "White Logo", "Material", "No Logo"],
+      "default": "Any",
+      "section": "Styles and Content",
+      "column": "left"
+    },
+    "hero_style": {
+      "type": "choice",
+      "label": "Hero style",
+      "description": "Filter hero banners by visual style",
+      "choices": ["Any", "Alternate", "Blurred", "Material"],
+      "default": "Alternate",
+      "section": "Styles and Content",
+      "column": "left"
+    },
+    "humor_filter": {
+      "type": "choice",
+      "label": "Humor content",
+      "description": "Filter humor-tagged images (memes, jokes)",
+      "choices": ["Exclude", "Include", "Only Humor"],
+      "default": "Exclude",
+      "section": "Styles and Content",
+      "column": "right"
+    },
+    "nsfw_filter": {
+      "type": "choice",
+      "label": "NSFW content",
+      "description": "Filter NSFW-tagged images",
+      "choices": ["Exclude", "Include", "Only NSFW"],
+      "default": "Exclude",
+      "section": "Styles and Content",
+      "column": "right"
+    },
+    "allow_animated": {
+      "type": "boolean",
+      "label": "Include animated images",
+      "description": "Allow animated (APNG/WebP) images",
+      "default": false,
+      "section": "Styles and Content"
+    }
+  },
+  "network": {
+    "allowed_domains": [
+      "www.steamgriddb.com",
+      "cdn2.steamgriddb.com",
+      "cdn.steamgriddb.com"
+    ],
+    "rate_limits": {
+      "www.steamgriddb.com": {"requests": 5, "window": 1}
+    }
+  },
+
+  "privacy": {
+    "telemetry": false,
+    "data_collection": "none",
+    "third_party_services": []
+  },
+
+  "dependencies": {
+    "python": ">=3.11",
+    "packages": ["requests"]
+  },
+  "platforms": {
+    "linux": true,
+    "windows": true,
+    "macos": true
+  }
+}

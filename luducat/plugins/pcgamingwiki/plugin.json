@@ -1,0 +1,103 @@
+{
+  "name": "pcgamingwiki",
+  "display_name": "PCGamingWiki",
+  "version": "1.3.3",
+  "author": "luducat",
+  "description": "PCGamingWiki metadata provider - game modes and technical details",
+  "min_luducat_version": "0.2.9.24",
+  "plugin_types": ["metadata"],
+  "provider_class": "provider.PcgwProvider",
+  "capabilities": {
+    "enrich_metadata": true,
+    "search_games": false,
+    "fetch_metadata": true,
+    "game_modes": true,
+    "multiplayer_details": true
+  },
+  "provides_fields": {
+    "title": {"priority": 50},
+    "developers": {"priority": 20},
+    "publishers": {"priority": 20},
+    "genres": {"priority": 10},
+    "release_date": {"priority": 20},
+    "game_modes": {"priority": 10},
+    "game_modes_detail": {"priority": 10},
+    "crossplay": {"priority": 10},
+    "crossplay_platforms": {"priority": 10},
+    "cover": {"priority": 60},
+    "franchise": {"priority": 20},
+    "series": {"priority": 20},
+    "themes": {"priority": 20},
+    "perspectives": {"priority": 20},
+    "pacing": {"priority": 10},
+    "art_styles": {"priority": 10},
+    "platforms": {"priority": 20},
+    "links": {"priority": 20},
+    "engine": {"priority": 10},
+    "controller_support": {"priority": 10},
+    "full_controller_support": {"priority": 10},
+    "controller_remapping": {"priority": 10},
+    "controller_sensitivity": {"priority": 10},
+    "controller_haptic_feedback": {"priority": 10},
+    "touchscreen": {"priority": 10},
+    "key_remapping": {"priority": 10},
+    "mouse_sensitivity": {"priority": 10},
+    "mouse_acceleration": {"priority": 10},
+    "mouse_input_in_menus": {"priority": 10},
+    "controls": {"priority": 10},
+    "monetization": {"priority": 10},
+    "microtransactions": {"priority": 10},
+    "opencritic_score": {"priority": 10},
+    "opencritic_id": {"priority": 10},
+    "critic_rating": {"priority": 30}
+  },
+  "auth": {
+    "type": "none"
+  },
+
+  "network": {
+    "allowed_domains": [
+      "www.pcgamingwiki.com"
+    ],
+    "rate_limits": {
+      "www.pcgamingwiki.com": {"requests": 2, "window": 1}
+    }
+  },
+
+  "privacy": {
+    "telemetry": false,
+    "data_collection": "none",
+    "third_party_services": []
+  },
+
+  "config_actions": [
+    {
+      "id": "pcgw_sync",
+      "label": "Sync PCGamingWiki Data...",
+      "callback": "_open_pcgw_sync",
+      "group": "data"
+    }
+  ],
+
+  "settings_schema": {
+    "auto_enrich": {
+      "type": "boolean",
+      "label": "Auto-enrich during synchronization",
+      "description": "Fetch PCGamingWiki data during store sync",
+      "default": true
+    },
+    "skip_on_sync": {
+      "type": "boolean",
+      "label": "Skip during synchronization",
+      "description": "Load data on-demand instead of during sync",
+      "default": false
+    },
+    "rate_limit_delay": {
+      "type": "number",
+      "label": "Delay between requests to PCGamingWiki",
+      "description": "Delay between API requests",
+      "default": 0.5,
+      "suffix": "seconds"
+    }
+  }
+}

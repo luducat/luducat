@@ -1,0 +1,32 @@
+{
+  "name": "lutris",
+  "display_name": "Lutris",
+  "version": "1.1.0",
+  "author": "luducat",
+  "description": "Import tags, favourites, playtime and hidden status from Lutris",
+  "min_luducat_version": "0.2.9.33",
+  "plugin_types": ["metadata"],
+  "provider_class": "provider.LutrisProvider",
+  "capabilities": {
+    "enrich_metadata": false,
+    "search_games": false,
+    "fetch_metadata": false,
+    "tag_sync": true
+  },
+  "provides_fields": {},
+  "auth": {"type": "none"},
+  "settings_schema": {},
+  "network": {
+    "allowed_domains": []
+  },
+  "privacy": {
+    "telemetry": false,
+    "data_collection": "none",
+    "third_party_services": []
+  },
+  "platforms": {
+    "linux": true,
+    "windows": false,
+    "macos": false
+  }
+}

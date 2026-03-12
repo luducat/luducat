@@ -1,0 +1,30 @@
+{
+    "name": "heroic_runner",
+    "display_name": "Heroic Runner",
+    "description": "Launch GOG and Epic games via Heroic Games Launcher",
+    "version": "1.3.1",
+    "author": "luducat",
+    "min_luducat_version": "0.2.9.28",
+    "plugin_types": ["runner"],
+    "entry_point": "runner.HeroicRunner",
+    "enabled_by_default": true,
+    "capabilities": {
+        "supported_stores": ["gog", "epic"],
+        "launch_methods": ["url_scheme", "executable"],
+        "platforms": ["linux", "windows", "darwin"]
+    },
+    "runner": {
+        "priority": 200,
+        "url_scheme": "heroic",
+        "flatpak_id": "com.heroicgameslauncher.hgl"
+    },
+    "network": {
+        "allowed_domains": []
+    },
+    "privacy": {
+        "telemetry": false,
+        "data_collection": "none",
+        "third_party_services": []
+    },
+    "settings_schema": {}
+}

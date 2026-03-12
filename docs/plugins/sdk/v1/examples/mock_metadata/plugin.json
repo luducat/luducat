@@ -1,0 +1,60 @@
+{
+  "name": "gamepedia",
+  "display_name": "GamePedia",
+  "version": "1.0.0",
+  "author": "luducat SDK Team",
+  "description": "Demo metadata plugin for the luducat Plugin SDK. Fictional metadata provider with hardcoded enrichment data.",
+  "min_luducat_version": "0.2.9.24",
+  "plugin_types": ["metadata"],
+  "provider_class": "provider.GamePediaProvider",
+  "capabilities": {
+    "enrich_metadata": true,
+    "search_games": true,
+    "fetch_metadata": true,
+    "genres": true,
+    "tags": true,
+    "franchises": true,
+    "ratings": true
+  },
+  "provides_fields": {
+    "genres": {"priority": 25},
+    "franchise": {"priority": 15},
+    "series": {"priority": 15},
+    "themes": {"priority": 20},
+    "perspectives": {"priority": 20},
+    "user_rating": {"priority": 25},
+    "engine": {"priority": 15}
+  },
+  "auth": {
+    "type": "api_key",
+    "fields": ["api_key"],
+    "help_url": "https://gamepedia.example.com/api",
+    "help_text": "Get GamePedia API Key"
+  },
+  "settings_schema": {
+    "api_key": {
+      "type": "string",
+      "label": "API Key",
+      "description": "Your GamePedia API key (demo: any non-empty string)",
+      "secret": true,
+      "required": true
+    },
+    "auto_enrich": {
+      "type": "boolean",
+      "label": "Auto-enrich during sync",
+      "description": "Automatically fetch metadata during store sync",
+      "default": true
+    }
+  },
+  "network": {
+    "allowed_domains": ["api.gamepedia.example.com"],
+    "rate_limits": {
+      "api.gamepedia.example.com": {"requests": 5, "window": 1}
+    }
+  },
+  "privacy": {
+    "telemetry": false,
+    "data_collection": "none",
+    "third_party_services": []
+  }
+}

@@ -1,0 +1,36 @@
+{
+    "name": "dosbox",
+    "display_name": "DOSBox",
+    "description": "Run DOS games using DOSBox-Staging or vanilla DOSBox",
+    "version": "2.1.1",
+    "author": "luducat",
+    "min_luducat_version": "0.2.9.24",
+    "plugin_types": ["platform"],
+    "entry_point": "provider.DOSBoxProvider",
+    "enabled_by_default": true,
+    "capabilities": {
+        "runtime_type": "dosbox",
+        "game_types": ["dos"],
+        "launch_method": "executable",
+        "status": "active"
+    },
+    "auth": {
+        "type": "none"
+    },
+    "network": {
+        "allowed_domains": []
+    },
+    "privacy": {
+        "telemetry": false,
+        "data_collection": "none",
+        "third_party_services": []
+    },
+    "settings_schema": {
+        "prefer_staging": {
+            "type": "boolean",
+            "label": "Prefer DOSBox-Staging over vanilla DOSBox",
+            "description": "When both DOSBox variants are installed, DOSBox-Staging takes priority",
+            "default": true
+        }
+    }
+}

@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="#000000" stroke="none">
+  <!-- Couch with two people — local co-op -->
+  <!-- Two people sitting (simplified heads) -->
+  <circle cx="9" cy="6" r="2.5"/>
+  <circle cx="15" cy="6" r="2.5"/>
+  <!-- Bodies on couch -->
+  <rect x="5.5" y="9" width="13" height="5" rx="1.5"/>
+  <!-- Couch seat -->
+  <rect x="3" y="14" width="18" height="4" rx="2"/>
+  <!-- Couch armrests -->
+  <rect x="1" y="12" width="3.5" height="8" rx="1.5"/>
+  <rect x="19.5" y="12" width="3.5" height="8" rx="1.5"/>
+  <!-- Couch legs -->
+  <rect x="3.5" y="19" width="2" height="3" rx="0.5"/>
+  <rect x="18.5" y="19" width="2" height="3" rx="0.5"/>
+</svg>

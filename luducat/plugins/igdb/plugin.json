@@ -1,0 +1,125 @@
+{
+  "name": "igdb",
+  "display_name": "IGDB",
+  "version": "2.7.3",
+  "author": "luducat",
+  "description": "IGDB metadata provider - comprehensive game data with normalized database storage",
+  "min_luducat_version": "0.2.9.24",
+  "plugin_types": ["metadata"],
+  "provider_class": "provider.IgdbProvider",
+  "capabilities": {
+    "enrich_metadata": true,
+    "search_games": true,
+    "fetch_metadata": true,
+    "genres": true,
+    "tags": true,
+    "franchises": true,
+    "collections": true,
+    "ratings": true,
+    "screenshots": true,
+    "artworks": true,
+    "videos": true
+  },
+  "provides_fields": {
+    "title": {"priority": 40},
+    "description": {"priority": 30},
+    "short_description": {"priority": 30},
+    "storyline": {"priority": 10},
+    "developers": {"priority": 10},
+    "publishers": {"priority": 10},
+    "genres": {"priority": 20},
+    "release_date": {"priority": 10},
+    "game_modes": {"priority": 20},
+    "game_modes_detail": {"priority": 50},
+    "cover": {"priority": 50},
+    "hero": {"priority": 20},
+    "header_url": {"priority": 40},
+    "screenshots": {"priority": 40},
+    "artworks": {"priority": 10},
+    "videos": {"priority": 20},
+    "rating": {"priority": 20},
+    "user_rating": {"priority": 10},
+    "user_rating_count": {"priority": 10},
+    "total_rating": {"priority": 10},
+    "age_ratings": {"priority": 10},
+    "franchise": {"priority": 10},
+    "series": {"priority": 10},
+    "collections": {"priority": 10},
+    "themes": {"priority": 10},
+    "perspectives": {"priority": 10},
+    "platforms": {"priority": 20},
+    "links": {"priority": 10},
+    "category": {"priority": 10},
+    "status": {"priority": 10}
+  },
+  "auth": {
+    "type": "oauth",
+    "fields": ["client_id", "client_secret"],
+    "optional": true
+  },
+
+  "settings_title": "IGDB data download",
+  "settings_description": "If these fields are empty, luducat uses the free proxy on Cloudflare for game data and covers.",
+
+  "config_actions": [
+    {
+      "id": "igdb_sync",
+      "label": "Sync IGDB Data...",
+      "callback": "_open_igdb_sync",
+      "group": "data"
+    }
+  ],
+
+  "settings_schema": {
+    "client_id": {
+      "type": "string",
+      "label": "Twitch Client ID",
+      "secret": false,
+      "required": false
+    },
+    "client_secret": {
+      "type": "string",
+      "label": "Twitch Client Secret",
+      "secret": true,
+      "required": false,
+      "description_link": {
+        "url": "https://api-docs.igdb.com/#getting-started",
+        "text": "Get your Twitch Client ID credentials"
+      }
+    },
+    "auto_enrich": {
+      "type": "boolean",
+      "label": "Auto-enrich during synchronization",
+      "default": true,
+      "section": "Synchronization"
+    }
+  },
+  "network": {
+    "allowed_domains": [
+      "api.igdb.com",
+      "images.igdb.com",
+      "id.twitch.tv",
+      "luducat-api-proxy.luducat-cloudflare.workers.dev"
+    ],
+    "rate_limits": {
+      "api.igdb.com": {"requests": 4, "window": 1},
+      "luducat-api-proxy.luducat-cloudflare.workers.dev": {"requests": 4, "window": 1}
+    }
+  },
+
+  "privacy": {
+    "telemetry": false,
+    "data_collection": "none",
+    "third_party_services": []
+  },
+
+  "dependencies": {
+    "python": ">=3.11",
+    "packages": ["requests"]
+  },
+  "platforms": {
+    "linux": true,
+    "windows": true,
+    "macos": true
+  }
+}

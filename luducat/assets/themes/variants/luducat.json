@@ -1,0 +1,54 @@
+{
+    "name": "Luducat",
+    "description": "Default dark theme with turquoise accents matching the luducat identity",
+
+    "bg_primary": "#0F1A1E",
+    "bg_secondary": "#152226",
+    "bg_input": "#0C1518",
+    "bg_hover": "#1A3038",
+
+    "text_primary": "#D0E0E0",
+    "text_secondary": "#7A9A9A",
+    "text_on_accent": "#FFFFFF",
+
+    "accent": "#30B19F",
+    "accent_hover": "#3FCCB9",
+    "accent_dark": "#289886",
+    "accent_bright": "#54D3C3",
+
+    "border": "#1E3A3A",
+    "selection": "#1E3A3A",
+
+    "scrollbar_bg": "#0F1A1E",
+    "scrollbar_handle": "#1E3A3A",
+
+    "fav_color": "#f1c40f",
+    "fav_checked": "#E8B80D",
+    "fav_checked_hover": "#F5CF3A",
+    "fav_checked_dark": "#B8920A",
+    "fav_hover_alpha": "rgba(241, 196, 15, 55%)",
+    "fav_hover_alpha_mid": "rgba(241, 196, 15, 30%)",
+
+    "tag_bg": "#1E3A3A",
+    "tag_border": "#30B19F",
+    "tag_text": "#D0E0E0",
+    "tag_hover_bg": "#1A3038",
+
+    "fav_star_color": "#f1c40f",
+
+    "download_completed": "#4caf50",
+    "download_failed": "#f44336",
+    "download_paused": "#ff9800",
+
+    "score_positive": "#28b43c",
+    "score_negative": "#c83232",
+
+    "title_color": "#FFFFFF",
+    "link_color": "#3FCCB9",
+    "light": "#1E3A3A",
+    "btn_gradient_top": "#1F3D3D",
+    "btn_border_color": "transparent",
+    "license_text_color": "#B0CCCC",
+
+    "font_family": "-apple-system, BlinkMacSystemFont, \"Segoe UI Variable\", \"Segoe UI\", \"Inter\", \"Helvetica Neue\", Helvetica, Arial, sans-serif"
+}

@@ -1,0 +1,29 @@
+{
+    "name": "steam_runner",
+    "display_name": "Steam Runner",
+    "description": "Launch Steam games via the Steam client",
+    "version": "1.2.2",
+    "author": "luducat",
+    "min_luducat_version": "0.2.9.28",
+    "plugin_types": ["runner"],
+    "entry_point": "runner.SteamRunner",
+    "enabled_by_default": true,
+    "capabilities": {
+        "supported_stores": ["steam"],
+        "launch_methods": ["url_scheme"],
+        "platforms": ["linux", "windows", "darwin"]
+    },
+    "runner": {
+        "priority": 300,
+        "url_scheme": "steam"
+    },
+    "network": {
+        "allowed_domains": []
+    },
+    "privacy": {
+        "telemetry": false,
+        "data_collection": "none",
+        "third_party_services": []
+    },
+    "settings_schema": {}
+}

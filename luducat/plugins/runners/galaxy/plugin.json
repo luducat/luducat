@@ -1,0 +1,32 @@
+{
+    "name": "galaxy_runner",
+    "display_name": "GOG Galaxy Runner",
+    "description": "Launch GOG games via GOG Galaxy client (Windows)",
+    "version": "1.3.2",
+    "author": "luducat",
+    "min_luducat_version": "0.2.9.28",
+    "plugin_types": ["runner"],
+    "entry_point": "runner.GalaxyRunner",
+    "enabled_by_default": true,
+    "capabilities": {
+        "supported_stores": ["gog"],
+        "launch_methods": ["executable", "url_scheme"],
+        "platforms": ["windows"],
+        "installed_games": true,
+        "playtime": true
+    },
+    "runner": {
+        "priority": 150,
+        "url_scheme": "goggalaxy"
+    },
+    "network": {
+        "allowed_domains": []
+    },
+    "privacy": {
+        "telemetry": false,
+        "data_collection": "local_database_read",
+        "local_data_consent_required": true,
+        "third_party_services": []
+    },
+    "settings_schema": {}
+}

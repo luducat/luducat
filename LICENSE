@@ -1,0 +1,124 @@
+================================================================================
+                              LUDUCAT
+                     GNU General Public License v3
+                      with Plugin Exception Clause
+================================================================================
+
+Copyright (c) 2026 The Luducat Authors <luducat@trinity2k.net>
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+================================================================================
+ADDITIONAL PERMISSION: PLUGIN AND THEME EXCEPTION
+================================================================================
+
+As a special exception under section 7 of the GNU General Public License
+version 3, you are granted additional permission to create, distribute, and
+license plugins and themes for Luducat under any Open Source Initiative (OSI)
+approved license of your choice (see https://opensource.org/licenses),
+provided that:
+
+1. The plugin or theme interfaces with Luducat solely through:
+   - The documented plugin API (luducat.plugins.base)
+   - The theme/stylesheet system
+   - Standard inter-process communication
+
+2. The plugin or theme does not contain modified copies of Luducat's
+   core source code.
+
+3. The plugin or theme is distributed separately from Luducat, not as
+   part of the main application bundle (distribution alongside is permitted).
+
+This exception explicitly permits plugins and themes to use permissive
+licenses (MIT, BSD, Apache 2.0, etc.) or other copyleft licenses without
+requiring them to be licensed under GPL v3.
+
+This exception does NOT apply to:
+- Modifications to Luducat's core application code (GPL v3 applies)
+- Forks or derivative versions of Luducat itself (GPL v3 applies)
+- Plugins that embed or statically link Luducat source code
+
+================================================================================
+TRADEMARK NOTICE
+================================================================================
+
+"Luducat" and the Luducat logo are trademarks of The Luducat Project.
+
+This license grants permission to use the software, not the trademark.
+Modified versions and forks must not use the "Luducat" name or logo
+without express written permission. This restriction exists to prevent
+user confusion and protect the project's reputation.
+
+Acceptable:
+- "MyFork - based on Luducat"
+- "Compatible with Luducat"
+- "Luducat plugin for [service]"
+
+Not acceptable without permission:
+- "Luducat Plus"
+- "Luducat Community Edition"
+- Using the Luducat logo for a fork
+
+================================================================================
+PRIVACY COMMITMENT
+================================================================================
+
+Luducat:
+- Stores all user data locally (XDG standard directories)
+- Does NOT transmit personal data to external servers
+- Does NOT include analytics or telemetry
+- May check luducat.org for updates (version only, configurable)
+- Stores credentials in system keyring where available
+
+================================================================================
+THIRD-PARTY COMPONENTS
+================================================================================
+
+Luducat incorporates third-party libraries licensed under their own terms.
+See THIRD_PARTY_LICENSES.txt for complete attribution.
+
+Notable components:
+- PySide6/Qt: LGPL v3 (dynamically linked)
+- SQLAlchemy: MIT
+- Additional dependencies listed in requirements.txt
+
+================================================================================
+CONTRIBUTION AGREEMENT
+================================================================================
+
+By submitting contributions (pull requests, patches, code) to the official
+Luducat repository, you agree that:
+
+1. Your contribution is your original work, or you have rights to submit it.
+
+2. You grant the project maintainers a perpetual, worldwide, non-exclusive,
+   royalty-free license to use, modify, and distribute your contribution
+   under GPL v3 or any later version.
+
+3. You will receive attribution in the project's contributors list.
+
+This is a license grant, not a copyright assignment. You retain copyright
+to your contributions.
+
+================================================================================
+
+For the full text of the GNU General Public License v3, see:
+https://www.gnu.org/licenses/gpl-3.0.txt
+
+Or request a copy by writing to:
+Free Software Foundation, Inc.
+51 Franklin Street, Fifth Floor
+Boston, MA 02110-1301, USA
+
+================================================================================

@@ -1,0 +1,28 @@
+{
+    "name": "native_runner",
+    "display_name": "Direct Launch (Native)",
+    "description": "Launch games directly as native executables — manual assignment only",
+    "version": "1.1.1",
+    "author": "luducat",
+    "min_luducat_version": "0.2.9.28",
+    "plugin_types": ["runner"],
+    "entry_point": "runner.NativeRunner",
+    "enabled_by_default": true,
+    "capabilities": {
+        "supported_stores": [],
+        "launch_methods": ["executable"],
+        "platforms": ["linux", "windows", "darwin"]
+    },
+    "runner": {
+        "priority": 0
+    },
+    "network": {
+        "allowed_domains": []
+    },
+    "privacy": {
+        "telemetry": false,
+        "data_collection": "none",
+        "third_party_services": []
+    },
+    "settings_schema": {}
+}

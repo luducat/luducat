@@ -1,0 +1,126 @@
+{
+  "name": "gog",
+  "display_name": "GOG",
+  "version": "2.7.0",
+  "author": "luducat",
+  "author_email": "luducat@trinity2k.net",
+  "description": "GOG.com game library integration",
+  "homepage": "https://github.com/luducat/luducat",
+
+  "min_luducat_version": "0.2.9.24",
+  "max_luducat_version": null,
+
+  "plugin_types": ["store"],
+  "store_class": "store.GogStore",
+
+  "badge_label": "GOG",
+  "brand_colors": {"bg": "#362147", "text": "#b388ff"},
+
+  "dependencies": {
+    "python": ">=3.11",
+    "packages": [
+      "requests>=2.28.0",
+      "browser-cookie3>=0.19.0"
+    ]
+  },
+
+  "platforms": {
+    "linux": true,
+    "windows": true,
+    "macos": true
+  },
+
+  "capabilities": {
+    "fetch_library": true,
+    "fetch_metadata": true,
+    "launch_games": false,
+    "oauth_login": true,
+    "track_playtime": true,
+    "achievements": false,
+    "cloud_saves": false
+  },
+
+  "provides_fields": {
+    "title": {"priority": 20},
+    "description": {"priority": 20},
+    "short_description": {"priority": 20},
+    "developers": {"priority": 40},
+    "publishers": {"priority": 40},
+    "genres": {"priority": 40},
+    "release_date": {"priority": 40},
+    "game_modes_detail": {"priority": 30},
+    "cover": {"priority": 30},
+    "hero": {"priority": 40},
+    "header_url": {"priority": 40},
+    "logo_url": {"priority": 40},
+    "icon_url": {"priority": 40},
+    "screenshots": {"priority": 20},
+    "platforms": {"priority": 40},
+    "links": {"priority": 40},
+    "tags": {"priority": 40},
+    "franchise": {"priority": 30},
+    "required_age": {"priority": 30},
+    "age_ratings": {"priority": 30},
+    "content_ratings": {"priority": 20},
+    "supported_languages": {"priority": 30},
+    "full_audio_languages": {"priority": 30},
+    "features": {"priority": 40},
+    "rating": {"priority": 40},
+    "videos": {"priority": 40},
+    "dlcs": {"priority": 40},
+    "editions": {"priority": 20},
+    "changelog": {"priority": 20},
+    "controller_support": {"priority": 30},
+    "type": {"priority": 40},
+    "is_free": {"priority": 40},
+    "price": {"priority": 40},
+    "achievements": {"priority": 40}
+  },
+
+  "auth": {
+    "type": "browser_cookies",
+    "help_text": "Uses browser cookies from GOG.com"
+  },
+
+  "settings_schema": {},
+
+  "network": {
+    "allowed_domains": [
+      "api.gog.com",
+      "embed.gog.com",
+      "catalog.gog.com",
+      "www.gog.com",
+      "menu.gog.com",
+      "gog-statics.com",
+      "images.gog-statics.com",
+      "cdn.gog.com",
+      "gogdb.org"
+    ],
+    "rate_limits": {
+      "api.gog.com": {"requests": 5, "window": 1},
+      "embed.gog.com": {"requests": 5, "window": 1},
+      "catalog.gog.com": {"requests": 5, "window": 1},
+      "www.gog.com": {"requests": 5, "window": 1}
+    }
+  },
+
+  "privacy": {
+    "telemetry": false,
+    "data_collection": "none",
+    "third_party_services": []
+  },
+
+  "config_actions": [
+    {
+      "id": "gogdb_import",
+      "label": "Update GOG Data...",
+      "callback": "_open_gogdb_import",
+      "group": "data"
+    }
+  ],
+
+  "credentials": {
+    "use_system_keyring": true,
+    "keyring_service": "luducat.gog"
+  }
+}

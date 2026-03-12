@@ -1,0 +1,30 @@
+{
+  "name": "gamevault_runner",
+  "display_name": "GameVault Runner",
+  "version": "1.1.0",
+  "author": "luducat SDK Team",
+  "description": "Demo runner plugin for the luducat Plugin SDK. Launches games through the fictional GameVault application.",
+  "min_luducat_version": "0.2.9.24",
+  "plugin_types": ["runner"],
+  "entry_point": "runner.GameVaultRunner",
+  "capabilities": {
+    "supported_stores": ["gamevault"],
+    "launch_method": "url_scheme"
+  },
+  "network": {
+    "allowed_domains": []
+  },
+  "privacy": {
+    "telemetry": false,
+    "data_collection": "none",
+    "third_party_services": []
+  },
+  "settings_schema": {
+    "gamevault_path": {
+      "type": "path",
+      "label": "GameVault Application Path",
+      "description": "Path to GameVault app (auto-detected if empty)",
+      "path_type": "file"
+    }
+  }
+}

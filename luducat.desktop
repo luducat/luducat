@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=luducat
+Comment=Cross-platform game catalogue browser
+Exec=luducat.sh
+Terminal=true
+Type=Application
+Icon=com.luducat.luducat
+Categories=Game;
+StartupWMClass=com.luducat.luducat
+StartupNotify=true

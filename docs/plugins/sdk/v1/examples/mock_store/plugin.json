@@ -1,0 +1,86 @@
+{
+  "name": "gamevault",
+  "display_name": "GameVault",
+  "version": "1.0.0",
+  "author": "luducat SDK Team",
+  "author_email": "plugins@luducat.org",
+  "description": "Demo store plugin for the luducat Plugin SDK. Uses a fictional game store with hardcoded data -- no real API calls.",
+  "homepage": "https://github.com/luducat/luducat",
+  "min_luducat_version": "0.2.9.24",
+  "plugin_types": ["store"],
+  "store_class": "store.GameVaultStore",
+  "badge_label": "GV",
+  "brand_colors": {"bg": "#2a4a2a", "text": "#90ee90"},
+  "dependencies": {
+    "python": ">=3.11",
+    "packages": []
+  },
+  "platforms": {"linux": true, "windows": true, "macos": true},
+  "capabilities": {
+    "fetch_library": true,
+    "fetch_metadata": true,
+    "launch_games": true,
+    "track_playtime": false,
+    "achievements": false,
+    "cloud_saves": false
+  },
+  "provides_fields": {
+    "title": {"priority": 50},
+    "description": {"priority": 50},
+    "short_description": {"priority": 50},
+    "developers": {"priority": 50},
+    "publishers": {"priority": 50},
+    "genres": {"priority": 50},
+    "release_date": {"priority": 50},
+    "cover": {"priority": 50},
+    "screenshots": {"priority": 50}
+  },
+  "auth": {
+    "type": "api_key",
+    "fields": ["api_key"],
+    "help_url": "https://gamevault.example.com/settings/api",
+    "help_text": "Get GameVault API Key"
+  },
+  "settings_schema": {
+    "api_key": {
+      "type": "string",
+      "label": "API Key",
+      "description": "Your GameVault API key (demo: any non-empty string works)",
+      "secret": true,
+      "required": true
+    },
+    "include_dlc": {
+      "type": "boolean",
+      "label": "Include DLC",
+      "description": "Include DLC entries in library",
+      "default": false
+    }
+  },
+  "config_actions": [
+    {
+      "id": "test_connection",
+      "label": "Test Connection",
+      "callback": "_test_connection",
+      "group": "auth",
+      "requires_auth": true
+    }
+  ],
+  "network": {
+    "allowed_domains": [
+      "api.gamevault.example.com",
+      "cdn.gamevault.example.com"
+    ],
+    "rate_limits": {
+      "api.gamevault.example.com": {"requests": 10, "window": 1}
+    }
+  },
+  "privacy": {
+    "telemetry": false,
+    "data_collection": "none",
+    "third_party_services": []
+  },
+  "credentials": {
+    "use_system_keyring": true,
+    "keyring_service": "luducat.gamevault"
+  }
+}

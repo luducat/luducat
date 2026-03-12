@@ -1,0 +1,1628 @@
+/* ============================================================================
+   luducat Base Theme Template
+   ============================================================================
+
+   This is the base template for .luducat-theme packages.
+   Color values use double-brace placeholders (e.g., bg_primary) that are
+   replaced by the theme processor with values from variant JSON files.
+
+   DO NOT USE THIS FILE DIRECTLY - it's meant to be processed.
+
+   See luducat/core/theme_variables.py for available variables.
+   ============================================================================ */
+
+{{PALETTE_BLOCK}}
+
+
+/* ============================================================================
+   BASE WIDGETS - Foundation styles inherited by all widgets
+   ============================================================================ */
+
+QWidget {
+    background-color: {{bg_primary}};
+    color: {{text_primary}};
+    font-family: {{font_family}};
+    font-size: 11pt;
+}
+
+QFrame {
+    background-color: {{bg_secondary}};
+    border: none;
+    border-radius: 3px;
+}
+
+QGroupBox {
+    background-color: {{bg_secondary}};
+    border: 1px solid {{border}};
+    border-radius: 3px;
+    margin-top: 10px;
+    padding-top: 14px;
+}
+
+#navigationBar {
+    background-color: {{bg_primary}};
+    border: none;
+    border-bottom: 1px solid {{border}};
+}
+
+#filterBarWidget {
+    background: transparent;
+    border: none;
+}
+
+QGroupBox::title {
+    subcontrol-origin: margin;
+    subcontrol-position: top left;
+    left: 8px;
+    padding: 2px 6px;
+    color: {{accent}};
+    background: {{bg_secondary}};
+}
+
+QLabel {
+    color: {{text_primary}};
+    border: none;
+    background: transparent;
+}
+
+QCheckBox, QRadioButton {
+    color: {{text_primary}};
+}
+
+QComboBox {
+    background-color: {{bg_input}};
+    color: {{text_primary}};
+    margin-bottom: 2px;
+}
+
+QToolTip {
+    background-color: {{bg_secondary}};
+    color: {{text_primary}};
+    border: 1px solid {{border}};
+    padding: 3px 3px;
+    font-size: 11pt;
+}
+
+
+/* ============================================================================
+   MENUS - Context menus, dropdown menus
+   ============================================================================ */
+
+QMenu {
+    background-color: {{bg_secondary}};
+    border: 1px solid {{border}};
+    padding: 4px 0;
+}
+
+QMenu::item {
+    padding: 4px 20px;
+    color: {{text_primary}};
+}
+
+QMenu::item:selected {
+    background-color: {{selection}};
+    color: #FFFFFF;
+}
+
+QMenu::item:disabled {
+    color: {{text_secondary}};
+}
+
+QMenu::separator {
+    height: 1px;
+    background: {{border}};
+    margin: 4px 8px;
+}
+
+QMenu::indicator {
+    width: 12px;
+    height: 12px;
+    margin-left: 4px;
+}
+
+/* Checkboxes embedded in menus (QWidgetAction) */
+QMenu QCheckBox {
+    background: transparent;
+    padding: 4px 20px;
+    spacing: 6px;
+    color: {{text_primary}};
+}
+
+QMenu QCheckBox:hover {
+    background-color: {{bg_hover}};
+}
+
+QMenu QCheckBox::indicator {
+    width: 14px;
+    height: 14px;
+    border: 1px solid {{border}};
+    border-radius: 2px;
+    background-color: {{bg_input}};
+}
+
+QMenu QCheckBox::indicator:checked {
+    background-color: {{accent}};
+    border-color: {{accent}};
+}
+
+
+/* ============================================================================
+   LIST AND TREE VIEWS
+   ============================================================================ */
+
+QListView#gameListView,
+QListView#coverGridView,
+QListView#screenshotGridView,
+QTreeView {
+    background-color: {{bg_input}};
+    border: 1px solid {{border}};
+    selection-background-color: {{selection}};
+    selection-color: #FFFFFF;
+}
+
+QListView#gameListView::item:hover,
+QListView#coverGridView::item:hover,
+QListView#screenshotGridView::item:hover,
+QTreeView::item:hover {
+    background-color: {{bg_hover}};
+}
+
+QListView#gameListView::item:selected,
+QListView#coverGridView::item:selected,
+QListView#screenshotGridView::item:selected,
+QTreeView::item:selected {
+    background-color: {{selection}};
+}
+
+/* ============================================================================
+   BUTTONS
+   ============================================================================ */
+
+QPushButton {
+    background: qlineargradient(
+        x1:0, y1:0, x2:0, y2:1,
+        stop:0 {{btn_gradient_top}},
+        stop:1 {{border}}
+    );
+    color: {{text_primary}};
+    border: 1px solid {{border}};
+    border-radius: 3px;
+    padding: 6px 14px;
+    min-height: 22px;
+}
+
+/* Unified accent hover: gradient */
+QPushButton:hover {
+    background: qlineargradient(
+        x1:0, y1:0, x2:0, y2:1,
+        stop:0 {{accent_hover}},
+        stop:0.5 {{accent}},
+        stop:1 {{accent_dark}}
+    );
+    color: {{text_on_accent}};
+}
+
+QPushButton:pressed {
+    background-color: {{bg_hover}};
+    color: {{text_primary}};
+}
+
+/* Import button (QToolButton with dropdown menu, matches QPushButton style) */
+QToolButton#importButton {
+    background: qlineargradient(
+        x1:0, y1:0, x2:0, y2:1,
+        stop:0 {{btn_gradient_top}},
+        stop:1 {{border}}
+    );
+    color: {{text_primary}};
+    border: 1px solid {{border}};
+    border-radius: 3px;
+    padding: 6px 14px;
+    min-height: 22px;
+}
+QToolButton#importButton:hover {
+    background: qlineargradient(
+        x1:0, y1:0, x2:0, y2:1,
+        stop:0 {{accent_hover}},
+        stop:0.5 {{accent}},
+        stop:1 {{accent_dark}}
+    );
+    color: {{text_on_accent}};
+}
+QToolButton#importButton:pressed {
+    background-color: {{bg_hover}};
+    color: {{text_primary}};
+}
+QToolButton#importButton::menu-button {
+    border-left: 1px solid {{border}};
+    width: 16px;
+}
+
+
+/* ============================================================================
+   INPUT FIELDS
+   ============================================================================ */
+
+QLineEdit, QTextEdit {
+    background-color: {{bg_input}};
+    border: 1px solid {{border}};
+    border-radius: 2px;
+    padding: 4px;
+    color: {{text_primary}};
+}
+
+
+/* ============================================================================
+   SCROLLBARS
+   ============================================================================ */
+
+QScrollBar:vertical {
+    background: {{scrollbar_bg}};
+    width: 14px;
+    margin: 0;
+    border: none;
+}
+
+QScrollBar::handle:vertical {
+    background: {{scrollbar_handle}};
+    border-radius: 7px;
+    min-height: 30px;
+    margin: 2px;
+}
+
+QScrollBar::handle:vertical:hover {
+    background: {{accent}};
+}
+
+QScrollBar::add-line:vertical,
+QScrollBar::sub-line:vertical {
+    height: 0;
+    border: none;
+}
+
+QScrollBar::add-page:vertical,
+QScrollBar::sub-page:vertical {
+    background: transparent;
+}
+
+QScrollBar:horizontal {
+    background: {{scrollbar_bg}};
+    height: 14px;
+    margin: 0;
+    border: none;
+}
+
+QScrollBar::handle:horizontal {
+    background: {{scrollbar_handle}};
+    border-radius: 7px;
+    min-width: 30px;
+    margin: 2px;
+}
+
+QScrollBar::handle:horizontal:hover {
+    background: {{accent}};
+}
+
+QScrollBar::add-line:horizontal,
+QScrollBar::sub-line:horizontal {
+    width: 0;
+    border: none;
+}
+
+QScrollBar::add-page:horizontal,
+QScrollBar::sub-page:horizontal {
+    background: transparent;
+}
+
+
+/* ============================================================================
+   TABS
+   ============================================================================ */
+
+QTabWidget::pane {
+    border: 1px solid {{border}};
+}
+
+QTabBar::tab {
+    background: {{bg_secondary}};
+    border: 1px solid {{border}};
+    padding: 6px 12px;
+}
+
+QTabBar::tab:selected {
+    background: {{selection}};
+}
+
+
+/* ============================================================================
+   GAME CATALOG SPECIFIC
+   ============================================================================ */
+
+/* Game List Panel */
+
+QLabel#gameListFooter {
+    background-color: {{bg_secondary}};
+    border-top: 1px solid {{border}};
+    padding: 8px;
+    font-size: 11pt;
+    color: {{accent}};
+}
+
+QListView#gameListView {
+    background-color: {{bg_input}};
+    border: none;
+    outline: none;
+}
+
+QListView#gameListView::item {
+    border-bottom: 1px solid {{border}};
+}
+
+QListView#gameListView::item:selected {
+    background-color: {{selection}};
+}
+
+QListView#gameListView::item:hover {
+    background-color: {{bg_hover}};
+}
+
+/* Detail View */
+
+#listViewContent {
+    background-color: {{bg_primary}};
+}
+
+QFrame#listViewHeader {
+    background-color: {{bg_secondary}};
+    border-bottom: 1px solid {{border}};
+}
+
+#gameTitle {
+    font-size: 18pt;
+    font-weight: bold;
+    color: {{title_color}};
+}
+
+/* Section headers */
+QLabel#sectionHeader { font-weight: bold; }
+
+/* Game mode badges (detail panel header) */
+#gameModeBadge {
+    background-color: {{badge_bg}};
+    color: {{badge_text}};
+    border-radius: 2px;
+    padding: 1px 4px;
+    font-weight: bold;
+}
+
+/* Family shared badge (detail panel header) */
+QLabel#familySharedBadge {
+    background-color: #8b6914;
+    color: #ffffff;
+    border-radius: 2px;
+    padding: 1px 4px;
+    font-weight: bold;
+}
+
+/* Installed badge (detail panel header) */
+QLabel#installedBadge {
+    background-color: #2e7d32;
+    color: #ffffff;
+    border-radius: 2px;
+    padding: 1px 4px;
+    font-weight: bold;
+}
+
+/* ProtonDB / Steam Deck badges (detail panel header) */
+QLabel#protondbBadge, QLabel#steamDeckBadge {
+    border-radius: 2px;
+    padding: 1px 4px;
+    font-weight: bold;
+}
+QLabel#protondbBadge[tier="platinum"] { background-color: #b4c7dc; color: #1a1a1a; }
+QLabel#protondbBadge[tier="gold"]     { background-color: #cfb53b; color: #1a1a1a; }
+QLabel#protondbBadge[tier="silver"]   { background-color: #a6a6a6; color: #1a1a1a; }
+QLabel#protondbBadge[tier="bronze"]   { background-color: #cd7f32; color: #ffffff; }
+QLabel#protondbBadge[tier="borked"]   { background-color: #ff0000; color: #ffffff; }
+QLabel#steamDeckBadge[tier="verified"]    { background-color: #59bf40; color: #ffffff; }
+QLabel#steamDeckBadge[tier="playable"]    { background-color: #ffc82c; color: #1a1a1a; }
+QLabel#steamDeckBadge[tier="unsupported"] { background-color: #8b0000; color: #ffffff; }
+
+/* Header separator */
+QFrame#headerSeparator {
+    color: {{border}};
+}
+
+#sectionLabel {
+    font-size: 11pt;
+    color: {{accent}};
+    font-weight: bold;
+}
+
+#descriptionView {
+    background: transparent;
+    border: none;
+}
+
+#placeholder {
+    color: {{accent}};
+    font-size: 13pt;
+}
+
+/* Metadata labels */
+
+QLabel#releaseDateLabel,
+QLabel#metadataLabel {
+    background: transparent;
+    border: none;
+    color: {{accent}};
+    font-size: 10pt;
+    padding: 0 8px;
+}
+
+/* Hero banner */
+#heroBanner {
+    background-color: {{bg_primary}};
+}
+
+#heroBannerActions {
+    background: transparent;
+}
+
+#heroBanner QPushButton, #heroBanner QToolButton {
+    background-color: rgba(0, 0, 0, 0.55);
+    color: #ffffff;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 4px;
+    padding: 4px 12px;
+}
+
+#heroBanner QPushButton:hover, #heroBanner QToolButton:hover {
+    background-color: rgba(0, 0, 0, 0.7);
+    border: 1px solid rgba(255, 255, 255, 0.35);
+}
+
+#heroBanner QPushButton:checked {
+    background-color: rgba(60, 120, 200, 0.7);
+    border: 1px solid rgba(100, 160, 240, 0.5);
+}
+
+/* Metadata panel */
+#metadataPanel, #metadataPanelContent {
+    background-color: {{bg_input}};
+}
+#metadataPanel {
+    border: none;
+}
+
+QLabel#metadataKey {
+    color: {{text_secondary}};
+    font-weight: bold;
+    padding: 1px 0;
+    background: transparent;
+    border: none;
+}
+
+QLabel#metadataValue {
+    color: {{text_primary}};
+    padding: 1px 0;
+    background: transparent;
+    border: none;
+}
+
+QFrame#metadataSeparator {
+    color: {{border}};
+}
+
+/* About splitter */
+#aboutSplitter {
+    background: transparent;
+    border: none;
+}
+#aboutSplitter::handle {
+    background: {{border}};
+    width: 1px;
+}
+#aboutSplitter::handle:hover {
+    background: {{accent}};
+    width: 3px;
+}
+
+/* Tag chips in detail view */
+QFrame#tagChip {
+    background-color: {{tag_bg}};
+    border: 1px solid {{tag_border}};
+    border-radius: 10px;
+    padding: 3px 8px;
+}
+
+QFrame#tagChip:hover {
+    background-color: {{tag_hover_bg}};
+}
+
+QLabel#tagChipLabel {
+    color: {{tag_text}};
+    background: transparent;
+}
+
+/* More options button */
+
+QPushButton#moreOptionsButton {
+    background: qlineargradient(
+        x1:0, y1:0, x2:0, y2:1,
+        stop:0 {{btn_gradient_top}},
+        stop:1 {{border}}
+    );
+    border: 1px solid {{border}};
+    border-radius: 4px;
+    padding: 8px 16px;
+    color: {{text_primary}};
+    font-weight: bold;
+}
+
+QPushButton#moreOptionsButton:hover {
+    background: qlineargradient(
+        x1:0, y1:0, x2:0, y2:1,
+        stop:0 {{accent_hover}},
+        stop:0.5 {{accent}},
+        stop:1 {{accent_dark}}
+    );
+    color: {{text_on_accent}};
+}
+
+QPushButton#moreOptionsButton:pressed {
+    background-color: {{bg_hover}};
+    color: {{text_primary}};
+}
+
+/* Launch Buttons - styled like store button
+   Use #heroBanner prefix for higher specificity over general hero button styling */
+
+#heroBanner QPushButton#launchButtonPrimary,
+#heroBanner QToolButton#launchButtonPrimary {
+    background: qlineargradient(
+        x1:0, y1:0, x2:0, y2:1,
+        stop:0 {{light}},
+        stop:1 {{border}}
+    );
+    border: 1px solid {{accent}};
+    border-radius: 4px;
+    padding: 8px 16px;
+    color: {{text_primary}};
+    font-weight: bold;
+}
+
+#heroBanner QPushButton#launchButtonPrimary:hover,
+#heroBanner QToolButton#launchButtonPrimary:hover {
+    background: qlineargradient(
+        x1:0, y1:0, x2:0, y2:1,
+        stop:0 {{accent_hover}},
+        stop:0.5 {{accent}},
+        stop:1 {{accent_dark}}
+    );
+    color: {{text_on_accent}};
+}
+
+#heroBanner QPushButton#launchButtonPrimary:pressed,
+#heroBanner QToolButton#launchButtonPrimary:pressed {
+    background-color: {{bg_hover}};
+    color: {{text_primary}};
+}
+
+#heroBanner QToolButton#launchButtonPrimary::menu-button {
+    border-left: 1px solid {{accent}};
+    width: 20px;
+}
+
+QPushButton#launchButtonSecondary {
+    background: qlineargradient(
+        x1:0, y1:0, x2:0, y2:1,
+        stop:0 {{light}},
+        stop:1 {{border}}
+    );
+    border: 1px solid {{accent}};
+    padding: 8px 16px;
+}
+
+/* Install button - muted style for uninstalled games */
+#heroBanner QPushButton#launchButtonInstall,
+#heroBanner QToolButton#launchButtonInstall {
+    background: qlineargradient(
+        x1:0, y1:0, x2:0, y2:1,
+        stop:0 {{bg_hover}},
+        stop:1 {{bg_secondary}}
+    );
+    border: 1px solid {{border}};
+    border-radius: 4px;
+    padding: 8px 16px;
+    color: {{text_secondary}};
+    font-weight: normal;
+}
+
+#heroBanner QPushButton#launchButtonInstall:hover,
+#heroBanner QToolButton#launchButtonInstall:hover {
+    background: qlineargradient(
+        x1:0, y1:0, x2:0, y2:1,
+        stop:0 {{light}},
+        stop:1 {{border}}
+    );
+    color: {{text_primary}};
+}
+
+#heroBanner QToolButton#launchButtonInstall::menu-button {
+    border-left: 1px solid {{border}};
+    width: 20px;
+}
+
+/* Warning label - no-runner warning */
+QLabel#warningLabel {
+    color: {{accent}};
+    padding: 4px 0;
+}
+
+/* Store button - opens store page in browser */
+QToolButton#storeButton {
+    background: qlineargradient(
+        x1:0, y1:0, x2:0, y2:1,
+        stop:0 {{light}},
+        stop:1 {{border}}
+    );
+    border: 1px solid {{accent}};
+    border-radius: 4px;
+    padding: 8px 16px;
+    color: {{text_primary}};
+    font-weight: bold;
+}
+
+QToolButton#storeButton:hover {
+    background: qlineargradient(
+        x1:0, y1:0, x2:0, y2:1,
+        stop:0 {{accent_hover}},
+        stop:0.5 {{accent}},
+        stop:1 {{accent_dark}}
+    );
+    color: {{text_on_accent}};
+}
+
+QToolButton#storeButton:pressed {
+    background-color: {{bg_hover}};
+    color: {{text_primary}};
+}
+
+QToolButton#storeButton::menu-button {
+    border-left: 1px solid {{accent}};
+    width: 16px;
+}
+
+/* Tags button */
+QPushButton#tagsButton {
+    background: qlineargradient(
+        x1:0, y1:0, x2:0, y2:1,
+        stop:0 {{light}},
+        stop:1 {{border}}
+    );
+    border: 1px solid {{accent}};
+    border-radius: 4px;
+    padding: 8px 16px;
+    color: {{text_primary}};
+    font-weight: bold;
+}
+
+QPushButton#tagsButton:hover {
+    background: qlineargradient(
+        x1:0, y1:0, x2:0, y2:1,
+        stop:0 {{accent_hover}},
+        stop:0.5 {{accent}},
+        stop:1 {{accent_dark}}
+    );
+    color: {{text_on_accent}};
+}
+
+QPushButton#tagsButton:pressed {
+    background-color: {{bg_hover}};
+    color: {{text_primary}};
+}
+
+/* Favorite Button */
+
+QPushButton#favoriteButton {
+    padding: 8px 16px;
+    border: 2px solid {{fav_color}};
+    border-radius: 4px;
+    background: transparent;
+    color: {{fav_color}};
+}
+
+QPushButton#favoriteButton:checked {
+    background: qlineargradient(
+        x1:0, y1:0, x2:0, y2:1,
+        stop:0 {{fav_checked}},
+        stop:0.5 {{fav_checked}},
+        stop:1 {{fav_checked_dark}}
+    );
+    color: {{text_on_accent}};
+}
+
+QPushButton#favoriteButton:hover:!checked {
+    background: qlineargradient(
+        x1:0, y1:0, x2:0, y2:1,
+        stop:0 {{fav_hover_alpha}},
+        stop:0.5 {{fav_hover_alpha_mid}},
+        stop:1 {{bg_secondary}}
+    );
+}
+
+QPushButton#favoriteButton:hover:checked {
+    background: qlineargradient(
+        x1:0, y1:0, x2:0, y2:1,
+        stop:0 {{fav_checked_hover}},
+        stop:0.5 {{fav_checked}},
+        stop:1 {{fav_checked}}
+    );
+    color: {{text_on_accent}};
+}
+
+QPushButton#favoriteButton:pressed {
+    background-color: {{fav_checked}};
+    color: {{text_on_accent}};
+}
+
+/* Borrowed-from label (family sharing) */
+QLabel#borrowedFromLabel {
+    font-size: 18pt;
+    color: #ff9800;
+    font-weight: 900;
+    min-width: 32pt;
+    min-height: 32pt;
+    padding: 4pt;
+    qproperty-alignment: AlignCenter;
+    background: transparent;
+    border: none;
+}
+
+/* Screenshot thumbnails (overlay hero banner, use absolute rgba) */
+
+#screenshotThumb {
+    background-color: transparent;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 4px;
+}
+
+#screenshotThumb:hover {
+    border: 1px solid rgba(255, 255, 255, 0.5);
+}
+
+/* Add tag button */
+
+QPushButton#addTagButton {
+    background: transparent;
+    border: 1px dashed {{border}};
+    padding: 4px 8px;
+    border-radius: 3px;
+    font-size: 9pt;
+    color: {{accent}};
+}
+
+
+/* ============================================================================
+   PROGRESS BAR CHUNK - fallback for loading overlay
+   ============================================================================ */
+
+QProgressBar::chunk {
+    background-color: {{accent}};
+}
+
+/* Image Viewer Dialog */
+#imageViewerDialog {
+    background-color: {{bg_primary}};
+}
+#imageViewerControlBar {
+    background-color: {{bg_input}};
+    border-top: 1px solid {{border}};
+}
+#imageViewerControlBar QPushButton {
+    color: {{text_primary}};
+    background-color: {{bg_primary}};
+    border: 1px solid {{border}};
+    padding: 6px 12px;
+    border-radius: 3px;
+    min-width: 32px;
+    min-height: 24px;
+}
+#imageViewerControlBar QPushButton:hover {
+    background-color: {{bg_hover}};
+    border-color: {{accent}};
+}
+#imageViewerControlBar QPushButton:pressed {
+    background-color: {{accent}};
+    color: {{text_on_accent}};
+}
+#imageViewerControlBar QPushButton:disabled {
+    color: {{text_secondary}};
+    background-color: {{bg_input}};
+}
+#imageViewerControlBar QPushButton:checked {
+    background-color: {{accent}};
+    color: {{text_on_accent}};
+}
+#imageViewerZoomLabel,
+#imageViewerCounterLabel {
+    color: {{text_primary}};
+}
+
+
+/* ============================================================================
+   TOOLBAR
+   ============================================================================ */
+
+QLineEdit {
+    padding: 6px 8px;
+    border: 1px solid {{border}};
+    border-radius: 4px;
+    background: {{bg_input}};
+    color: {{text_primary}};
+}
+
+QLineEdit:focus {
+    border-color: {{accent}};
+}
+
+/* Toolbar buttons */
+
+#sortButton, #refreshButton, #syncButton, #settingsButton, #aboutButton,
+#toolsButton, #randomButton {
+    background: qlineargradient(
+        x1:0, y1:0, x2:0, y2:1,
+        stop:0 {{btn_gradient_top}},
+        stop:1 {{border}}
+    );
+    color: {{text_primary}};
+    border: 1px solid {{border}};
+    border-radius: 4px;
+    padding: 6px 12px;
+}
+
+#sortButton:hover, #refreshButton:hover, #syncButton:hover,
+#settingsButton:hover, #aboutButton:hover,
+#toolsButton:hover, #randomButton:hover {
+    background: qlineargradient(
+        x1:0, y1:0, x2:0, y2:1,
+        stop:0 {{accent_hover}},
+        stop:0.5 {{accent}},
+        stop:1 {{accent_dark}}
+    );
+    color: {{text_on_accent}};
+}
+
+#sortButton:pressed, #refreshButton:pressed, #syncButton:pressed,
+#settingsButton:pressed, #aboutButton:pressed,
+#toolsButton:pressed, #randomButton:pressed {
+    background-color: {{bg_hover}};
+}
+
+#toolbarSeparator {
+    color: {{border}};
+}
+
+/* About button size */
+
+#aboutButton {
+    min-width: 28px;
+    max-width: 32px;
+    padding: 4px 6px;
+    font-weight: bold;
+}
+
+/* View mode group */
+
+#viewModeGroup {
+    border: 1px solid {{border}};
+    border-radius: 4px;
+    background: {{bg_secondary}};
+}
+
+#viewModeGroup QPushButton {
+    border: none;
+    border-radius: 0;
+    border-right: 1px solid {{border}};
+    padding: 6px 12px;
+    background: {{bg_secondary}};
+    color: {{text_primary}};
+}
+
+#viewModeGroup QPushButton:hover {
+    background: qlineargradient(
+        x1:0, y1:0, x2:0, y2:1,
+        stop:0 {{accent_hover}},
+        stop:0.5 {{accent}},
+        stop:1 {{accent_dark}}
+    );
+    color: {{text_on_accent}};
+}
+
+#viewModeGroup QPushButton:checked {
+    background: qlineargradient(
+        x1:0, y1:0, x2:0, y2:1,
+        stop:0 {{accent_hover}},
+        stop:0.5 {{accent}},
+        stop:1 {{accent_dark}}
+    );
+    color: {{text_on_accent}};
+}
+
+
+/* ============================================================================
+   SYNC PROGRESS BAR - Embedded in toolbar during sync
+   ============================================================================ */
+
+
+#syncActivityLabel {
+    color: {{text_secondary}};
+}
+
+#syncCountLabel {
+    color: {{text_primary}};
+    font-weight: bold;
+}
+
+#syncProgressBarWidget {
+    border: 1px solid {{border}};
+    border-radius: 3px;
+    background: {{bg_input}};
+}
+
+#syncProgressBarWidget::chunk {
+    background: {{accent}};
+    border-radius: 2px;
+}
+
+#syncJobDropdown {
+    background: {{bg_primary}};
+    color: {{text_primary}};
+    border: 1px solid {{border}};
+    border-radius: 4px;
+    padding: 4px;
+}
+
+#syncJobDropdown::item {
+    padding: 4px 8px;
+}
+
+#syncJobDropdown::item:selected {
+    background: {{bg_hover}};
+}
+
+/* --- New SyncWidget (status-bar-area progress) --- */
+
+#syncWidget {
+    background: {{bg_primary}};
+    border-top: 1px solid {{border}};
+}
+
+#syncProgressBar {
+    min-height: 22px;
+    text-align: center;
+    color: {{text_on_accent}};
+    background: {{bg_input}};
+    border: 1px solid {{border}};
+    border-radius: 3px;
+}
+#syncProgressBar::chunk {
+    background-color: {{accent}};
+    border-radius: 2px;
+}
+
+#syncPauseBtn, #syncSkipBtn, #syncCancelBtn {
+    padding: 2px 8px;
+    min-height: 20px;
+}
+
+#syncSummaryLabel {
+    color: {{text_primary}};
+}
+
+
+/* ============================================================================
+   FILTER BAR
+   ============================================================================ */
+
+QLabel#filterLabel {
+    color: {{accent}};
+    font-size: 9pt;
+    font-weight: bold;
+    background: transparent;
+}
+
+QPushButton#filterDropdownButton {
+    background: qlineargradient(
+        x1:0, y1:0, x2:0, y2:1,
+        stop:0 {{btn_gradient_top}},
+        stop:1 {{border}}
+    );
+    color: {{text_primary}};
+    border: 1px solid {{border}};
+    border-radius: 4px;
+    padding: 6px 12px;
+}
+
+QPushButton#filterDropdownButton:hover {
+    background: qlineargradient(
+        x1:0, y1:0, x2:0, y2:1,
+        stop:0 {{accent_hover}},
+        stop:0.5 {{accent}},
+        stop:1 {{accent_dark}}
+    );
+    color: {{text_on_accent}};
+}
+
+QPushButton#filterDropdownButton::menu-indicator {
+    subcontrol-position: right center;
+    subcontrol-origin: padding;
+    right: 6px;
+}
+
+QPushButton#filterChip {
+    background: {{bg_secondary}};
+    border: 1px solid {{border}};
+    padding: 3px 8px;
+    min-height: 18px;
+    border-radius: 3px;
+    font-size: 11pt;
+    color: {{text_primary}};
+}
+
+QPushButton#filterChip:checked {
+    background: qlineargradient(
+        x1:0, y1:0, x2:0, y2:1,
+        stop:0 {{accent_hover}},
+        stop:0.5 {{accent}},
+        stop:1 {{accent_dark}}
+    );
+    color: {{text_on_accent}};
+    border-color: {{accent}};
+}
+
+QPushButton#filterChip:hover {
+    background: qlineargradient(
+        x1:0, y1:0, x2:0, y2:1,
+        stop:0 {{accent_hover}},
+        stop:0.5 {{accent}},
+        stop:1 {{accent_dark}}
+    );
+    color: {{text_on_accent}};
+}
+
+/* --- Filter Crumbs (removable filter chips in crumb bar) --- */
+QFrame#filterCrumb {
+    background: {{bg_secondary}};
+    color: {{text_primary}};
+    border: 1px solid {{border}};
+    border-radius: 10px;
+    padding: 2px 8px;
+    min-height: 16px;
+}
+QFrame#filterCrumb:hover {
+    background: {{accent}};
+    color: {{text_on_accent}};
+}
+QLabel#filterCrumbLabel {
+    background: transparent;
+}
+
+
+/* ============================================================================
+   DIALOGS AND SETTINGS
+   ============================================================================ */
+
+QDialog {
+    background-color: {{bg_primary}};
+}
+
+QDialog QGroupBox {
+    background-color: {{bg_secondary}};
+    border: 1px solid {{border}};
+    border-radius: 6px;
+    margin-top: 16px;
+    padding-top: 16px;
+}
+
+QDialog QGroupBox::title {
+    subcontrol-origin: margin;
+    subcontrol-position: top left;
+    left: 12px;
+    padding: 2px 8px;
+    color: {{accent}};
+    background: {{bg_secondary}};
+}
+
+QDialog QComboBox {
+    background-color: {{bg_input}};
+    border: 1px solid {{border}};
+    border-radius: 4px;
+    padding: 6px 10px;
+    color: {{text_primary}};
+    min-width: 120px;
+}
+
+QDialog QComboBox:hover {
+    border-color: {{accent}};
+}
+
+QDialog QComboBox::drop-down {
+    border: none;
+    width: 20px;
+}
+
+QDialog QSlider {
+    background: transparent;
+}
+
+QDialog QSlider::groove:horizontal {
+    background-color: {{bg_input}};
+    height: 6px;
+    border-radius: 3px;
+}
+
+QDialog QSlider::handle:horizontal {
+    background-color: {{accent}};
+    width: 16px;
+    height: 16px;
+    margin: -5px 0;
+    border-radius: 8px;
+}
+
+QDialog QSlider::handle:horizontal:hover {
+    background-color: {{accent_hover}};
+}
+
+QDialogButtonBox QPushButton {
+    background: qlineargradient(
+        x1:0, y1:0, x2:0, y2:1,
+        stop:0 {{btn_gradient_top}},
+        stop:1 {{border}}
+    );
+    color: {{text_primary}};
+    border: 1px solid {{border}};
+    border-radius: 4px;
+    padding: 6px 16px;
+    min-width: 80px;
+    text-align: center;
+}
+
+QDialogButtonBox QPushButton:hover {
+    background: qlineargradient(
+        x1:0, y1:0, x2:0, y2:1,
+        stop:0 {{accent_hover}},
+        stop:0.5 {{accent}},
+        stop:1 {{accent_dark}}
+    );
+    color: {{text_on_accent}};
+}
+
+QDialogButtonBox QPushButton:pressed {
+    background-color: {{bg_hover}};
+}
+
+/* Hide button icons */
+
+QDialogButtonBox QPushButton::icon {
+    width: 0;
+    height: 0;
+}
+
+/* Plugins tab */
+
+QScrollArea {
+    background-color: {{bg_input}};
+    border: none;
+}
+
+QScrollArea > QWidget > QWidget {
+    background-color: {{bg_input}};
+}
+
+QDialog QWidget QLabel {
+    color: {{text_primary}};
+    background: transparent;
+}
+
+QLabel#hintLabel {
+    color: {{text_secondary}};
+}
+
+/* Checkboxes */
+
+QDialog QCheckBox {
+    color: {{text_primary}};
+    spacing: 6px;
+    background: transparent;
+}
+
+QDialog QCheckBox::indicator {
+    width: 16px;
+    height: 16px;
+    border: 1px solid {{border}};
+    border-radius: 3px;
+    background-color: {{bg_input}};
+}
+
+QDialog QCheckBox::indicator:checked {
+    background-color: {{accent}};
+    border-color: {{accent}};
+}
+
+/* Inputs */
+
+QDialog QLineEdit {
+    background-color: {{bg_input}};
+    border: 1px solid {{border}};
+    border-radius: 4px;
+    padding: 6px 10px;
+    color: {{text_primary}};
+}
+
+QDialog QLineEdit:focus {
+    border-color: {{accent}};
+}
+
+QDialog QSpinBox {
+    background-color: {{bg_input}};
+    border: 1px solid {{border}};
+    border-radius: 4px;
+    padding: 4px 8px;
+    color: {{text_primary}};
+}
+
+/* Separator lines */
+
+QDialog QFrame[frameShape="4"] {
+    color: {{border}};
+}
+
+/* Descriptions */
+
+QLabel#dialogDescription {
+    color: {{text_secondary}};
+    font-size: 10pt;
+}
+
+QLabel#fieldDescription {
+    color: {{text_secondary}};
+    font-size: 9pt;
+}
+
+/* Plugin Status Indicators */
+QLabel#pluginStatusConfigured { color: #27ae60; }
+QLabel#pluginStatusNotConfigured { color: {{accent}}; }
+QLabel#pluginStatusDisabled { color: #e74c3c; }
+QLabel#pluginStatusInDevelopment { color: {{text_secondary}}; }
+QLabel#pluginStatusNotAvailable { color: {{text_secondary}}; }
+
+QLabel#pluginTypeBadge {
+    color: {{text_primary}};
+    margin-right: 4px;
+}
+
+/* Backup Progress Dialog */
+QLabel#backupProgressStatus { font-weight: bold; }
+QLabel#backupProgressSuccess { font-weight: bold; color: #27ae60; }
+QLabel#backupProgressError { font-weight: bold; color: #e74c3c; }
+
+/* Grid Separators (launcher status, etc.) */
+QFrame#gridSeparator {
+    border: none;
+    border-top: 1px solid {{border}};
+    max-height: 1px;
+}
+
+/* Launcher Path Fields */
+QDialog QLineEdit#launcherPathEdit,
+QDialog QLineEdit#launcherPathEditAuto {
+    background: transparent;
+    border: 1px solid {{border}};
+    border-radius: 3px;
+    padding: 0px 4px;
+    color: {{text_primary}};
+}
+QDialog QLineEdit#launcherPathEditAuto {
+    font-style: italic;
+    color: {{text_secondary}};
+}
+
+/* About Dialog - Header */
+#aboutTitle { font-size: 16pt; font-weight: bold; color: {{text_primary}}; }
+#aboutSubtitle { font-size: 10pt; color: {{text_primary}}; }
+#aboutLink { font-size: 10pt; color: {{link_color}}; }
+#aboutIconFallback { font-size: 36pt; }
+
+/* About Dialog - Boxes */
+#aboutDescBox, #aboutPluginsBox, #aboutLicenseBox {
+    background-color: {{bg_input}};
+    border: 1px solid {{border}};
+    border-radius: 4px;
+}
+#aboutDescText { font-size: 10pt; color: {{text_primary}}; }
+#aboutBoxHeader { font-size: 10pt; font-weight: bold; color: {{accent}}; }
+#aboutDescScroll, #aboutPluginsScroll { border: none; background: transparent; }
+#aboutPluginItem { font-size: 10pt; color: {{text_primary}}; }
+#aboutLicenseText { color: {{license_text_color}}; }
+
+/* About Dialog - Credits & Development tabs */
+#aboutSectionHeader { font-weight: bold; font-size: 11pt; color: {{accent}}; padding-top: 8px; padding-bottom: 4px; }
+#aboutBodyText { font-size: 10pt; color: {{text_primary}}; }
+#creditItem { background-color: {{bg_input}}; border: 1px solid {{border}}; border-radius: 4px; }
+#creditItemName { font-weight: bold; font-size: 10pt; background: transparent; border: none; color: {{accent}}; }
+#creditItemDesc { font-size: 10pt; background: transparent; border: none; color: {{text_primary}}; }
+#creditItemLicense { font-size: 9pt; background: transparent; border: none; color: {{text_secondary}}; padding: 0 8px 4px 8px; }
+
+/* About Dialog - News tab */
+QTextBrowser#aboutNewsBrowser {
+    background-color: {{bg_input}};
+    color: {{text_primary}};
+    border: none;
+    padding: 8px;
+}
+
+/* About/Settings — Update links */
+#aboutUpdateLink, #updateLink { color: {{link_color}}; }
+QTextBrowser#updateChangelog {
+    background-color: {{bg_input}};
+    color: {{text_primary}};
+    border: 1px solid {{border}};
+    border-radius: 4px;
+    padding: 8px;
+}
+
+/* ============================================================================
+   SETUP WIZARD - Wizard-specific widget styling
+   ============================================================================ */
+
+#wizardHint {
+    color: {{text_secondary}};
+}
+
+#wizardInfo {
+    color: {{text_primary}};
+}
+
+#wizardFieldDescription {
+    color: {{text_secondary}};
+    font-size: 9pt;
+}
+
+#wizardAutoAuthInfo {
+    color: {{text_secondary}};
+}
+
+#wizardHelpLink {
+    color: {{link_color}};
+}
+
+#wizardDiskSpace {
+    color: {{text_primary}};
+}
+
+#wizardDiskSpace[diskWarning="warning"] {
+    color: #e67e22;
+}
+
+#wizardDiskSpace[diskWarning="critical"] {
+    color: #e74c3c;
+}
+
+#wizardThemeList {
+    background-color: {{bg_input}};
+    border: 1px solid {{border}};
+}
+
+#wizardThemeMeta {
+    background-color: {{bg_secondary}};
+    border: 1px solid {{border}};
+    border-radius: 4px;
+}
+
+#wizardThemeAuthor {
+    color: {{accent}};
+    font-weight: bold;
+}
+
+#wizardThemeDesc {
+    color: {{text_primary}};
+}
+
+#wizardPasswordToggle {
+    background: transparent;
+    border: 1px solid {{border}};
+    border-radius: 4px;
+    padding: 2px;
+}
+
+#wizardPasswordToggle:checked {
+    background-color: {{accent}};
+    border-color: {{accent}};
+}
+
+
+/* ============================================================================
+   STATUS BAR - Grid view footer with game count, network indicator, density
+   ============================================================================ */
+
+StatusBar {
+    background: {{bg_primary}};
+    border-top: 1px solid {{border}};
+}
+
+#gameCount {
+    color: {{text_secondary}};
+}
+
+#statusSeparator {
+    color: {{text_secondary}};
+}
+
+#networkIndicator {
+    font-weight: bold;
+    padding: 0 4px;
+}
+
+#densitySlider {
+    height: 20px;
+}
+
+#densitySlider::groove:horizontal {
+    border: 1px solid {{border}};
+    height: 4px;
+    background: {{bg_input}};
+    border-radius: 2px;
+}
+
+#densitySlider::handle:horizontal {
+    background: {{accent}};
+    border: none;
+    width: 14px;
+    height: 14px;
+    margin: -5px 0;
+    border-radius: 7px;
+}
+
+#densitySlider::handle:horizontal:hover {
+    background: {{accent_hover}};
+}
+
+
+/* ============================================================================
+   SEMANTIC STATUS COLORS - Dynamic property-driven
+   ============================================================================ */
+
+QLabel[status="success"] { color: #27ae60; }
+QLabel[status="error"]   { color: #e74c3c; }
+QLabel[status="warning"] { color: #e67e22; }
+QLabel[status="success"][fontWeight="bold"] { color: #27ae60; font-weight: bold; }
+QLabel[status="error"][fontWeight="bold"]   { color: #e74c3c; font-weight: bold; }
+QLabel[status="warning"][fontWeight="bold"] { color: #e67e22; font-weight: bold; }
+
+/* Health indicator dots */
+QLabel#healthDot { background: transparent; border-radius: 6px; }
+QLabel#healthDot[health="green"]  { border: 2px solid #27ae60; }
+QLabel#healthDot[health="yellow"] { border: 2px solid #f39c12; }
+QLabel#healthDot[health="red"]    { border: 2px solid #e74c3c; }
+
+/* Score badge colors (tag manager) */
+QLabel#scoreBadge[scoreSign="positive"] { color: #28b43c; }
+QLabel#scoreBadge[scoreSign="negative"] { color: #c83232; }
+
+/* Loading overlay */
+QWidget#loadingOverlay { background-color: rgba(0, 0, 0, 150); }
+
+/* Loading overlay status label */
+QLabel#loadingStatusLabel { font-weight: bold; }
+
+/* Launch overlay */
+QWidget#launchOverlay { background-color: rgba(0, 0, 0, 150); }
+QLabel#launchOverlayHeader { font-size: 16pt; font-weight: bold; }
+QLabel#launchOverlayTitle { font-weight: bold; }
+QPushButton#launchButtonRunning { }
+
+/* Game settings status colors */
+QLabel#gameSettingsStatus[status="installed"]  { color: #27ae60; }
+QLabel#gameSettingsStatus[status="detected"]   { color: #e67e22; }
+QLabel#gameSettingsStatus[status="configured"] { color: #3498db; }
+QLabel#gameSettingsStatus[status="available"]  { color: #3498db; }
+QLabel#gameSettingsStatus[status="error"]      { color: #e74c3c; }
+
+QLabel#inDevelopmentLabel {
+    color: #cc0000;
+    font-size: 18pt;
+    font-weight: bold;
+}
+
+/* Sync dialog section headers */
+QLabel#syncSectionLabel {
+    font-weight: bold;
+}
+
+/* Collapsible section header (Settings) */
+QPushButton#collapsibleHeader {
+    text-align: left;
+    font-weight: bold;
+    padding: 6px 4px;
+}
+QPushButton#collapsibleHeader:hover {
+    background: {{bg_hover}};
+}
+
+/* Metadata priority editor panels */
+QWidget#prioritySidebarPanel {
+    border: 1px solid {{border}};
+    border-radius: 3px;
+}
+
+QStackedWidget#priorityStack {
+    border: 1px solid {{border}};
+    border-radius: 3px;
+}
+
+/* Metadata priority field buttons */
+QPushButton#priorityFieldButton {
+    text-align: left;
+    padding: 4px 8px;
+    background-color: palette(button);
+    color: palette(button-text);
+}
+
+QPushButton#priorityFieldButton:hover {
+    background-color: {{bg_hover}};
+    border: 1px solid {{accent}};
+}
+
+/* Back to About button on non-About tabs */
+QPushButton#backToAboutButton {
+    padding: 6px 16px;
+}
+
+/* ========================================
+   CONFIG EDITOR DIALOG
+   ======================================== */
+QDialog#configEditor QPlainTextEdit {
+    background-color: {{bg_input}};
+    color: {{text_primary}};
+    border: 1px solid {{border}};
+}
+
+
+/* ============================================================================
+   COMBO POPUP - Must be last to override QListView rules
+   ============================================================================ */
+
+QComboBox QAbstractItemView {
+    background-color: {{bg_secondary}};
+    color: {{text_primary}};
+    selection-background-color: {{selection}};
+    selection-color: {{text_on_accent}};
+}
+
+QComboBox QAbstractItemView::item {
+    color: {{text_primary}};
+    border: none;
+}
+
+QComboBox QAbstractItemView::item:hover {
+    background-color: {{accent}};
+    color: {{text_on_accent}};
+}
+
+QComboBox QAbstractItemView::item:selected {
+    background-color: {{accent}};
+    color: {{text_on_accent}};
+}
+
+/* QComboBox::item:hover/selected — only selector Qt6 honors for combo popups */
+QComboBox::item:hover {
+    background-color: {{selection}};
+    color: {{text_on_accent}};
+}
+
+QComboBox::item:selected {
+    background-color: {{selection}};
+    color: {{text_on_accent}};
+}

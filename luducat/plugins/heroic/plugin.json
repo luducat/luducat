@@ -1,0 +1,34 @@
+{
+  "name": "heroic",
+  "display_name": "Heroic",
+  "version": "1.0.3",
+  "author": "luducat",
+  "description": "Import tags and favourites from Heroic",
+  "min_luducat_version": "0.2.9.24",
+  "plugin_types": ["metadata"],
+  "provider_class": "provider.HeroicProvider",
+  "capabilities": {
+    "enrich_metadata": false,
+    "search_games": false,
+    "fetch_metadata": false,
+    "tag_sync": true
+  },
+  "provides_fields": {},
+  "auth": {"type": "none"},
+  "settings_schema": {},
+  "network": {
+    "allowed_domains": []
+  },
+
+  "privacy": {
+    "telemetry": false,
+    "data_collection": "none",
+    "third_party_services": []
+  },
+
+  "platforms": {
+    "linux": true,
+    "windows": true,
+    "macos": true
+  }
+}

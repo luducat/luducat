@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24"
+     fill="none" stroke="#000000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+  <!-- Road deck -->
+  <line x1="1" y1="15" x2="23" y2="15"/>
+  <!-- Left tower -->
+  <line x1="7" y1="5" x2="7" y2="15"/>
+  <line x1="6" y1="5" x2="8" y2="5"/>
+  <!-- Right tower -->
+  <line x1="17" y1="5" x2="17" y2="15"/>
+  <line x1="16" y1="5" x2="18" y2="5"/>
+  <!-- Main cables (catenary arcs — taller, tighter) -->
+  <path d="M1,9 Q7,3 12,9 Q17,3 23,9"/>
+  <!-- Suspender cables from main cable to deck -->
+  <line x1="4" y1="7" x2="4" y2="15"/>
+  <line x1="10" y1="7.8" x2="10" y2="15"/>
+  <line x1="12" y1="9" x2="12" y2="15"/>
+  <line x1="14" y1="7.8" x2="14" y2="15"/>
+  <line x1="20" y1="7" x2="20" y2="15"/>
+  <!-- Tower bases below deck -->
+  <line x1="6" y1="15" x2="6" y2="19"/>
+  <line x1="8" y1="15" x2="8" y2="19"/>
+  <line x1="16" y1="15" x2="16" y2="19"/>
+  <line x1="18" y1="15" x2="18" y2="19"/>
+</svg>

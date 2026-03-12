@@ -1,0 +1,112 @@
+{
+  "name": "epic",
+  "display_name": "Epic Games",
+  "version": "2.0.2",
+  "author": "luducat",
+  "author_email": "luducat@trinity2k.net",
+  "description": "Epic library integration",
+  "homepage": "https://github.com/luducat/luducat",
+
+  "min_luducat_version": "0.2.9.30",
+  "max_luducat_version": null,
+
+  "plugin_types": ["store"],
+  "store_class": "store.EpicStore",
+  "config_dialog_class": "config_dialog.EpicConfigDialog",
+
+  "badge_label": "EPIC",
+  "brand_colors": {"bg": "#2a2a2a", "text": "#ffffff"},
+
+  "dependencies": {
+    "python": ">=3.11",
+    "packages": [
+      "requests>=2.28.0"
+    ]
+  },
+
+  "platforms": {
+    "linux": true,
+    "windows": true,
+    "macos": true
+  },
+
+  "capabilities": {
+    "fetch_library": true,
+    "fetch_metadata": true,
+    "launch_games": false,
+    "track_playtime": false,
+    "achievements": false,
+    "cloud_saves": false
+  },
+
+  "provides_fields": {
+    "title": {"priority": 30},
+    "short_description": {"priority": 30},
+    "developers": {"priority": 50},
+    "publishers": {"priority": 50},
+    "release_date": {"priority": 50},
+    "game_modes_detail": {"priority": 40},
+    "cover": {"priority": 40},
+    "hero": {"priority": 50},
+    "header_url": {"priority": 50},
+    "logo_url": {"priority": 50},
+    "screenshots": {"priority": 30},
+    "platforms": {"priority": 50},
+    "links": {"priority": 50},
+    "features": {"priority": 50},
+    "type": {"priority": 50}
+  },
+
+  "auth": {
+    "type": "oauth",
+    "fields": ["client_id", "client_secret"],
+    "optional": true,
+    "help_text": "Authenticates via Epic Games login page"
+  },
+
+  "settings_schema": {
+    "client_id": {
+      "type": "string",
+      "label": "Epic Client ID",
+      "description": "Leave blank to use luducat's credentials",
+      "secret": false,
+      "required": false
+    },
+    "client_secret": {
+      "type": "string",
+      "label": "Epic Client Secret",
+      "description": "Leave blank to use luducat's credentials",
+      "secret": true,
+      "required": false
+    }
+  },
+
+  "network": {
+    "allowed_domains": [
+      "luducat-api-proxy.luducat-cloudflare.workers.dev",
+      "account-public-service-prod03.ol.epicgames.com",
+      "launcher-public-service-prod06.ol.epicgames.com",
+      "catalog-public-service-prod06.ol.epicgames.com",
+      "library-service.live.use1a.on.epicgames.com",
+      "store-content.ak.epicgames.com",
+      "store.epicgames.com",
+      "cdn1.epicgames.com",
+      "cdn2.epicgames.com"
+    ],
+    "rate_limits": {
+      "store-content.ak.epicgames.com": {"requests": 5, "window": 1},
+      "catalog-public-service-prod06.ol.epicgames.com": {"requests": 10, "window": 1}
+    }
+  },
+
+  "privacy": {
+    "telemetry": false,
+    "data_collection": "none",
+    "third_party_services": []
+  },
+
+  "credentials": {
+    "use_system_keyring": false,
+    "keyring_service": "luducat.epic"
+  }
+}

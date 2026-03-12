@@ -1,0 +1,30 @@
+{
+    "name": "lutris_runner",
+    "display_name": "Lutris Runner",
+    "description": "Launch games via Lutris",
+    "version": "1.0.0",
+    "author": "luducat",
+    "min_luducat_version": "0.2.9.33",
+    "plugin_types": ["runner"],
+    "entry_point": "runner.LutrisRunner",
+    "enabled_by_default": true,
+    "capabilities": {
+        "supported_stores": ["steam", "gog", "epic"],
+        "launch_methods": ["url_scheme", "executable"],
+        "platforms": ["linux"]
+    },
+    "runner": {
+        "priority": 150,
+        "url_scheme": "lutris",
+        "flatpak_id": "net.lutris.Lutris"
+    },
+    "network": {
+        "allowed_domains": []
+    },
+    "privacy": {
+        "telemetry": false,
+        "data_collection": "none",
+        "third_party_services": []
+    },
+    "settings_schema": {}
+}

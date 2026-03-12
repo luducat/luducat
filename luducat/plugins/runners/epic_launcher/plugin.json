@@ -1,0 +1,30 @@
+{
+    "name": "epic_launcher_runner",
+    "display_name": "Epic Games Runner",
+    "description": "Launch Epic games via Heroic, Epic Games Launcher, or other runners",
+    "version": "2.1.3",
+    "author": "luducat",
+    "min_luducat_version": "0.2.9.30",
+    "plugin_types": ["runner"],
+    "entry_point": "runner.EpicLauncherRunner",
+    "enabled_by_default": true,
+    "capabilities": {
+        "supported_stores": ["epic"],
+        "launch_methods": ["url_scheme", "reroute"],
+        "platforms": ["windows", "darwin"],
+        "installed_games": true
+    },
+    "runner": {
+        "priority": 300,
+        "url_scheme": "com.epicgames.launcher"
+    },
+    "network": {
+        "allowed_domains": []
+    },
+    "privacy": {
+        "telemetry": false,
+        "data_collection": "none",
+        "third_party_services": []
+    },
+    "settings_schema": {}
+}

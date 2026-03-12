@@ -1,0 +1,55 @@
+# luducat dependencies
+
+# GUI framework
+PySide6>=6.5.0
+#PySide6-QtWebEngine>=6.5.0
+
+# Database
+SQLAlchemy>=2.0.0
+alembic>=1.12.0
+
+# Configuration
+platformdirs>=3.0.0
+tomli-w>=1.0.0
+
+# Secure credential storage
+keyring>=24.0.0
+
+# safe chmod cross platform
+oschmod>=0.3.12
+
+# Version parsing
+packaging>=23.0
+
+# HTTP client (for plugins)
+aiohttp>=3.8.0
+requests>=2.28.0
+
+# HTML parsing (for plugins)
+beautifulsoup4>=4.11.0
+
+# Image processing
+Pillow>=10.0.0
+pillow-heif>=0.16.0
+
+# Linux keyring backend
+SecretStorage>=3.3.0;sys_platform=="linux"
+
+vdf>=3.4
+browser_cookie3>=0.19.0
+psutil>=5.9.0
+
+# Date parsing
+python-dateutil>=2.8.0
+
+# Fast JSON (native binary wheels — no Rust toolchain needed)
+orjson>=3.9.0
+
+# HTTP retry logic (transitive via requests, but used directly in image_cache)
+urllib3>=1.26.0
+
+# Development dependencies (optional)
+# pytest>=7.0.0
+# pytest-asyncio>=0.21.0
+# black>=23.0.0
+# ruff>=0.1.0

@@ -1,0 +1,57 @@
+{
+  "name": "template",
+  "display_name": "Template Store",
+  "version": "0.1.0",
+  "author": "Your Name",
+  "author_email": "you@example.com",
+  "description": "Template for creating new store plugins",
+  "homepage": "https://github.com/your/repo",
+
+  "min_luducat_version": "0.1.0",
+  "max_luducat_version": null,
+
+  "plugin_types": ["store"],
+  "store_class": "store.TemplateStore",
+
+  "dependencies": {
+    "python": ">=3.11",
+    "packages": []
+  },
+
+  "platforms": {
+    "linux": true,
+    "windows": true,
+    "macos": true
+  },
+
+  "capabilities": {
+    "fetch_library": true,
+    "fetch_metadata": true,
+    "launch_games": true,
+    "track_playtime": false,
+    "achievements": false,
+    "cloud_saves": false
+  },
+
+  "settings_schema": {
+    "api_key": {
+      "type": "string",
+      "label": "API Key",
+      "description": "Your API key for this store",
+      "secret": true,
+      "required": true
+    },
+    "example_option": {
+      "type": "boolean",
+      "label": "Example Option",
+      "description": "An example boolean setting",
+      "default": false,
+      "required": false
+    }
+  },
+
+  "credentials": {
+    "use_system_keyring": true,
+    "keyring_service": "luducat.template"
+  }
+}

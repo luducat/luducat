@@ -1,0 +1,46 @@
+{
+  "name": "pixelengine",
+  "display_name": "PixelEngine",
+  "version": "1.1.0",
+  "author": "luducat SDK Team",
+  "description": "Demo platform plugin for the luducat Plugin SDK. Fictional retro game engine with hardcoded detection.",
+  "min_luducat_version": "0.2.9.24",
+  "plugin_types": ["platform"],
+  "entry_point": "platform.PixelEnginePlatform",
+  "capabilities": {
+    "runtime_type": "pixelengine",
+    "game_types": ["retro", "pixel"],
+    "launch_method": "executable",
+    "managed_download": false,
+    "status": "demo"
+  },
+  "network": {
+    "allowed_domains": []
+  },
+  "privacy": {
+    "telemetry": false,
+    "data_collection": "none",
+    "third_party_services": []
+  },
+  "settings_schema": {
+    "custom_path": {
+      "type": "path",
+      "label": "PixelEngine Path",
+      "description": "Path to PixelEngine executable (if not in PATH)",
+      "path_type": "file"
+    },
+    "fullscreen": {
+      "type": "boolean",
+      "label": "Launch in Fullscreen",
+      "description": "Start games in fullscreen mode",
+      "default": false
+    },
+    "scale_factor": {
+      "type": "choice",
+      "label": "Scale Factor",
+      "description": "Integer scaling multiplier for pixel art",
+      "choices": ["Auto", "1x", "2x", "3x", "4x"],
+      "default": "Auto"
+    }
+  }
+}

@@ -1,0 +1,56 @@
+{
+    "name": "wine",
+    "display_name": "Wine",
+    "description": "Run Windows games on Linux using Wine/Proton",
+    "version": "1.4.0",
+    "author": "luducat",
+    "min_luducat_version": "0.2.9.24",
+    "plugin_types": ["platform"],
+    "entry_point": "provider.WineProvider",
+    "config_dialog_class": "config_dialog.WineConfigDialog",
+    "enabled_by_default": true,
+    "capabilities": {
+        "runtime_type": "wine",
+        "game_types": ["windows"],
+        "launch_method": "executable",
+        "managed_download": false,
+        "status": "active"
+    },
+    "auth": {
+        "type": "none"
+    },
+    "network": {
+        "allowed_domains": []
+    },
+    "privacy": {
+        "telemetry": false,
+        "data_collection": "none",
+        "third_party_services": []
+    },
+    "settings_schema": {
+        "default_runtime": {
+            "type": "string",
+            "default": ""
+        },
+        "runtime_mode": {
+            "type": "choice",
+            "choices": ["auto", "wine", "proton", "umu"],
+            "default": "auto"
+        },
+        "wine_binary": { "type": "path" },
+        "proton_directory": { "type": "path" },
+        "umu_binary": { "type": "path" },
+        "esync": { "type": "boolean", "default": true },
+        "fsync": { "type": "boolean", "default": true },
+        "dxvk": { "type": "boolean", "default": false },
+        "mangohud": { "type": "boolean", "default": false },
+        "virtual_desktop": { "type": "boolean", "default": false },
+        "virtual_desktop_resolution": { "type": "string", "default": "1920x1080" },
+        "gamemode": { "type": "boolean", "default": false },
+        "winedebug": {
+            "type": "choice",
+            "choices": ["fixme-all", "-all", "warn+all", ""],
+            "default": "fixme-all"
+        }
+    }
+}

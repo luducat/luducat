@@ -1,0 +1,104 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "luducat"
+version = "0.5.0"
+description = "Cross-platform game catalogue browser"
+readme = "README.md"
+license = {text = "GPL-3.0-or-later"}
+requires-python = ">=3.11"  # SQLite >=3.38 needed for json_extract/json_each (bundled since 3.11)
+authors = [
+    {name = "luducat contributors"}
+]
+keywords = ["games", "steam", "gog", "launcher", "catalogue"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: X11 Applications :: Qt",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Games/Entertainment",
+]
+
+dependencies = [
+    "PySide6>=6.5.0",
+    "SQLAlchemy>=2.0.0",
+    "platformdirs>=3.0.0",
+    "tomli-w>=1.0.0",
+    "keyring>=24.0.0",
+    "packaging>=23.0",
+    "aiohttp>=3.8.0",
+    "requests>=2.28.0",
+    "beautifulsoup4>=4.11.0",
+    "oschmod>=0.3.12",
+    "Pillow>=10.0.0",
+    "SecretStorage>=3.3.0;sys_platform=='linux'",
+    "vdf>=3.4",
+    "browser_cookie3>=0.19.0",
+    "psutil>=5.9.0",
+    "pillow-heif>=0.16.0",
+    "python-dateutil>=2.8.0",
+    "orjson>=3.9.0",
+    "urllib3>=1.26.0",
+    "alembic>=1.12.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+    "responses>=0.23.0",
+    "black>=23.0.0",
+    "ruff>=0.1.0",
+    "Babel>=2.12.0",
+]
+build = [
+    "nuitka>=2.0.0",
+    "ordered-set>=4.1.0",
+    "zstandard>=0.22.0",
+]
+
+[project.scripts]
+luducat = "luducat.main:main"
+
+[project.urls]
+Homepage = "https://github.com/luducat/luducat"
+Documentation = "https://github.com/luducat/luducat#readme"
+Repository = "https://github.com/luducat/luducat"
+Issues = "https://github.com/luducat/luducat/issues"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["luducat*"]
+
+[tool.setuptools.package-data]
+"luducat" = ["assets/**/*.png", "assets/**/*.svg", "assets/**/*.ico", "assets/**/*.icns", "assets/**/*.qss", "assets/**/*.json", "assets/locale/**/*.po", "assets/locale/**/*.mo", "assets/locale/**/*.pot"]
+"luducat.plugins" = ["*/plugin.json", "*/icon.png"]
+
+[tool.black]
+line-length = 100
+target-version = ["py311", "py312", "py313"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+builtins = ["_", "ngettext", "N_"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "C4"]
+ignore = ["E501"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+filterwarnings = [
+    "error::DeprecationWarning",
+    "error::ResourceWarning",
+    "ignore::pytest.PytestUnraisableExceptionWarning",
+]

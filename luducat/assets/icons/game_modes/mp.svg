@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="#000000" stroke="none">
+  <!-- Two people side by side -->
+  <!-- Person 1 -->
+  <circle cx="8" cy="7.5" r="3"/>
+  <ellipse cx="8" cy="17" rx="4.5" ry="5.5"/>
+  <!-- Person 2 -->
+  <circle cx="16" cy="7.5" r="3"/>
+  <ellipse cx="16" cy="17" rx="4.5" ry="5.5"/>
+</svg>

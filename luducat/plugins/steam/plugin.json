@@ -1,0 +1,142 @@
+{
+  "name": "steam",
+  "display_name": "Steam",
+  "version": "1.11.11",
+  "author": "luducat",
+  "author_email": "luducat@trinity2k.net",
+  "description": "Steam game library integration via Steam Web API",
+  "homepage": "https://github.com/luducat/luducat",
+
+  "min_luducat_version": "0.2.9.24",
+  "max_luducat_version": null,
+
+  "plugin_types": ["store"],
+  "store_class": "store.SteamStore",
+
+  "badge_label": "STEAM",
+  "brand_colors": {"bg": "#1b2838", "text": "#66c0f4"},
+
+  "dependencies": {
+    "python": ">=3.11",
+    "packages": [
+      "requests>=2.28.0",
+      "aiohttp>=3.8.0",
+      "browser_cookie3>=0.19.0"
+    ]
+  },
+
+  "platforms": {
+    "linux": true,
+    "windows": true,
+    "macos": true
+  },
+
+  "capabilities": {
+    "fetch_library": true,
+    "fetch_metadata": true,
+    "launch_games": false,
+    "track_playtime": true,
+    "achievements": false,
+    "cloud_saves": false
+  },
+
+  "provides_fields": {
+    "title": {"priority": 10},
+    "description": {"priority": 10},
+    "short_description": {"priority": 10},
+    "developers": {"priority": 30},
+    "publishers": {"priority": 30},
+    "genres": {"priority": 30},
+    "release_date": {"priority": 30},
+    "game_modes_detail": {"priority": 20},
+    "cover": {"priority": 20},
+    "hero": {"priority": 30},
+    "header_url": {"priority": 10},
+    "screenshots": {"priority": 10},
+    "rating": {"priority": 10},
+    "rating_positive": {"priority": 10},
+    "rating_negative": {"priority": 10},
+    "critic_rating": {"priority": 10},
+    "critic_rating_url": {"priority": 10},
+    "platforms": {"priority": 30},
+    "links": {"priority": 30},
+    "controller_support": {"priority": 20},
+    "features": {"priority": 30},
+    "supported_languages": {"priority": 20},
+    "full_audio_languages": {"priority": 20},
+    "tags": {"priority": 30},
+    "type": {"priority": 20},
+    "required_age": {"priority": 20},
+    "is_free": {"priority": 20},
+    "achievements": {"priority": 10},
+    "content_descriptors": {"priority": 10},
+    "recommendations": {"priority": 10},
+    "estimated_owners": {"priority": 10},
+    "average_playtime_forever": {"priority": 10},
+    "average_playtime_2weeks": {"priority": 10},
+    "peak_ccu": {"priority": 10},
+    "steam_deck_compat": {"priority": 10},
+    "dlcs": {"priority": 20},
+    "icon_url": {"priority": 20},
+    "logo_url": {"priority": 20}
+  },
+
+  "auth": {
+    "type": "api_key",
+    "fields": ["api_key"]
+  },
+
+  "settings_schema": {
+    "steam_id": {
+      "type": "string",
+      "label": "SteamID",
+      "required": true,
+      "description": "Your Steam64 ID number, find it in your Steam profile URL.",
+      "placeholder": "76561198000000000"
+    },
+    "api_key": {
+      "type": "string",
+      "label": "Steam Web API Key",
+      "secret": true,
+      "description_link": {
+        "text": "Get your key from Steam",
+        "url": "https://steamcommunity.com/dev/apikey"
+      }
+    },
+    "include_family_shared": {
+      "type": "boolean",
+      "label": "Include Family Shared Games",
+      "description": "Import your Steam Family Shared games.",
+      "default": false
+    }
+  },
+
+  "network": {
+    "allowed_domains": [
+      "api.steampowered.com",
+      "store.steampowered.com",
+      "steamcdn-a.akamaihd.net",
+      "cdn.akamai.steamstatic.com",
+      "cdn.cloudflare.steamstatic.com",
+      "shared.steamstatic.com",
+      "shared.akamai.steamstatic.com",
+      "shared.fastly.steamstatic.com",
+      "steamspy.com"
+    ],
+    "rate_limits": {
+      "api.steampowered.com": {"requests": 200, "window": 300},
+      "store.steampowered.com": {"requests": 3, "window": 1}
+    }
+  },
+
+  "privacy": {
+    "telemetry": false,
+    "data_collection": "none",
+    "third_party_services": []
+  },
+
+  "credentials": {
+    "use_system_keyring": true,
+    "keyring_service": "luducat.steam"
+  }
+}
