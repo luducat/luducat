@@ -261,9 +261,12 @@ class ClickableLabel(QLabel):
             super().paintEvent(event)
 
     def mouseReleaseEvent(self, event) -> None:
-        if event.button() == Qt.MouseButton.LeftButton:
-            self.clicked.emit(self._index)
-        super().mouseReleaseEvent(event)
+        try:
+            if event.button() == Qt.MouseButton.LeftButton:
+                self.clicked.emit(self._index)
+            super().mouseReleaseEvent(event)
+        except RuntimeError:
+            pass  # C++ object already deleted (game selection changed during click)
 
 
 class ScreenshotCarousel(QWidget):
@@ -2192,11 +2195,17 @@ class ListView(QWidget):
 
         self._saved_launch_config = dict(config)
         self.settings_changed.emit(self._game.get("id", ""), config)
+        # Refresh launch buttons to reflect runner/platform override
+        stores = self._game.get("stores", [])
+        self._update_launch_buttons(stores, self._game)
 
     def _on_settings_reset(self) -> None:
         """Revert settings widgets to last saved values."""
         if self._game and hasattr(self, "_saved_launch_config"):
             self._update_settings_tab(self._game)
+            # Refresh launch buttons to revert override text
+            stores = self._game.get("stores", [])
+            self._update_launch_buttons(stores, self._game)
 
     def _on_reset_wine_to_global(self) -> None:
         """Reset all per-game Wine overrides to global defaults."""
@@ -3246,6 +3255,23 @@ class ListView(QWidget):
         if not stores:
             return
 
+        # Check per-game runner/platform override
+        override_label = None
+        if game and self._platform_manager:
+            lc = getattr(self, "_saved_launch_config", None)
+            if not lc and game.get("launch_config"):
+                import json as _json
+                try:
+                    lc = _json.loads(game["launch_config"])
+                except (ValueError, TypeError):
+                    lc = {}
+            if lc:
+                runner_name = lc.get("runner", "")
+                if runner_name:
+                    runner = self._platform_manager.get_runner(runner_name)
+                    if runner:
+                        override_label = runner.display_name or runner_name.capitalize()
+
         # Priority order for default store selection
         default = getattr(self, "_default_store", "")
         others = [
@@ -3292,7 +3318,20 @@ class ListView(QWidget):
         if len(stores) == 1:
             # Single store - simple button
             display_name = PluginManager.get_store_display_name(primary_store)
-            if primary_installed:
+            if override_label:
+                if primary_installed:
+                    btn = QPushButton(
+                        _("Play (via {runner})").format(runner=override_label)
+                    )
+                    btn.setObjectName("launchButtonPrimary")
+                    btn.clicked.connect(lambda checked, s=primary_store: self._on_launch_clicked(s))
+                else:
+                    btn = QPushButton(
+                        _("Launch ({runner})").format(runner=override_label)
+                    )
+                    btn.setObjectName("launchButtonInstall")
+                    btn.clicked.connect(lambda checked, s=primary_store: self._on_launch_clicked(s))
+            elif primary_installed:
                 btn = QPushButton(_("Play ({name})").format(name=display_name))
                 btn.setObjectName("launchButtonPrimary")
                 btn.clicked.connect(lambda checked, s=primary_store: self._on_launch_clicked(s))
@@ -3300,13 +3339,15 @@ class ListView(QWidget):
                 btn = QPushButton(_("Install ({name})").format(name=display_name))
                 btn.setObjectName("launchButtonInstall")
                 btn.clicked.connect(lambda checked, s=primary_store: self._on_install_clicked(s))
-            if not primary_launchable and not primary_installed:
+            if not override_label and not primary_launchable and not primary_installed:
                 btn.setEnabled(False)
                 btn.setToolTip(_("No compatible launcher available for this store"))
             else:
                 fallback = (
-                    _("Launch this game via {name}").format(name=display_name)
-                    if primary_installed
+                    _("Launch this game via {name}").format(
+                        name=override_label or display_name
+                    )
+                    if primary_installed or override_label
                     else _("Open the {name} install page").format(name=display_name)
                 )
                 btn.setToolTip(tooltip if tooltip else fallback)
@@ -3315,7 +3356,20 @@ class ListView(QWidget):
             # Multiple stores - button with dropdown
             display_name = PluginManager.get_store_display_name(primary_store)
             btn = QToolButton()
-            if primary_installed:
+            if override_label:
+                if primary_installed:
+                    btn.setText(
+                        _("Play (via {runner})").format(runner=override_label)
+                    )
+                    btn.setObjectName("launchButtonPrimary")
+                    btn.clicked.connect(lambda checked, s=primary_store: self._on_launch_clicked(s))
+                else:
+                    btn.setText(
+                        _("Launch ({runner})").format(runner=override_label)
+                    )
+                    btn.setObjectName("launchButtonInstall")
+                    btn.clicked.connect(lambda checked, s=primary_store: self._on_launch_clicked(s))
+            elif primary_installed:
                 btn.setText(_("Play ({name})").format(name=display_name))
                 btn.setObjectName("launchButtonPrimary")
                 btn.clicked.connect(lambda checked, s=primary_store: self._on_launch_clicked(s))
@@ -3325,8 +3379,10 @@ class ListView(QWidget):
                 btn.clicked.connect(lambda checked, s=primary_store: self._on_install_clicked(s))
             btn.setPopupMode(QToolButton.ToolButtonPopupMode.MenuButtonPopup)
             fallback = (
-                _("Launch this game via {name}").format(name=display_name)
-                if primary_installed
+                _("Launch this game via {name}").format(
+                    name=override_label or display_name
+                )
+                if primary_installed or override_label
                 else _("Open the {name} install page").format(name=display_name)
             )
             btn.setToolTip(tooltip if tooltip else fallback)

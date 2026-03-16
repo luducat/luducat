@@ -14,7 +14,7 @@ if not hasattr(builtins, "ngettext"):
     builtins.ngettext = lambda singular, plural, n: singular if n == 1 else plural
 
 APP_NAME = "luducat"
-APP_VERSION = "0.5.0"
+APP_VERSION = "0.5.1"
 APP_ID = "com.luducat.luducat"  # Desktop file name / GNOME App ID
 APP_ICON_BASENAME = "app_icon"
 APP_DESCRIPTION = N_("Cross-platform game catalogue browser")
@@ -24,8 +24,11 @@ UPDATE_CHECK_URL = "https://luducat-api-proxy.luducat-cloudflare.workers.dev/ver
 APP_AUTHOR = "luducat@trinity2k.net"
 APP_LICENSE = "GPL-3.0-or-later"
 
-# Full version string for display (e.g., "0.1.0+8a42d1c")
-APP_VERSION_FULL = f"{APP_VERSION}"
+# Dev build flag — set True for private tester builds, never in public release repo
+IS_DEV_BUILD = False
+
+# Full version string for display (e.g., "0.5.0" or "0.5.0.1 (dev)")
+APP_VERSION_FULL = f"{APP_VERSION} (dev)" if IS_DEV_BUILD else APP_VERSION
 
 # HTTP User-Agent strings (centralized — do NOT hardcode elsewhere)
 # Default UA: browser-like for web requests (plugins + image cache + all HTTP)

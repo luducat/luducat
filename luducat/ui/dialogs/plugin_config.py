@@ -11,7 +11,7 @@ import logging
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from PySide6.QtCore import Qt, Signal, QThread
+from PySide6.QtCore import Qt, Signal, QThread, QTimer
 from PySide6.QtWidgets import (
     QApplication,
     QDialog,
@@ -46,6 +46,139 @@ logger = logging.getLogger(__name__)
 class SyncCancelled(Exception):
     """Raised when sync is cancelled by user"""
     pass
+
+
+class _BridgePairWorker(QThread):
+    """Background worker for bridge pairing (Playnite runner)."""
+
+    status_update = Signal(str)
+    code_display = Signal(str)
+    finished = Signal(bool)
+
+    def __init__(self, plugin, host: str, port: int):
+        super().__init__()
+        self._plugin = plugin
+        self._host = host
+        self._port = port
+
+    def run(self):
+        try:
+            ok = self._plugin.pair_bridge(
+                self._host, self._port,
+                on_status=self.status_update.emit,
+                on_code_display=self.code_display.emit,
+            )
+        except Exception as e:
+            logger.debug("Bridge pairing error: %s", e)
+            self.status_update.emit(_("Error: {}").format(e))
+            ok = False
+        self.finished.emit(ok)
+
+
+class _BridgeTestWorker(QThread):
+    """Background worker for bridge connection test."""
+
+    finished = Signal(dict)
+
+    def __init__(self, plugin):
+        super().__init__()
+        self._plugin = plugin
+
+    def run(self):
+        try:
+            result = self._plugin.test_bridge_connection()
+        except Exception as e:
+            logger.debug("Bridge test error: %s", e)
+            result = {"status": "error", "detail": str(e)}
+        self.finished.emit(result)
+
+
+class _BridgeCodeDialog(QDialog):
+    """Display-only dialog showing the 6-digit pairing code with countdown.
+
+    No Confirm button — the Playnite user enters the code on their side.
+    Cancel closes the dialog; the worker times out naturally.
+    """
+
+    def __init__(self, code: str, timeout_secs: int = 120, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle(_("Pairing Code"))
+        self.setMinimumWidth(320)
+        self.setWindowFlags(
+            self.windowFlags() & ~Qt.WindowContextHelpButtonHint
+        )
+
+        self._remaining = timeout_secs
+
+        layout = QVBoxLayout(self)
+        layout.setSpacing(12)
+
+        # Instruction
+        hint = QLabel(_("Enter this code in Playnite:"))
+        hint.setAlignment(Qt.AlignCenter)
+        hint.setObjectName("hintLabel")
+        layout.addWidget(hint)
+
+        # Large code display with letter spacing
+        display = code[:3] + "\u2009" + code[3:] if len(code) == 6 else code
+        self._code_label = QLabel(display)
+        self._code_label.setAlignment(Qt.AlignCenter)
+        base_size = QApplication.instance().font().pointSize()
+        code_font = self._code_label.font()
+        code_font.setPointSize(base_size + 18)
+        from PySide6.QtGui import QFont as _QFont
+        code_font.setLetterSpacing(_QFont.SpacingType.AbsoluteSpacing, 6)
+        code_font.setBold(True)
+        self._code_label.setFont(code_font)
+        self._code_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        layout.addWidget(self._code_label)
+
+        # Countdown
+        self._timer_label = QLabel()
+        self._timer_label.setAlignment(Qt.AlignCenter)
+        self._timer_label.setObjectName("hintLabel")
+        self._update_countdown()
+        layout.addWidget(self._timer_label)
+
+        # Cancel button
+        btn_box = QDialogButtonBox(QDialogButtonBox.Cancel)
+        btn_box.rejected.connect(self.reject)
+        layout.addWidget(btn_box)
+
+        # Tick every second
+        self._timer = QTimer(self)
+        self._timer.setInterval(1000)
+        self._timer.timeout.connect(self._tick)
+        self._timer.start()
+
+    def _update_countdown(self):
+        mins, secs = divmod(self._remaining, 60)
+        self._timer_label.setText(
+            _("Expires in {}:{:02d}").format(mins, secs)
+        )
+
+    def _tick(self):
+        self._remaining -= 1
+        if self._remaining <= 0:
+            self._timer.stop()
+            self._timer_label.setText(_("Expired"))
+            return
+        self._update_countdown()
+
+    def close_with_result(self, success: bool):
+        """Close the dialog, briefly flashing success/failure."""
+        self._timer.stop()
+        if success:
+            self._timer_label.setText(_("Paired successfully"))
+        else:
+            self._timer_label.setText(_("Pairing failed"))
+        # Brief flash before closing. Use a parented timer so it's safe
+        # if the dialog is destroyed early.
+        close_timer = QTimer(self)
+        close_timer.setSingleShot(True)
+        close_timer.setInterval(800)
+        close_timer.timeout.connect(self.accept if success else self.reject)
+        close_timer.start()
 
 
 # ── Shared reset logic ──────────────────────────────────────────────
@@ -665,61 +798,70 @@ class PluginConfigDialog(QDialog):
         else:
             self._build_generic_settings(layout, capabilities, is_in_dev)
 
-        # Build action buttons from collected actions
-        actions = self._collect_actions()
+        # Bridge runners handle their own status/buttons — skip generic section
+        if not getattr(self, '_has_bridge_settings', False):
+            # Build action buttons from collected actions
+            actions = self._collect_actions()
 
-        # Separate by group
-        auth_actions = [a for a in actions if a.group == "auth"]
-        data_actions = [a for a in actions if a.group == "data"]
-        bottom_actions = [a for a in actions if a.group == "bottom"]
+            # Separate by group
+            auth_actions = [a for a in actions if a.group == "auth"]
+            data_actions = [a for a in actions if a.group == "data"]
+            bottom_actions = [a for a in actions if a.group == "bottom"]
 
-        # Create all action buttons (so they exist in _action_buttons)
-        for action in auth_actions + data_actions:
-            self._create_action_button(action)
+            # Create all action buttons (so they exist in _action_buttons)
+            for action in auth_actions + data_actions:
+                self._create_action_button(action)
 
-        # Status row: [status_label ............ Refresh]
-        self.status_label = QLabel("")
-        self.status_label.setWordWrap(True)
+            # Status row: [status_label ............ Refresh]
+            self.status_label = QLabel("")
+            self.status_label.setWordWrap(True)
 
-        status_row = QHBoxLayout()
-        status_row.addWidget(self.status_label, 1)
+            status_row = QHBoxLayout()
+            status_row.addWidget(self.status_label, 1)
 
-        refresh_btn = self._action_buttons.get("test_connection")
-        if refresh_btn:
-            status_row.addWidget(refresh_btn)
-        layout.addLayout(status_row)
+            refresh_btn = self._action_buttons.get("test_connection")
+            if refresh_btn:
+                status_row.addWidget(refresh_btn)
+            layout.addLayout(status_row)
 
-        # Show initial connection status for all plugins
-        self._update_connection_status()
+            # Show initial connection status for all plugins
+            self._update_connection_status()
 
-        # Update requires_auth buttons after status is known
-        self._update_auth_dependent_buttons()
+            # Update requires_auth buttons after status is known
+            self._update_auth_dependent_buttons()
 
-        # Combined action row: data buttons left, auth buttons right
-        remaining_auth = [
-            a for a in auth_actions
-            if a.id != "test_connection"
-        ]
-        if data_actions or remaining_auth:
-            action_row = QHBoxLayout()
-            for action in data_actions:
-                btn = self._action_buttons.get(action.id)
-                if btn:
-                    action_row.addWidget(btn)
-            action_row.addStretch()
-            for action in remaining_auth:
-                btn = self._action_buttons.get(action.id)
-                if btn:
-                    action_row.addWidget(btn)
-            # Ensure login/logout visibility is correct
-            if self._action_buttons.get("login") or self._action_buttons.get("logout"):
-                self._update_oauth_buttons()
-            layout.addLayout(action_row)
+            # Combined action row: data buttons left, auth buttons right
+            remaining_auth = [
+                a for a in auth_actions
+                if a.id != "test_connection"
+            ]
+            if data_actions or remaining_auth:
+                action_row = QHBoxLayout()
+                for action in data_actions:
+                    btn = self._action_buttons.get(action.id)
+                    if btn:
+                        action_row.addWidget(btn)
+                action_row.addStretch()
+                for action in remaining_auth:
+                    btn = self._action_buttons.get(action.id)
+                    if btn:
+                        action_row.addWidget(btn)
+                # Ensure login/logout visibility is correct
+                if self._action_buttons.get("login") or self._action_buttons.get("logout"):
+                    self._update_oauth_buttons()
+                layout.addLayout(action_row)
 
-        layout.addStretch()
+            layout.addStretch()
+        else:
+            bottom_actions = []
 
         # Bottom row: [Reset...] ... [OK] [Cancel]
         bottom_layout = QHBoxLayout()
+
+        if getattr(self, '_has_bridge_settings', False):
+            reset_btn = QPushButton(_("Reset..."))
+            reset_btn.clicked.connect(self._on_bridge_reset)
+            bottom_layout.addWidget(reset_btn)
 
         for action in bottom_actions:
             btn = self._create_action_button(action)
@@ -935,6 +1077,12 @@ class PluginConfigDialog(QDialog):
         # Launcher Path group box — use Source+Path pattern when plugin
         # provides source detection, otherwise fall back to schema-driven UI
         plugin = self._get_plugin_instance()
+
+        has_bridge = plugin and getattr(plugin, "has_bridge_pairing", False)
+        if has_bridge:
+            self._build_bridge_settings(layout, plugin)
+            return
+
         has_source_detection = (
             plugin
             and hasattr(plugin, "get_heroic_sources_with_custom")
@@ -1103,6 +1251,302 @@ class PluginConfigDialog(QDialog):
         )
         if path:
             self._runner_path_field.setText(path)
+
+    # ── Bridge pairing (Playnite) ─────────────────────────────────────
+
+    def _build_bridge_settings(self, layout, plugin):
+        """Build the Connection group for bridge-paired runners (Playnite).
+
+        Contains host/port fields, status indicator, and Pair/Unpair buttons.
+        """
+        self._has_bridge_settings = True
+        self.setMinimumWidth(max(self.minimumWidth(), 744))
+        schema = self.metadata.settings_schema or {}
+
+        group = QGroupBox(_("Connection"))
+        group_layout = QVBoxLayout(group)
+        group_layout.setSpacing(12)
+
+        form = QFormLayout()
+        form.setSpacing(8)
+
+        # Host field
+        host_def = schema.get("bridge_host", {
+            "type": "string", "label": "Bridge host",
+            "default": "127.0.0.1",
+            "description": "IP address of the Playnite bridge",
+        })
+        host_widget = self._create_field_widget("bridge_host", host_def)
+        if host_widget:
+            form.addRow(_("Bridge host:"), host_widget)
+            host_desc = QLabel(_(host_def.get("description", "")))
+            host_desc.setObjectName("fieldDescription")
+            host_desc.setWordWrap(True)
+            form.addRow("", host_desc)
+
+        # Port field
+        port_def = schema.get("bridge_port", {
+            "type": "integer", "label": "Bridge port",
+            "default": 39817, "min": 1, "max": 65535,
+            "description": "TCP port the bridge listens on",
+        })
+        port_widget = self._create_field_widget("bridge_port", port_def)
+        if port_widget:
+            form.addRow(_("Bridge port:"), port_widget)
+            port_desc = QLabel(_(port_def.get("description", "")))
+            port_desc.setObjectName("fieldDescription")
+            port_desc.setWordWrap(True)
+            form.addRow("", port_desc)
+
+        group_layout.addLayout(form)
+
+        # Buttons row inside the group
+        btn_row = QHBoxLayout()
+        self._bridge_pair_btn = QPushButton(_("Pair..."))
+        self._bridge_test_btn = QPushButton(_("Test"))
+        self._bridge_unpair_btn = QPushButton(_("Unpair"))
+        btn_row.addWidget(self._bridge_pair_btn)
+        btn_row.addWidget(self._bridge_test_btn)
+        btn_row.addStretch()
+        btn_row.addWidget(self._bridge_unpair_btn)
+        group_layout.addLayout(btn_row)
+
+        layout.addWidget(group)
+
+        # Status label — below the group, above OK/Cancel
+        self._bridge_status_label = QLabel()
+        self._bridge_status_label.setObjectName("bridgeStatus")
+        self._bridge_status_label.setWordWrap(True)
+        layout.addWidget(self._bridge_status_label)
+
+        # Keep plugin ref for button handlers
+        self._bridge_plugin = plugin
+        self._bridge_pair_worker = None
+        self._bridge_test_worker = None
+        self._bridge_code_dialog = None
+
+        # Wire buttons
+        self._bridge_pair_btn.clicked.connect(self._on_bridge_pair)
+        self._bridge_test_btn.clicked.connect(self._on_bridge_test)
+        self._bridge_unpair_btn.clicked.connect(self._on_bridge_unpair)
+
+        # Initial status
+        self._refresh_bridge_status()
+
+    def _refresh_bridge_status(self, status_override=None):
+        """Query the plugin for bridge status and update the label.
+
+        Args:
+            status_override: Optional dict to use instead of querying plugin
+                             (used after test_bridge_connection).
+        """
+        plugin = self._bridge_plugin
+        status = status_override or plugin.get_bridge_status()
+        state = status.get("status", "not_configured")
+        detail = status.get("detail", "")
+
+        if state == "not_configured":
+            text = _("Not configured")
+            css_status = "warning"
+        elif state == "paired":
+            text = _("Paired ({})").format(detail) if detail else _("Paired (not connected)")
+            css_status = ""
+        elif state == "connected":
+            text = _("Connected")
+            css_status = "success"
+        elif state == "error":
+            text = _("Error: {}").format(detail)
+            css_status = "error"
+        else:
+            text = state
+            css_status = ""
+
+        self._bridge_status_label.setText("\u25cf " + text)
+        set_status_property(self._bridge_status_label, css_status)
+
+        is_paired = state in ("paired", "connected")
+        self._bridge_pair_btn.setEnabled(not is_paired)
+        self._bridge_test_btn.setEnabled(True)
+        self._bridge_unpair_btn.setEnabled(is_paired)
+
+    def _on_bridge_pair(self):
+        """Start the pairing flow in a background thread."""
+        # Read current host/port from widgets
+        host_entry = self._widgets.get("bridge_host")
+        port_entry = self._widgets.get("bridge_port")
+        host = host_entry[1].text() if host_entry else "127.0.0.1"
+        port = port_entry[1].value() if port_entry else 39817
+
+        # Save current host/port before pairing so the plugin uses them
+        try:
+            self._save_settings()
+        except Exception as e:
+            self._bridge_status_label.setText(
+                "\u25cf " + _("Error: {}").format(e)
+            )
+            set_status_property(self._bridge_status_label, "error")
+            return
+
+        self._bridge_pair_btn.setEnabled(False)
+        self._bridge_test_btn.setEnabled(False)
+        self._bridge_unpair_btn.setEnabled(False)
+
+        self._bridge_pair_worker = _BridgePairWorker(
+            self._bridge_plugin, host, port
+        )
+        self._bridge_pair_worker.status_update.connect(
+            self._on_bridge_pair_status
+        )
+        self._bridge_pair_worker.code_display.connect(
+            self._on_bridge_code_display
+        )
+        self._bridge_pair_worker.finished.connect(
+            self._on_bridge_pair_finished
+        )
+        self._bridge_pair_worker.start()
+
+    def _on_bridge_pair_status(self, msg: str):
+        """Update status label during pairing."""
+        self._bridge_status_label.setText("\u25cf " + msg)
+        css = "error" if msg.startswith(_("Error:")) or msg.startswith("Error:") else ""
+        set_status_property(self._bridge_status_label, css)
+
+        if "Already paired" in msg:
+            QMessageBox.information(
+                self,
+                _("Bridge Already Paired"),
+                _("The Playnite bridge is already paired with a different client "
+                  "(e.g. a previous luducat session or test run).\n\n"
+                  "This luducat instance has no local credentials for that pairing, "
+                  "so it cannot connect.\n\n"
+                  "To fix this, open Playnite and unpair or reset the bridge plugin "
+                  "there, then try pairing again from here."),
+            )
+
+    def _on_bridge_code_display(self, code: str):
+        """Show the pairing code dialog when the code becomes available."""
+        self._bridge_code_dialog = _BridgeCodeDialog(
+            code, timeout_secs=120, parent=self
+        )
+        self._bridge_code_dialog.show()
+
+    def _on_bridge_pair_finished(self, success: bool):
+        """Handle pairing completion."""
+        self._bridge_pair_worker = None
+
+        # Close code dialog if open — clean up ref after close completes
+        if self._bridge_code_dialog is not None:
+            dlg = self._bridge_code_dialog
+            self._bridge_code_dialog = None
+            dlg.finished.connect(dlg.deleteLater)
+            dlg.close_with_result(success)
+
+        if success:
+            # Pairing just succeeded — skip _refresh_bridge_status() which
+            # would do a blocking connect+ping that races with bridge cleanup.
+            self._bridge_status_label.setText(
+                "\u25cf " + _("Paired successfully")
+            )
+            set_status_property(self._bridge_status_label, "success")
+            self._bridge_pair_btn.setEnabled(False)
+            self._bridge_test_btn.setEnabled(True)
+            self._bridge_unpair_btn.setEnabled(True)
+        else:
+            # Keep the error message from _on_bridge_pair_status visible.
+            # Just re-enable buttons based on current bridge state.
+            status = self._bridge_plugin.get_bridge_status()
+            is_paired = status.get("status") in ("paired", "connected")
+            self._bridge_pair_btn.setEnabled(not is_paired)
+            self._bridge_test_btn.setEnabled(True)
+            self._bridge_unpair_btn.setEnabled(is_paired)
+            set_status_property(self._bridge_status_label, "error")
+
+    def _on_bridge_test(self):
+        """Test bridge connectivity in a background thread."""
+        self._bridge_test_btn.setEnabled(False)
+        self._bridge_status_label.setText("\u25cf " + _("Testing..."))
+        set_status_property(self._bridge_status_label, "")
+
+        self._bridge_test_worker = _BridgeTestWorker(self._bridge_plugin)
+        self._bridge_test_worker.finished.connect(self._on_bridge_test_finished)
+        self._bridge_test_worker.start()
+
+    def _on_bridge_test_finished(self, result: dict):
+        """Handle test completion."""
+        self._bridge_test_worker = None
+        self._refresh_bridge_status(status_override=result)
+
+        state = result.get("status", "")
+
+        if state == "connected":
+            QMessageBox.information(
+                self,
+                _("Connection Successful"),
+                _("Connected to the Playnite bridge."),
+            )
+        elif result.get("not_paired"):
+            if result.get("reachable"):
+                msg = _("The bridge is reachable but not paired with this client.\n\n"
+                        "Unpair in Playnite first if a previous pairing exists, "
+                        "then pair again from here.")
+            else:
+                msg = _("Cannot reach the bridge ({}).").format(
+                    result.get("detail", _("unreachable")))
+            QMessageBox.warning(
+                self,
+                _("Not Paired"),
+                msg,
+            )
+        elif state == "error":
+            QMessageBox.warning(
+                self,
+                _("Connection Failed"),
+                _("Could not connect to the bridge: {}").format(
+                    result.get("detail", _("unknown error"))),
+            )
+
+    def _on_bridge_unpair(self):
+        """Unpair the bridge (synchronous — just deletes files)."""
+        self._bridge_plugin.unpair_bridge()
+        self._refresh_bridge_status()
+
+    def _on_bridge_reset(self):
+        """Reset bridge settings to defaults, warning about pairing loss."""
+        reply = QMessageBox.warning(
+            self,
+            _("Reset Bridge Settings"),
+            _("This will reset all connection settings to their defaults "
+              "and disconnect the current pairing.\n\n"
+              "You will need to pair again after resetting.\n\n"
+              "Continue?"),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        # Unpair if currently paired
+        try:
+            self._bridge_plugin.unpair_bridge()
+        except Exception:
+            pass
+
+        # Reset widget values to defaults from schema
+        schema = self.metadata.settings_schema or {}
+        for key, field_def in schema.items():
+            if not isinstance(field_def, dict):
+                continue
+            default = field_def.get("default")
+            entry = self._widgets.get(key)
+            if entry and default is not None:
+                _field_type, widget, _fdef = entry
+                if isinstance(widget, QLineEdit):
+                    widget.setText(str(default))
+                elif isinstance(widget, QSpinBox):
+                    widget.setValue(int(default))
+
+        self._save_settings()
+        self._refresh_bridge_status()
 
     def _build_helper_tool_group(self, layout, helper_tool):
         """Build the Helper Application group box.

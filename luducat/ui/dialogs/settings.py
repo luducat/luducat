@@ -4421,6 +4421,7 @@ class LaunchingSettingsTab(QWidget):
             if platforms and plat_map not in platforms:
                 is_platform_available = False
 
+        is_bridge = False
         if "runner" in ptypes:
             if name == "native_runner":
                 status = _("Detected")
@@ -4435,9 +4436,29 @@ class LaunchingSettingsTab(QWidget):
                     name.removesuffix("_runner")
                     if name.endswith("_runner") else name
                 )
+
+                # Bridge runners (e.g. Playnite) — status from plugin,
+                # no path, Configure button instead
+                loaded = self.plugin_manager.get_loaded_plugin(name)
+                plugin_inst = loaded.instance if loaded else None
+                is_bridge = (
+                    plugin_inst
+                    and getattr(plugin_inst, "has_bridge_pairing", False)
+                )
+
                 info = available_runners.get(runner_name)
                 hint_text = ""
-                if info:
+                if is_bridge:
+                    bridge_status = plugin_inst.get_bridge_status()
+                    bs = bridge_status.get("status", "not_configured")
+                    if bs == "connected":
+                        status = _("Connected")
+                    elif bs == "paired":
+                        status = _("Paired")
+                    else:
+                        status = _("Not configured")
+                    path_str = ""
+                elif info:
                     if info.install_type == "reroute":
                         # Rerouting is internal — show as unavailable
                         status = _("Not available")
@@ -4515,6 +4536,9 @@ class LaunchingSettingsTab(QWidget):
             and caps.get("runtime_type") == "wine"
         )
 
+        # Bridge runners use a Configure button instead of path field
+        use_bridge_configure = is_bridge
+
         return {
             "plugin_name": name,
             "display_name": display_name,
@@ -4525,6 +4549,7 @@ class LaunchingSettingsTab(QWidget):
             "hint_text": hint_text,
             "is_platform_available": is_platform_available,
             "use_runtime_dropdown": use_runtime_dropdown,
+            "use_bridge_configure": use_bridge_configure,
         }
 
     def _add_status_row(self, grid: QGridLayout, row: int, entry: dict) -> None:
@@ -4556,9 +4581,9 @@ class LaunchingSettingsTab(QWidget):
         if not is_platform_available:
             status_label.setEnabled(False)
             status_label.setObjectName("pluginStatusNotAvailable")
-        elif status == _("Detected"):
+        elif status in (_("Detected"), _("Connected"), _("Paired")):
             status_label.setObjectName("pluginStatusConfigured")
-        elif status == _("Not found"):
+        elif status in (_("Not found"), _("Not configured")):
             status_label.setObjectName("pluginStatusNotConfigured")
         grid.addWidget(status_label, row, 1)
         self._status_labels[plugin_name] = status_label
@@ -4583,6 +4608,38 @@ class LaunchingSettingsTab(QWidget):
             placeholder.setPlaceholderText("—")
             grid.addWidget(placeholder, row, 2)
             grid.addWidget(QLabel(""), row, 3)
+            grid.addWidget(QLabel(""), row, 4)
+            return
+
+        # Special: Bridge runner gets a Configure button instead of path
+        if entry.get("use_bridge_configure"):
+            hint = QLabel(_("Bridge (IPC)"))
+            hint.setObjectName("hintLabel")
+            grid.addWidget(hint, row, 2)
+
+            configure_btn = QPushButton()
+            configure_btn.setFixedSize(28, 28)
+            configure_btn.setIcon(load_tinted_icon("cogwheel.svg", 16))
+            configure_btn.setToolTip(
+                _("Configure bridge connection and pairing")
+            )
+
+            def _open_bridge_config(checked=False, _name=plugin_name):
+                from .plugin_config import PluginConfigDialog
+                dlg = PluginConfigDialog(
+                    plugin_name=_name,
+                    config=self.config,
+                    plugin_manager=self.plugin_manager,
+                    credentials=self.plugin_manager.credential_manager,
+                    parent=self,
+                )
+                dlg.exec()
+                # Refresh status after configure
+                self._refresh_launcher_status()
+
+            configure_btn.clicked.connect(_open_bridge_config)
+            grid.addWidget(
+                configure_btn, row, 3, Qt.AlignmentFlag.AlignVCenter)
             grid.addWidget(QLabel(""), row, 4)
             return
 
@@ -4755,6 +4812,28 @@ class LaunchingSettingsTab(QWidget):
                 self.config.set(
                     "plugins.epic_launcher_runner.launch_backend", backend,
                 )
+
+    def _refresh_launcher_status(self) -> None:
+        """Refresh status labels for bridge runners after configure dialog."""
+        for plugin_name, status_label in self._status_labels.items():
+            loaded = self.plugin_manager.get_loaded_plugin(plugin_name)
+            plugin_inst = loaded.instance if loaded else None
+            if not plugin_inst or not getattr(plugin_inst, "has_bridge_pairing", False):
+                continue
+            bridge_status = plugin_inst.get_bridge_status()
+            bs = bridge_status.get("status", "not_configured")
+            if bs == "connected":
+                text = _("Connected")
+                status_label.setObjectName("pluginStatusConfigured")
+            elif bs == "paired":
+                text = _("Paired")
+                status_label.setObjectName("pluginStatusConfigured")
+            else:
+                text = _("Not configured")
+                status_label.setObjectName("pluginStatusNotConfigured")
+            status_label.setText(text)
+            status_label.style().unpolish(status_label)
+            status_label.style().polish(status_label)
 
     def reset_to_defaults(self) -> None:
         """Reset launching settings to defaults."""

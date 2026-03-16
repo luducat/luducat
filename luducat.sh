@@ -16,7 +16,12 @@ set -uo pipefail
 # ============================================================================
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-VENV_DIR="$SCRIPT_DIR/.venv"
+# Look for .venv: parent directory first (dev layout), then script directory (release)
+if [[ -d "$SCRIPT_DIR/../.venv" ]] && [[ -f "$SCRIPT_DIR/../.venv/bin/activate" ]]; then
+    VENV_DIR="$(cd "$SCRIPT_DIR/.." && pwd)/.venv"
+else
+    VENV_DIR="$SCRIPT_DIR/.venv"
+fi
 REQUIREMENTS_FILE="$SCRIPT_DIR/requirements.txt"
 APP_NAME="luducat"
 APP_ID="com.luducat.luducat"  # GNOME App ID / Desktop file name

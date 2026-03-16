@@ -378,11 +378,39 @@ class RuntimeManager:
                     **kwargs,
                 )
 
+            # Apply per-game overrides to intent
+            self._apply_user_overrides_to_intent(intent, game_id)
+
             logger.info(
                 "Launching %s/%s via runner %s (method: %s)",
                 store_name, app_id, runner_name, intent.method.value,
             )
-            return runner.execute_launch(intent)
+            result = runner.execute_launch(intent)
+
+            # Multi-store fallback: if IPC launch failed (game not found in
+            # remote library), try alternative store entries for the same game.
+            if (
+                not result.success
+                and intent.method == LaunchMethod.IPC
+                and "No game with" in (result.error_message or "")
+            ):
+                alt_stores = kwargs.get("_store_app_ids", {})
+                for alt_store, alt_ids in alt_stores.items():
+                    if alt_store == store_name or alt_store not in runner.supported_stores:
+                        continue
+                    for alt_id in (alt_ids if isinstance(alt_ids, list) else [alt_ids]):
+                        logger.info(
+                            "Retrying %s via %s/%s (fallback)",
+                            runner_name, alt_store, alt_id,
+                        )
+                        alt_intent = runner.build_launch_intent(alt_store, alt_id)
+                        if alt_intent:
+                            self._apply_user_overrides_to_intent(alt_intent, game_id)
+                            alt_result = runner.execute_launch(alt_intent)
+                            if alt_result.success:
+                                return alt_result
+
+            return result
 
         except Exception as e:
             logger.error("Runner %s launch failed: %s", runner_name, e)
@@ -1061,6 +1089,11 @@ class RuntimeManager:
         store_name = getattr(game, 'store_name', None) or ''
         app_id = getattr(game, 'store_app_id', None) or ''
 
+        # Collect all store entries for multi-store fallback (e.g. Playnite bridge)
+        store_app_ids = getattr(game, 'store_app_ids', None) or {}
+        if store_app_ids:
+            kwargs["_store_app_ids"] = store_app_ids
+
         # --- Tier 0: Per-game launch config from database ---
         if not runner_name and not platform_id:
             per_game_config = self._get_per_game_launch_config(game_id)
@@ -1219,6 +1252,43 @@ class RuntimeManager:
         if user_env:
             config.environment.update(user_env)
 
+    def _apply_user_overrides_to_intent(
+        self, intent: "LaunchIntent", game_id: str
+    ) -> None:
+        """Apply per-game user settings to a runner launch intent.
+
+        Merges launch_args, working_dir, and environment onto
+        URL_SCHEME/EXECUTABLE intents. IPC intents (Playnite bridge) are
+        skipped — the bridge is a strict game-ID relay and never applies
+        per-game overrides.
+        """
+        import shlex
+
+        # IPC intents are pure game-ID relays; overrides don't apply
+        if intent.ipc_payload is not None:
+            return
+
+        per_game = self._get_per_game_launch_config(game_id)
+        if not per_game:
+            return
+
+        user_args = per_game.get("launch_args", "")
+        user_wd = per_game.get("working_dir")
+        user_env = per_game.get("environment", {})
+
+        if not user_args and not user_wd and not user_env:
+            return
+
+        if user_args:
+            try:
+                intent.arguments.extend(shlex.split(user_args))
+            except ValueError:
+                intent.arguments.append(user_args)
+        if user_wd:
+            intent.working_directory = Path(user_wd)
+        if user_env:
+            intent.environment.update(user_env)
+
     def _get_per_game_launch_config(self, game_id: str) -> Optional[Dict[str, Any]]:
         """Read per-game launch config from UserGameData.
 
@@ -1226,10 +1296,11 @@ class RuntimeManager:
             Parsed config dict with keys: runner, platform, launch_args.
             None if no per-game config set.
         """
-        if not self._game_service:
+        game_service = getattr(self, "_game_service", None)
+        if not game_service:
             return None
         try:
-            return self._game_service.get_launch_config(game_id)
+            return game_service.get_launch_config(game_id)
         except Exception as e:
             logger.debug("Failed to read per-game launch config for %s: %s", game_id[:8], e)
         return None

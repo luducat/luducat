@@ -51,6 +51,11 @@ QPushButton {
     min-height: 22px;
 }
 
+QPushButton:disabled {
+    color: palette(mid);
+    background-color: palette(base);
+}
+
 QComboBox {
     margin-bottom: 2px;
 }

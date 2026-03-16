@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "luducat"
-version = "0.5.0"
+version = "0.5.1"
 description = "Cross-platform game catalogue browser"
 readme = "README.md"
 license = {text = "GPL-3.0-or-later"}

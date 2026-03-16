@@ -18,6 +18,22 @@ from typing import Any, Dict, List, Optional
 # Each item has optional "section" prefix and required "text"
 NEWS_ENTRIES: List[Dict[str, Any]] = [
     {
+        "version": "0.5.1",
+        "date": "2026-03-16",
+        "items": [
+            {"section": "Playnite Bridge", "text":
+             "Enables remote launching of Playnite-managed games from luducat over "
+             "the local network. Browse your catalogue on Linux (or a second Windows "
+             "machine) and launch games on the Windows PC where Playnite is running. "
+             "Requires installing the Luducat Bridge plugin in Playnite — a one-time "
+             "setup that pairs both sides securely. Combined with Sunshine and "
+             "Moonlight, you can stream the game back to your screen for a seamless "
+             "couch gaming experience."},
+            {"section": "", "text": "Updated translations for German, French, Spanish, and Italian"},
+            {"section": "", "text": "Documentation and packaging improvements"},
+        ],
+    },
+    {
         "version": "0.5.0",
         "date": "2026-03-12",
         "items": [
@@ -71,6 +87,15 @@ def get_news_html() -> str:
 #   "improved" — Enhancements to things that already existed
 #   "fixed"    — User-impacting bugfixes
 UPDATE_SUMMARIES: Dict[str, Dict[str, List[str]]] = {
+    "0.5.1": {
+        "new": [
+            "Playnite bridge for remote game launching",
+        ],
+        "improved": [
+            "Translation updates",
+            "Documentation and packaging",
+        ],
+    },
     "0.5.0": {
         "new": [
             "First public release",

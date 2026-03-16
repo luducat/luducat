@@ -1,0 +1,32 @@
+{
+  "name": "playnite",
+  "display_name": "Playnite",
+  "version": "0.1.0",
+  "author": "luducat",
+  "description": "Import tags, favourites, and playtime from Playnite via the luducat bridge",
+  "min_luducat_version": "0.5.0",
+  "plugin_types": ["metadata"],
+  "provider_class": "provider.PlayniteProvider",
+  "capabilities": {
+    "enrich_metadata": false,
+    "search_games": false,
+    "fetch_metadata": false,
+    "tag_sync": true
+  },
+  "provides_fields": {},
+  "auth": {"type": "none"},
+  "settings_schema": {},
+  "network": {
+    "allowed_domains": []
+  },
+  "privacy": {
+    "telemetry": false,
+    "data_collection": "none",
+    "third_party_services": []
+  },
+  "platforms": {
+    "linux": true,
+    "windows": true,
+    "macos": true
+  }
+}

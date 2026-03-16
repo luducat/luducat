@@ -1,0 +1,41 @@
+{
+    "name": "playnite_runner",
+    "display_name": "Playnite Runner",
+    "description": "Launch games via the Playnite bridge",
+    "version": "1.2.1",
+    "author": "luducat",
+    "min_luducat_version": "0.5.0",
+    "plugin_types": ["runner"],
+    "entry_point": "runner.PlayniteRunner",
+    "enabled_by_default": true,
+    "capabilities": {
+        "supported_stores": ["steam", "gog", "epic"],
+        "launch_methods": ["ipc"],
+        "platforms": ["linux", "windows", "darwin"]
+    },
+    "runner": {
+        "priority": 50
+    },
+    "network": {
+        "allowed_domains": []
+    },
+    "privacy": {
+        "telemetry": false,
+        "data_collection": "none",
+        "third_party_services": []
+    },
+    "settings_schema": {
+        "bridge_host": {
+            "type": "string",
+            "label": "Bridge host",
+            "default": "127.0.0.1",
+            "description": "IP address of the Playnite bridge"
+        },
+        "bridge_port": {
+            "type": "integer",
+            "label": "Bridge port",
+            "default": 39817,
+            "description": "TCP port the Playnite bridge listens on"
+        }
+    }
+}

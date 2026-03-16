@@ -207,6 +207,11 @@ QPushButton:pressed {
     color: {{text_primary}};
 }
 
+QPushButton:disabled {
+    color: {{text_secondary}};
+    background-color: {{bg_input}};
+}
+
 /* Import button (QToolButton with dropdown menu, matches QPushButton style) */
 QToolButton#importButton {
     background: qlineargradient(

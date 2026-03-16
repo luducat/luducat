@@ -1942,6 +1942,18 @@ class AbstractRunnerPlugin(ABC):
 
     # === STATUS METHODS ===
 
+    @property
+    def has_bridge_pairing(self) -> bool:
+        """Whether this runner uses bridge-based pairing (IPC over TLS).
+
+        Bridge runners don't have a local binary path — they connect to a
+        remote host via TCP. The settings UI shows host/port fields and
+        Pair/Unpair buttons instead of a path selector.
+
+        Override to return True in bridge-based runners (e.g., Playnite).
+        """
+        return False
+
     def is_available(self) -> bool:
         """Check if this runner's launcher is detected on the system.
 

@@ -141,8 +141,20 @@ The launcher script sets up everything automatically.
 
 ### macOS
 
-Source only. Untested. If you try it, let us know how it goes. We would
-really like to get that going, help appreciated.
+**Homebrew (experimental):**
+```bash
+brew tap luducat/luducat-homebrew
+brew install luducat
+```
+
+Or from source: `git clone`, then `./luducat.sh`.
+
+macOS support is untested — the code should work (PySide6 is
+cross-platform) but nobody has tried it yet. If you have a Mac and can
+test, we would genuinely appreciate the help. Report results (working or
+broken) at [Issues](https://github.com/luducat/luducat/issues).
+See the [Homebrew tap](https://github.com/luducat/luducat-homebrew) for
+details.
 
 ### First Run
 
@@ -158,7 +170,8 @@ luducat has a plugin system with full
 generator script. Plugins use the SDK exclusively and can be licensed under
 any OSI-approved open source license.
 
-- [Plugin SDK](docs/plugins/Home.md)
+- [Plugin SDK](docs/plugins/Home.md) ·
+[luducat vs. Other Tools](docs/comparisons.md)
 - [FAQ](docs/plugins/FAQ.md)
 - [Community Plugins](docs/wiki/Community-Plugins.md)
 - [Community Themes](docs/wiki/Community-Themes.md)
@@ -184,7 +197,9 @@ GPL-3.0.
 
 [Releases](https://github.com/luducat/luducat/releases) ·
 [Issues](https://github.com/luducat/luducat/issues) ·
-[Plugin SDK](docs/plugins/Home.md)
+[Plugin SDK](docs/plugins/Home.md) ·
+[Homebrew Tap](https://github.com/luducat/luducat-homebrew) ·
+[luducat vs. Other Tools](docs/comparisons.md)
 
 Built with AI-assisted development, using industry-standard software engineering practices. See [CONTRIBUTING.md](CONTRIBUTING.md) for exactly what that means.
 
