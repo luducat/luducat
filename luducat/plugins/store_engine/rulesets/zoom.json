@@ -1,0 +1,99 @@
+{
+  "schema_version": 1,
+  "store_name": "zoom",
+  "display_name": "ZOOM Platform",
+  "homepage": "https://www.zoom-platform.com",
+  "badge_label": "ZOOM",
+
+  "brand_colors": {
+    "bg": "#6058EB",
+    "text": "#ffffff",
+    "badge_bg": "#6058EB",
+    "badge_text": "#ffffff"
+  },
+
+  "auth": {
+    "type": "bearer_redirect",
+    "login_url": "https://www.zoom-platform.com/login?li=luducat&return_li_token=true",
+    "redirect_param": "li_token",
+    "verify_url": "https://www.zoom-platform.com/li/loggedin",
+    "user_url": "https://www.zoom-platform.com/public/user",
+    "token_field": "li_token",
+    "headers": {
+      "Accept": "application/json"
+    }
+  },
+
+  "library": {
+    "backend": "api",
+    "url": "https://www.zoom-platform.com/public/profile/products",
+    "method": "GET",
+    "items_path": "",
+    "fields": {
+      "id": {"path": "product.id"},
+      "title": {"path": "product.name"},
+      "slug": {"path": "product.slug"},
+      "cover_url": {"path": "product.search_image"},
+      "short_description": {"path": "product.blurb"},
+      "publishers": {"path": "product.publisher.name"},
+      "operating_systems": {"path": "product.operating_systems"},
+      "release_date": {"path": "product.release_date", "transform": "parse_date"},
+      "is_free": {"path": "product.free"},
+      "price": {"path": "product.price"}
+    },
+    "pagination": {
+      "type": "none"
+    }
+  },
+
+  "detail": {
+    "backend": "api",
+    "url_template": "https://www.zoom-platform.com/public/product/{slug}",
+    "fields": {
+      "short_description": {"path": "product.blurb"},
+      "description": {"path": "product.meta.product_info"},
+      "cover_detail_url": {"path": "product.search_image"},
+      "screenshots": {"path": "product.gallery[].conversions.original"},
+      "release_date": {"path": "product.release_date", "transform": "parse_date"},
+      "publishers": {"path": "product.publishers[].name"},
+      "developers": {"path": "product.developers[].name"},
+      "genres": {"path": "product.genres[].name"},
+      "game_modes": {"path": "product.modes[].name"},
+      "languages": {"path": "product.languages[].name"},
+      "esrb_rating": {"path": "product.esrb.name"},
+      "operating_systems": {"path": "product.operating_systems"},
+      "is_free": {"path": "product.free"},
+      "price": {"path": "product.price"}
+    }
+  },
+
+  "cross_store": {
+    "slug_from_title": true,
+    "url_template": "https://www.zoom-platform.com/public/product/{slug}",
+    "referer_template": "https://www.zoom-platform.com/product/{slug}",
+    "fields": {
+      "title": {"path": "product.name"},
+      "short_description": {"path": "product.blurb"},
+      "cover_detail_url": {"path": "product.search_image"},
+      "screenshots": {"path": "product.gallery[].conversions.original"},
+      "release_date": {"path": "product.release_date", "transform": "parse_date"},
+      "publishers": {"path": "product.publishers[].name"},
+      "developers": {"path": "product.developers[].name"},
+      "genres": {"path": "product.genres[].name"}
+    }
+  },
+
+  "downloads": {
+    "files_url_template": "https://www.zoom-platform.com/li/game/{id}/files",
+    "download_url_template": "https://www.zoom-platform.com/li/download/{file_id}"
+  },
+
+  "launch": {
+    "url_template": "https://www.zoom-platform.com/games/{slug}"
+  },
+
+  "rate_limit": {
+    "calls": 20,
+    "window_seconds": 60
+  }
+}

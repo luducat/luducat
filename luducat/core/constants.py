@@ -14,7 +14,7 @@ if not hasattr(builtins, "ngettext"):
     builtins.ngettext = lambda singular, plural, n: singular if n == 1 else plural
 
 APP_NAME = "luducat"
-APP_VERSION = "0.5.1"
+APP_VERSION = "0.6.0"
 APP_ID = "com.luducat.luducat"  # Desktop file name / GNOME App ID
 APP_ICON_BASENAME = "app_icon"
 APP_DESCRIPTION = N_("Cross-platform game catalogue browser")
@@ -110,6 +110,11 @@ FILTER_ALL = FILTER_BASE_ALL
 FILTER_FAVORITES = FILTER_TYPE_FAVORITES
 FILTER_RECENT = FILTER_BASE_RECENT
 
+# Corner triangle badges for free/demo games (top-left of covers)
+CORNER_TRIANGLE_SIZE = 30
+CORNER_FREE_COLORS = {"bg": "#4caf50", "text": "#ffffff"}
+CORNER_DEMO_COLORS = {"bg": "#1976d2", "text": "#ffffff"}
+
 # Game mode badge configuration
 # Maps game mode names to short display labels for badges
 # "Single player" is intentionally omitted from badges (implicit default — 97% of games have it)
@@ -191,4 +196,7 @@ TAG_SOURCE_COLORS = {
     "lutris": "#ff9800",
     "playnite": "#00b4d8",
     "imported": "#e67e22",
+    "zoom": "#1a1a2e",
+    "jastusa": "#1a237e",
+    "mangagamer": "#e91e63",
 }

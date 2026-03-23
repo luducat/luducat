@@ -68,6 +68,7 @@
     "type": {"priority": 20},
     "required_age": {"priority": 20},
     "is_free": {"priority": 20},
+    "is_demo": {"priority": 20},
     "achievements": {"priority": 10},
     "content_descriptors": {"priority": 10},
     "recommendations": {"priority": 10},

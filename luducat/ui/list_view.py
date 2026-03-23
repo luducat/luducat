@@ -403,11 +403,12 @@ class HeroBanner(QWidget):
     No gradient overlay — the image is shown as-is.
     """
 
-    BANNER_HEIGHT = 290
+    BANNER_HEIGHT = 290          # Full height with hero image
+    COLLAPSED_HEIGHT = 220       # No-image: buttons + breathing room + carousel
 
     def __init__(self, parent: Optional[QWidget] = None):
         super().__init__(parent)
-        self.setFixedHeight(self.BANNER_HEIGHT)
+        self.setFixedHeight(self.COLLAPSED_HEIGHT)
         self.setObjectName("heroBanner")
         self._background_pixmap: Optional[QPixmap] = None
         self._current_image_url = ""
@@ -497,7 +498,12 @@ class HeroBanner(QWidget):
                 bg_color.red(), bg_color.green(), bg_color.blue(), 220))
             painter.fillRect(0, bottom_y, rect.width(), self.EDGE_FADE, bottom_grad)
         else:
-            painter.fillRect(rect, bg_color)
+            # No hero image — subtle vertical gradient
+            grad = QLinearGradient(0, 0, 0, rect.height())
+            lighter = bg_color.lighter(120)
+            grad.setColorAt(0.0, lighter)
+            grad.setColorAt(1.0, bg_color)
+            painter.fillRect(rect, grad)
 
         painter.end()
 
@@ -506,32 +512,38 @@ class HeroBanner(QWidget):
         self._current_image_url = url or ""
         if not url:
             self._background_pixmap = None
+            self.setFixedHeight(self.COLLAPSED_HEIGHT)
             self.update()
             return
 
         pixmap = self._image_cache.get_image(url)
         if pixmap and not pixmap.isNull():
             self._background_pixmap = pixmap
+            self.setFixedHeight(self.BANNER_HEIGHT)
         else:
             self._background_pixmap = None
+            self.setFixedHeight(self.COLLAPSED_HEIGHT)
         self.update()
 
     def _on_hero_loaded(self, url: str, pixmap: QPixmap) -> None:
         """Handle async hero image load."""
         if url == self._current_image_url and pixmap and not pixmap.isNull():
             self._background_pixmap = pixmap
+            self.setFixedHeight(self.BANNER_HEIGHT)
             self.update()
 
     def _on_hero_failed(self, url: str, error: str) -> None:
         """Handle failed hero image load — clear stale background."""
         if url == self._current_image_url:
             self._background_pixmap = None
+            self.setFixedHeight(self.COLLAPSED_HEIGHT)
             self.update()
 
     def clear(self) -> None:
         """Clear the banner state."""
         self._background_pixmap = None
         self._current_image_url = ""
+        self.setFixedHeight(self.COLLAPSED_HEIGHT)
         while self.launch_layout.count():
             item = self.launch_layout.takeAt(0)
             if item.widget():
@@ -1302,6 +1314,7 @@ class ListView(QWidget):
     """
 
     game_launched = Signal(str, str)  # game_id, store_name
+    game_launched_via_runner = Signal(str, str, str)  # game_id, store_name, runner_name
     game_install_requested = Signal(str, str)  # game_id, store_name
     favorite_toggled = Signal(str, bool)  # game_id, is_favorite
     hidden_toggled = Signal(str, bool)  # game_id, is_hidden
@@ -2694,6 +2707,14 @@ class ListView(QWidget):
                 return  # Prevent re-launch while running
             self.game_launched.emit(game_id, store)
 
+    def _on_launch_via_runner(self, store: str, runner_name: str) -> None:
+        """Handle launch button click with explicit runner override."""
+        if self._game:
+            game_id = self._game.get("id", "")
+            if game_id == self._running_game_id:
+                return
+            self.game_launched_via_runner.emit(game_id, store, runner_name)
+
     def _on_install_clicked(self, store: str) -> None:
         """Handle install button click"""
         if self._game:
@@ -3304,6 +3325,21 @@ class ListView(QWidget):
             runner_info[store] = self._runner_query(store) if self._runner_query else None
         launchable_stores = {s for s, r in runner_info.items() if r}
 
+        # Check for bridge runners (e.g. Playnite) that aren't the primary runner
+        # but should appear as extra dropdown options
+        bridge_runners = []
+        if self._platform_manager:
+            available = self._platform_manager.get_available_runners()
+            for rn, info in available.items():
+                if getattr(info, "install_type", "") != "bridge":
+                    continue
+                runner = self._platform_manager.get_runner(rn)
+                if not runner:
+                    continue
+                # Only add if this runner supports at least one of the game's stores
+                if any(s in runner.supported_stores for s in sorted_stores):
+                    bridge_runners.append((rn, runner.display_name or rn.capitalize()))
+
         # Pick primary: prefer installed+launchable, then launchable, then default
         primary_store = self._pick_primary_store(
             default, sorted_stores, installed_stores, launchable_stores
@@ -3315,7 +3351,10 @@ class ListView(QWidget):
         primary_installed = primary_store in installed_stores
         primary_launchable = primary_store in launchable_stores
 
-        if len(stores) == 1:
+        # Force dropdown when bridge runners exist even for single-store games
+        use_dropdown = len(stores) > 1 or bool(bridge_runners)
+
+        if not use_dropdown:
             # Single store - simple button
             display_name = PluginManager.get_store_display_name(primary_store)
             if override_label:
@@ -3423,6 +3462,19 @@ class ListView(QWidget):
                     )
                     action.setEnabled(False)
                     action.setToolTip(no_runner_tip)
+
+            # Add bridge runners (e.g. Playnite) as extra options
+            if bridge_runners:
+                menu.addSeparator()
+                for br_name, br_display in bridge_runners:
+                    # Use primary store for the launch
+                    label = _("Play via {runner}").format(runner=br_display)
+                    action = menu.addAction(label)
+                    action.triggered.connect(
+                        lambda checked, s=primary_store, r=br_name:
+                            self._on_launch_via_runner(s, r)
+                    )
+
             btn.setMenu(menu)
 
             self.launch_buttons_layout.addWidget(btn)

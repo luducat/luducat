@@ -370,6 +370,9 @@ class GeneralSettingsTab(QWidget):
             return
         store_plugins = self._plugin_manager.get_plugins_by_type(PluginType.STORE)
         for name in sorted(store_plugins.keys()):
+            metadata = self._plugin_manager.get_discovered_plugins().get(name)
+            if metadata and metadata.hidden:
+                continue
             self.cmb_default_store.addItem(PM.get_store_display_name(name), name)
 
     def _on_language_changed(self) -> None:
@@ -634,13 +637,17 @@ class AppearanceSettingsTab(QWidget):
 
         layout.addWidget(scale_group)
 
-        # Images group
-        fade_group = QGroupBox(_("Images"))
-        fade_layout = QVBoxLayout(fade_group)
+        # Covers and Screenshots group (merged: images, density, badge visibility)
+        grid_group = QGroupBox(_("Covers and Screenshots"))
+        grid_layout = QGridLayout(grid_group)
+        grid_layout.setColumnStretch(0, 0)  # Labels
+        grid_layout.setColumnStretch(1, 1)  # Left controls
+        grid_layout.setColumnStretch(2, 0)  # Right controls (checkboxes)
+
+        # Row 0: Image fade duration (spans full width)
+        grid_layout.addWidget(QLabel(_("Cover fade duration:")), 0, 0)
 
         fade_row = QHBoxLayout()
-        fade_row.addWidget(QLabel(_("Image fade duration:")))
-
         self.slider_fade = QSlider(Qt.Orientation.Horizontal)
         self.slider_fade.setToolTip(
             _("How quickly cover and screenshot images fade in.\n"
@@ -661,11 +668,10 @@ class AppearanceSettingsTab(QWidget):
         self.slider_fade.valueChanged.connect(
             lambda v: self.lbl_fade.setText(_("Off") if v == 0 else _("{v} ms").format(v=v))
         )
+        grid_layout.addLayout(fade_row, 0, 1, 1, 2)
 
-        fade_layout.addLayout(fade_row)
-
-        scale_row2 = QHBoxLayout()
-        scale_row2.addWidget(QLabel(_("Cover scaling:")))
+        # Row 1: Cover scaling (spans full width)
+        grid_layout.addWidget(QLabel(_("Cover scaling:")), 1, 0)
         self.combo_cover_scaling = QComboBox()
         self.combo_cover_scaling.addItem(_("Original proportions (default)"), "none")
         self.combo_cover_scaling.addItem(_("Stretch to fill frame"), "stretch")
@@ -675,15 +681,10 @@ class AppearanceSettingsTab(QWidget):
               "Original keeps the image as-is, Stretch fills the cell,\n"
               "Zoom crops to fill without distortion.")
         )
-        scale_row2.addWidget(self.combo_cover_scaling)
-        fade_layout.addLayout(scale_row2)
+        grid_layout.addWidget(self.combo_cover_scaling, 1, 1, 1, 2)
 
-        layout.addWidget(fade_group)
-
-        # Grid Density group
-        density_group = QGroupBox(_("Grid Density Defaults"))
-        density_layout = QFormLayout(density_group)
-
+        # Row 2: Cover density + Game mode badges checkbox
+        grid_layout.addWidget(QLabel(_("Cover view density:")), 2, 0)
         self.spin_cover_density = QSpinBox()
         self.spin_cover_density.setToolTip(
             _("How large cover tiles are. Smaller values fit more games per row")
@@ -691,8 +692,16 @@ class AppearanceSettingsTab(QWidget):
         self.spin_cover_density.setMinimum(GRID_DENSITY_MIN)
         self.spin_cover_density.setMaximum(GRID_DENSITY_MAX)
         self.spin_cover_density.setSuffix(" px")
-        density_layout.addRow(_("Cover view:"), self.spin_cover_density)
+        grid_layout.addWidget(self.spin_cover_density, 2, 1)
 
+        self.chk_game_mode_badges = QCheckBox(_("Game mode badges"))
+        self.chk_game_mode_badges.setToolTip(
+            _("Show game mode badges (multiplayer, co-op, etc.) on covers and screenshots")
+        )
+        grid_layout.addWidget(self.chk_game_mode_badges, 2, 2)
+
+        # Row 3: Screenshot density + Store badges checkbox
+        grid_layout.addWidget(QLabel(_("Screenshot density:")), 3, 0)
         self.spin_screenshot_density = QSpinBox()
         self.spin_screenshot_density.setToolTip(
             _("How large screenshot tiles are. Smaller values fit more games per row")
@@ -700,9 +709,15 @@ class AppearanceSettingsTab(QWidget):
         self.spin_screenshot_density.setMinimum(GRID_DENSITY_MIN)
         self.spin_screenshot_density.setMaximum(GRID_DENSITY_MAX)
         self.spin_screenshot_density.setSuffix(" px")
-        density_layout.addRow(_("Screenshot view:"), self.spin_screenshot_density)
+        grid_layout.addWidget(self.spin_screenshot_density, 3, 1)
 
-        layout.addWidget(density_group)
+        self.chk_store_badges = QCheckBox(_("Store badges"))
+        self.chk_store_badges.setToolTip(
+            _("Show store badges on covers and screenshots")
+        )
+        grid_layout.addWidget(self.chk_store_badges, 3, 2)
+
+        layout.addWidget(grid_group)
 
         layout.addStretch()
 
@@ -779,6 +794,13 @@ class AppearanceSettingsTab(QWidget):
         if idx >= 0:
             self.combo_cover_scaling.setCurrentIndex(idx)
 
+        self.chk_game_mode_badges.setChecked(
+            self.config.get("appearance.show_game_mode_badges", True)
+        )
+        self.chk_store_badges.setChecked(
+            self.config.get("appearance.show_store_badges", True)
+        )
+
     def save_settings(self) -> None:
         self.config.set("appearance.theme", self.cmb_theme.currentData())
         self.config.set("appearance.ui_zoom", self.slider_zoom.value())
@@ -786,6 +808,8 @@ class AppearanceSettingsTab(QWidget):
         self.config.set("appearance.screenshot_grid_density", self.spin_screenshot_density.value())
         self.config.set("appearance.image_fade_duration", self.slider_fade.value())
         self.config.set("appearance.cover_scaling", self.combo_cover_scaling.currentData())
+        self.config.set("appearance.show_game_mode_badges", self.chk_game_mode_badges.isChecked())
+        self.config.set("appearance.show_store_badges", self.chk_store_badges.isChecked())
 
     def reset_to_defaults(self) -> None:
         """Reset appearance settings to defaults."""
@@ -800,6 +824,8 @@ class AppearanceSettingsTab(QWidget):
         self.slider_fade.setValue(DEFAULT_IMAGE_FADE_MS)
         self.lbl_fade.setText(_("{v} ms").format(v=DEFAULT_IMAGE_FADE_MS))
         self.combo_cover_scaling.setCurrentIndex(0)
+        self.chk_game_mode_badges.setChecked(True)
+        self.chk_store_badges.setChecked(True)
 
 
 class PluginListItem(QWidget):
@@ -1098,6 +1124,8 @@ class PluginsSettingsTab(QWidget):
         grouped: Dict[str, List[tuple]] = {k: [] for k, _lbl, _icn in self._PLUGIN_CATEGORIES}
 
         for name, metadata in discovered.items():
+            if getattr(metadata, "hidden", False):
+                continue
             primary = self._get_primary_type(metadata)
             if primary in grouped:
                 grouped[primary].append((name, metadata))
@@ -1228,6 +1256,8 @@ class PluginsSettingsTab(QWidget):
             total = 0
             enabled = 0
             for name, metadata in discovered.items():
+                if getattr(metadata, "hidden", False):
+                    continue
                 if self._get_primary_type(metadata) == type_key:
                     total += 1
                     item = self._plugin_items.get(name)

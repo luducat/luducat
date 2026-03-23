@@ -1940,7 +1940,22 @@ class PluginConfigDialog(QDialog):
         # Wire callback
         callback = action.callback
         if callable(callback):
-            btn.clicked.connect(lambda checked, cb=callback: cb())
+            if action.group == "auth":
+                def _make_auth_wrapper(cb):
+                    def _wrapped():
+                        cb()
+                        self._update_connection_status()
+                        plugin = self._get_plugin_instance()
+                        if plugin and hasattr(plugin, 'is_authenticated'):
+                            self.connection_status_changed.emit(
+                                self.plugin_name, plugin.is_authenticated()
+                            )
+                    return _wrapped
+                btn.clicked.connect(
+                    lambda checked, w=_make_auth_wrapper(callback): w()
+                )
+            else:
+                btn.clicked.connect(lambda checked, cb=callback: cb())
         elif isinstance(callback, str):
             # Dialog method (starts with '_') or plugin method
             if hasattr(self, callback):
@@ -3360,6 +3375,8 @@ class PluginConfigDialog(QDialog):
             self.status_label.setText(_("Not connected"))
             set_status_property(self.status_label, "")
 
+        self._update_oauth_buttons()
+
     def _update_oauth_buttons(self) -> None:
         """Update Login/Logout button visibility based on auth status"""
         btn_login = self._action_buttons.get("login")
@@ -3388,9 +3405,6 @@ class PluginConfigDialog(QDialog):
                     btn_login.setVisible(True)
                 if btn_logout:
                     btn_logout.setVisible(False)
-
-            # Update connection status display
-            self._update_connection_status()
 
         except Exception as e:
             logger.debug(f"Could not get auth status: {e}")

@@ -1,0 +1,39 @@
+# Content filter keyword rules
+# Format: field:keyword:+/-score
+# Exact match on list elements (genres, themes), word-boundary on title
+# Positive = more likely adult, negative = less likely
+
+# ── Genre keywords (primarily from MangaGamer catalog) ────────
+# These stack with store_adult_baseline (0.50 for MangaGamer).
+# At baseline 0.50: +0.20 → combined 0.60 (threshold), +0.25 → 0.625
+
+genres:hardcore:+0.25
+genres:hentai:+0.40
+genres:erotic:+0.30
+genres:adult:+0.35
+genres:sexual content:+0.30
+genres:nudity:+0.15
+genres:tentacles:+0.25
+genres:incest:+0.30
+genres:ntr:+0.25
+genres:scat:+0.30
+genres:futanari:+0.25
+genres:corruption:+0.15
+genres:hypnosis:+0.15
+genres:big boobs:+0.10
+genres:dark skin:+0.05
+genres:cosplay:+0.05
+
+# ── IGDB / cross-store themes ────────────────────────────────
+themes:erotic:+0.45
+
+# ── Title keywords (substring match) ─────────────────────────
+# Only unmistakable terms — these are titles, false positives hurt
+title:hentai:+0.35
+title:eroge:+0.30
+title:sex slave:+0.30
+title:boob:+0.15
+title:naked:+0.10
+title:nudity:+0.15
+title:nakadashi:+0.20
+title:ecchi:+0.20

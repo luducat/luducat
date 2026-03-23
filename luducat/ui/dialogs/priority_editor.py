@@ -201,38 +201,29 @@ class PriorityEditorDialog(QDialog):
         self._update_button_states()
 
     def _populate_list(self) -> None:
-        """Populate list with sources"""
+        """Populate list with sources.
+
+        Only shows sources that are enabled AND authenticated.
+        Disabled or unauthenticated plugins are hidden entirely —
+        they remain in the config so they reappear when authenticated.
+        """
         self._list.clear()
 
         for source in self._initial_priority:
+            # Skip sources that aren't enabled or authenticated
+            if source not in self._enabled_plugins:
+                continue
+            if source not in self._authenticated_plugins:
+                continue
+
             item = QListWidgetItem()
             item.setData(Qt.ItemDataRole.UserRole, source)
 
-            # Determine plugin status
-            is_enabled = source in self._enabled_plugins
-            is_authenticated = source in self._authenticated_plugins
-
-            # Get display label with status indicator
             label = SOURCE_LABELS.get(source, PluginManager.get_store_display_name(source))
-            if not is_enabled:
-                label += _(" (not enabled)")
-            elif not is_authenticated:
-                label += _(" (not authenticated)")
-
             item.setText(label)
 
-            # Set checkable state
             item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
-
-            if is_enabled and is_authenticated:
-                # Enabled AND authenticated: checkable and draggable
-                item.setCheckState(Qt.CheckState.Checked)
-            else:
-                # Not enabled OR not authenticated: unchecked and not draggable
-                item.setCheckState(Qt.CheckState.Unchecked)
-                item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsDragEnabled)
-                # Gray out unavailable items
-                item.setForeground(self.palette().color(self.palette().ColorRole.PlaceholderText))
+            item.setCheckState(Qt.CheckState.Checked)
 
             self._list.addItem(item)
 

@@ -45,7 +45,7 @@ from ..core.constants import (
     INSTALLED_BADGE_LABEL,
 )
 from ..core.plugin_manager import PluginManager, _DEFAULT_BRAND_COLORS
-from .badge_painter import draw_badge, draw_icon_badge, get_player_count, game_mode_badge_width
+from .badge_painter import draw_badge, draw_icon_badge, draw_store_icon_badge, get_player_count, game_mode_badge_width, store_badge_width
 
 logger = logging.getLogger(__name__)
 
@@ -307,6 +307,7 @@ class GameListDelegate(QStyledItemDelegate):
     ITEM_HEIGHT = 44
     PADDING = 6
     BADGE_HEIGHT = 16
+    STORE_BADGE_SIZE = 16
     BADGE_PADDING = 4
 
     def __init__(self, parent: Optional[QWidget] = None):
@@ -393,17 +394,18 @@ class GameListDelegate(QStyledItemDelegate):
 
         badge_fm = QFontMetrics(self._badge_font)
 
+        sb = self.STORE_BADGE_SIZE
+        sbw = store_badge_width(sb)
         for store in stores:
             colors = self._brand_colors.get(store, _DEFAULT_BRAND_COLORS)
-
-            badge_text = self._badge_labels.get(store, store.upper()[:3])
-            text_width = badge_fm.horizontalAdvance(badge_text)
-            badge_width = text_width + 12
-
-            badge_rect = QRect(badge_x, y, badge_width, self.BADGE_HEIGHT)
-            draw_badge(painter, badge_rect, colors["bg"], colors["text"], badge_text)
-
-            badge_x += badge_width + self.BADGE_PADDING
+            label = self._badge_labels.get(store, store.upper()[:3])
+            badge_rect = QRect(badge_x, y, sbw, sb)
+            draw_store_icon_badge(
+                painter, badge_rect, store, colors["bg"], colors["text"],
+                badge_label=label,
+                heart_color=colors.get("heart", ""),
+            )
+            badge_x += sbw + self.BADGE_PADDING
 
         # Favorite star
         if is_favorite:
@@ -478,10 +480,12 @@ class GameListDelegate(QStyledItemDelegate):
                 QToolTip.hideText()
                 return True
 
-            # Row 2 zone: game mode badge tooltips
+            # Row 2 zone: store + game mode badge tooltips
             badge_y = option.rect.y() + self.PADDING + 20
-            if badge_y <= pos.y() <= badge_y + self.BADGE_HEIGHT:
-                tooltip = self._game_mode_tooltip_at(pos.x(), option, index)
+            if badge_y <= pos.y() <= badge_y + self.STORE_BADGE_SIZE:
+                tooltip = self._store_tooltip_at(pos.x(), option, index)
+                if not tooltip:
+                    tooltip = self._game_mode_tooltip_at(pos.x(), option, index)
                 if tooltip:
                     QToolTip.showText(event.globalPos(), tooltip, view)
                     return True
@@ -490,6 +494,25 @@ class GameListDelegate(QStyledItemDelegate):
             return True
 
         return super().helpEvent(event, view, option, index)
+
+    def _store_tooltip_at(
+        self, mouse_x: int, option: QStyleOptionViewItem, index: QModelIndex
+    ) -> Optional[str]:
+        """Check if mouse_x is over a store badge, return store display name."""
+        stores = index.data(GameRoles.Stores) or []
+        if not stores:
+            return None
+
+        badge_x = option.rect.x() + 10
+        sbw = store_badge_width(self.STORE_BADGE_SIZE)
+
+        for store in stores:
+            badge_end = badge_x + sbw
+            if badge_x <= mouse_x <= badge_end:
+                return PluginManager.get_store_display_name(store)
+            badge_x = badge_end + self.BADGE_PADDING
+
+        return None
 
     def _game_mode_tooltip_at(
         self, mouse_x: int, option: QStyleOptionViewItem, index: QModelIndex
@@ -505,12 +528,11 @@ class GameListDelegate(QStyledItemDelegate):
 
         # Replay badge X layout to find game mode badge positions
         badge_x = option.rect.x() + 10
-        badge_fm = QFontMetrics(self._badge_font)
+        sbw = store_badge_width(self.STORE_BADGE_SIZE)
 
-        # Skip store badges
-        for store in stores:
-            badge_text = self._badge_labels.get(store, store.upper()[:3])
-            badge_x += badge_fm.horizontalAdvance(badge_text) + 12 + self.BADGE_PADDING
+        # Skip store badges (all uniform width)
+        for _store in stores:
+            badge_x += sbw + self.BADGE_PADDING
 
         # Skip favorite star
         if is_favorite:

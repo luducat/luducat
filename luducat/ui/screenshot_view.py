@@ -23,6 +23,7 @@ from PySide6.QtCore import (
     QAbstractListModel,
     QThread,
     QTimer,
+    QEvent,
 )
 from PySide6.QtGui import (
     QPainter,
@@ -32,6 +33,7 @@ from PySide6.QtGui import (
     QColor,
     QPen,
     QPixmap,
+    QHelpEvent,
 )
 from PySide6.QtWidgets import (
     QWidget,
@@ -42,9 +44,13 @@ from PySide6.QtWidgets import (
     QStyle,
     QAbstractItemView,
     QApplication,
+    QToolTip,
 )
 
 from ..core.constants import (
+    CORNER_DEMO_COLORS,
+    CORNER_FREE_COLORS,
+    CORNER_TRIANGLE_SIZE,
     GAME_MODE_LABELS,
     INSTALLED_BADGE_COLOR,
     INSTALLED_BADGE_LABEL,
@@ -56,9 +62,19 @@ from ..core.constants import (
 )
 from ..core.plugin_manager import PluginManager, _DEFAULT_BRAND_COLORS
 from ..utils.image_cache import get_screenshot_cache, ImageCache
-from .badge_painter import draw_badge, draw_icon_badge, draw_license_circle, get_player_count, game_mode_badge_width
+from .badge_painter import draw_badge, draw_icon_badge, draw_store_icon_badge, draw_license_circle, draw_corner_triangle, draw_overflow_pill, get_player_count, game_mode_badge_width, store_badge_width
 
 logger = logging.getLogger(__name__)
+
+
+def _corner_tooltip(title: str) -> str:
+    """Return tooltip text for demo/prologue/trial based on title suffix."""
+    lower = title.lower().rstrip()
+    if lower.endswith("prologue"):
+        return _("Prologue")
+    if lower.endswith("trial"):
+        return _("Trial")
+    return _("Demo")
 
 
 class ScreenshotFetchWorker(QThread):
@@ -241,8 +257,9 @@ class ScreenshotItemDelegate(QStyledItemDelegate):
     PADDING = 8
     TITLE_HEIGHT = 24
     BADGE_SIZE = 16
+    STORE_BADGE_SIZE = 16
     BADGE_PADDING = 2
-    GAME_MODE_BADGE_SIZE = 16  # Same size as store badges (icon glyphs)
+    GAME_MODE_BADGE_SIZE = 16
 
     def __init__(
         self,
@@ -281,6 +298,12 @@ class ScreenshotItemDelegate(QStyledItemDelegate):
 
         # Local cache of plugin data (avoids classmethod dispatch in paint())
         self._brand_colors: Dict[str, Dict[str, str]] = dict(PluginManager._brand_colors)
+        self._badge_labels: Dict[str, str] = dict(PluginManager._badge_labels)
+
+        # Badge visibility (toggled from Settings → Appearance)
+        self._show_game_mode_badges = True
+        self._show_store_badges = True
+        self._default_store = ""
 
         # Delegate visual config (overridable per-theme via set_delegate_config)
         self._image_radius = 6
@@ -288,8 +311,9 @@ class ScreenshotItemDelegate(QStyledItemDelegate):
         self._hover_border_width = 2
 
     def refresh_plugin_data(self) -> None:
-        """Re-snapshot PluginManager brand colors after plugin changes."""
+        """Re-snapshot PluginManager brand colors and badge labels after plugin changes."""
         self._brand_colors = dict(PluginManager._brand_colors)
+        self._badge_labels = dict(PluginManager._badge_labels)
 
     def update_theme_colors(self, fav_color: str) -> None:
         """Update delegate colors from current theme."""
@@ -302,6 +326,15 @@ class ScreenshotItemDelegate(QStyledItemDelegate):
     def set_fade_duration(self, duration_ms: int) -> None:
         """Set fade-in duration in milliseconds (0 = disabled)."""
         self.FADE_DURATION = duration_ms / 1000.0
+
+    def set_badge_visibility(self, game_modes: bool, stores: bool) -> None:
+        """Toggle badge types on screenshots."""
+        self._show_game_mode_badges = game_modes
+        self._show_store_badges = stores
+
+    def set_default_store(self, store: str) -> None:
+        """Set default store for primary badge display."""
+        self._default_store = store
 
     def set_delegate_config(self, config: dict) -> None:
         """Set theme-specific visual config for painting."""
@@ -427,18 +460,77 @@ class ScreenshotItemDelegate(QStyledItemDelegate):
             painter.setBrush(Qt.BrushStyle.NoBrush)
             painter.drawRoundedRect(ss_rect.adjusted(1, 1, -1, -1), self._border_radius, self._border_radius)
 
-        # Draw store badges (bottom-left of screenshot)
-        badge_x = ss_rect.x() + 4
-        badge_y = ss_rect.bottom() - self.BADGE_SIZE - 4
-        painter.setFont(self._badge_font)
+        # Draw top-left corner triangle for free/demo games
+        is_free = game.get("is_free", False)
+        is_demo = game.get("is_demo", False)
+        if is_demo:
+            draw_corner_triangle(painter, ss_rect, _("DEMO"), CORNER_DEMO_COLORS["bg"], CORNER_DEMO_COLORS["text"])
+        elif is_free:
+            draw_corner_triangle(painter, ss_rect, _("FREE"), CORNER_FREE_COLORS["bg"], CORNER_FREE_COLORS["text"])
 
-        for store in stores[:3]:  # Max 3 badges
-            colors = self._brand_colors.get(store, _DEFAULT_BRAND_COLORS)
+        # Draw top-right badges: compat + family license
+        tr_x = ss_rect.right() - 2
+        tr_y = ss_rect.y() + 2
 
-            badge_rect = QRect(badge_x, badge_y, self.BADGE_SIZE, self.BADGE_SIZE)
-            draw_badge(painter, badge_rect, colors["bg"], colors["text"], store[0].upper())
+        # Family license circle (rightmost)
+        family_license_count = game.get("family_license_count", 0)
+        if family_license_count >= 2:
+            circle_size = 14
+            tr_x -= circle_size
+            cx = tr_x + circle_size // 2
+            cy = tr_y + circle_size // 2
+            draw_license_circle(painter, cx, cy, circle_size, str(family_license_count))
+            tr_x -= self.BADGE_PADDING
 
-            badge_x += self.BADGE_SIZE + self.BADGE_PADDING
+        # Compat badges (left of family circle)
+        compat_badges = []
+        if protondb_tier and protondb_tier in PROTONDB_TIER_LABELS:
+            compat_badges.append((
+                PROTONDB_TIER_LABELS[protondb_tier],
+                PROTONDB_TIER_COLORS[protondb_tier],
+            ))
+        if steam_deck_compat and steam_deck_compat in STEAM_DECK_LABELS:
+            compat_badges.append((
+                STEAM_DECK_LABELS[steam_deck_compat],
+                STEAM_DECK_COLORS[steam_deck_compat],
+            ))
+        if compat_badges:
+            painter.setFont(self._game_mode_font)
+            fm = QFontMetrics(self._game_mode_font)
+            for label, colors in reversed(compat_badges):
+                translated = _(label)
+                text_width = fm.horizontalAdvance(translated)
+                badge_width = text_width + 8
+                tr_x -= badge_width
+                badge_rect = QRect(tr_x, tr_y, badge_width, self.GAME_MODE_BADGE_SIZE)
+                draw_badge(painter, badge_rect, colors["bg"], colors["text"], translated)
+                tr_x -= self.BADGE_PADDING
+
+        # Draw store badges (bottom-left of screenshot) — primary + overflow
+        sb = self.STORE_BADGE_SIZE
+        sbw = store_badge_width(sb)
+        badge_x = ss_rect.x() + 2
+        badge_y = ss_rect.bottom() - sb - 2
+
+        if stores and self._show_store_badges:
+            primary = self._default_store if self._default_store in stores else stores[0]
+            colors = self._brand_colors.get(primary, _DEFAULT_BRAND_COLORS)
+            label = self._badge_labels.get(primary, primary.upper()[:3])
+            badge_rect = QRect(badge_x, badge_y, sbw, sb)
+            draw_store_icon_badge(
+                painter, badge_rect, primary, colors["bg"], colors["text"],
+                badge_label=label,
+                heart_color=colors.get("heart", ""),
+            )
+            badge_x += sbw + self.BADGE_PADDING
+
+            overflow = len(stores) - 1
+            if overflow > 0:
+                badge_x = draw_overflow_pill(
+                    painter, badge_x, badge_y, sb,
+                    f"+{overflow}", anchor_left=True,
+                )
+                badge_x += self.BADGE_PADDING
 
         # Draw favorite star (after badges)
         if is_favorite:
@@ -446,15 +538,6 @@ class ScreenshotItemDelegate(QStyledItemDelegate):
             painter.setPen(self._fav_color)
             painter.drawText(star_rect, Qt.AlignmentFlag.AlignCenter, "★")
             badge_x += self.BADGE_SIZE + self.BADGE_PADDING
-
-        # Draw family license count indicator (circle badge, only for 2+ licenses)
-        family_license_count = game.get("family_license_count", 0)
-        if family_license_count >= 2:
-            circle_size = 14
-            cx = badge_x + circle_size // 2
-            cy = badge_y + circle_size // 2
-            draw_license_circle(painter, cx, cy, circle_size, str(family_license_count))
-            badge_x += circle_size + self.BADGE_PADDING
 
         # Installed badge
         if is_installed:
@@ -465,15 +548,25 @@ class ScreenshotItemDelegate(QStyledItemDelegate):
             inst_rect = QRect(badge_x, badge_y, badge_width, self.BADGE_SIZE)
             draw_badge(painter, inst_rect, INSTALLED_BADGE_COLOR["bg"], INSTALLED_BADGE_COLOR["text"], inst_text)
 
-        # Draw game mode badges (bottom-right of screenshot, icon glyphs with player counts)
-        if game_modes:
+        # Draw game mode badges (bottom-right, condensed: top 2 + overflow)
+        if game_modes and self._show_game_mode_badges:
             displayable = [m for m in game_modes if m in GAME_MODE_LABELS]
             if displayable:
-                mode_badge_x = ss_rect.right() - 4  # Start from right edge
-                mode_badge_y = ss_rect.bottom() - self.GAME_MODE_BADGE_SIZE - 4
+                mode_badge_x = ss_rect.right() - 2
+                mode_badge_y = ss_rect.bottom() - self.GAME_MODE_BADGE_SIZE - 2
                 badge_side = self.GAME_MODE_BADGE_SIZE
 
-                for mode_name in reversed(displayable):  # Rightmost first
+                visible = displayable[:2]
+                overflow = len(displayable) - len(visible)
+
+                if overflow > 0:
+                    mode_badge_x = draw_overflow_pill(
+                        painter, mode_badge_x, mode_badge_y, badge_side,
+                        f"+{overflow}",
+                    )
+                    mode_badge_x -= self.BADGE_PADDING
+
+                for mode_name in reversed(visible):
                     player_count = get_player_count(game, mode_name)
                     badge_w = game_mode_badge_width(mode_name, badge_side, player_count)
                     if badge_w == 0:
@@ -482,7 +575,6 @@ class ScreenshotItemDelegate(QStyledItemDelegate):
                     badge_rect = QRect(mode_badge_x, mode_badge_y, badge_w, badge_side)
                     drawn = draw_icon_badge(painter, badge_rect, mode_name, player_count)
                     if drawn == 0:
-                        # Fallback to text if icon missing
                         painter.setFont(self._game_mode_font)
                         fm = QFontMetrics(self._game_mode_font)
                         label = _(GAME_MODE_LABELS[mode_name])
@@ -495,33 +587,6 @@ class ScreenshotItemDelegate(QStyledItemDelegate):
                         badge_fg = palette.color(QPalette.ColorRole.WindowText).name()
                         draw_badge(painter, badge_rect, badge_bg, badge_fg, label)
                     mode_badge_x -= self.BADGE_PADDING
-
-        # Draw compatibility badges (bottom-right, above game mode badges)
-        compat_badges = []
-        if protondb_tier and protondb_tier in PROTONDB_TIER_LABELS:
-            compat_badges.append((
-                _(PROTONDB_TIER_LABELS[protondb_tier]),
-                PROTONDB_TIER_COLORS[protondb_tier],
-            ))
-        if steam_deck_compat and steam_deck_compat in STEAM_DECK_LABELS:
-            compat_badges.append((
-                _(STEAM_DECK_LABELS[steam_deck_compat]),
-                STEAM_DECK_COLORS[steam_deck_compat],
-            ))
-        if compat_badges:
-            painter.setFont(self._game_mode_font)
-            fm = QFontMetrics(self._game_mode_font)
-            compat_x = ss_rect.right() - 4
-            compat_y = ss_rect.bottom() - self.GAME_MODE_BADGE_SIZE - 4
-            if game_modes and any(m in GAME_MODE_LABELS for m in game_modes):
-                compat_y -= self.GAME_MODE_BADGE_SIZE + self.BADGE_PADDING
-            for label, colors in reversed(compat_badges):
-                text_width = fm.horizontalAdvance(label)
-                badge_width = text_width + 8
-                compat_x -= badge_width
-                badge_rect = QRect(compat_x, compat_y, badge_width, self.GAME_MODE_BADGE_SIZE)
-                draw_badge(painter, badge_rect, colors["bg"], colors["text"], label)
-                compat_x -= self.BADGE_PADDING
 
         # Draw title below screenshot
         title_rect = QRect(
@@ -543,6 +608,77 @@ class ScreenshotItemDelegate(QStyledItemDelegate):
         painter.drawText(title_rect, Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop, elided_title)
 
         painter.restore()
+
+    def helpEvent(
+        self,
+        event: QHelpEvent,
+        view: QAbstractItemView,
+        option: QStyleOptionViewItem,
+        index: QModelIndex,
+    ) -> bool:
+        """Show tooltip — corner triangle, truncated title, or model tooltip."""
+        if event.type() == QEvent.Type.ToolTip:
+            game = index.data(ScreenshotRoles.GameData)
+            if game:
+                # Hit-test top-left corner triangle (free/demo badge)
+                ss_x = option.rect.x() + (option.rect.width() - self._item_width) // 2
+                ss_y = option.rect.y() + self.PADDING // 2
+                pos = event.pos()
+                rx = pos.x() - ss_x
+                ry = pos.y() - ss_y
+                if rx >= 0 and ry >= 0 and rx + ry <= CORNER_TRIANGLE_SIZE:
+                    is_demo = game.get("is_demo", False)
+                    is_free = game.get("is_free", False)
+                    if is_demo:
+                        QToolTip.showText(event.globalPos(), _corner_tooltip(game.get("title", "")), view)
+                        return True
+                    elif is_free:
+                        QToolTip.showText(event.globalPos(), _("Free to Play"), view)
+                        return True
+
+                # Hit-test bottom-right game mode badge region
+                game_modes = game.get("game_modes", [])
+                if game_modes and self._show_game_mode_badges:
+                    ss_h = int(self._item_width * 9 / 16)
+                    badge_h = self.GAME_MODE_BADGE_SIZE
+                    if (rx > self._item_width // 2
+                            and ry > ss_h - badge_h - 6):
+                        displayable = [m for m in game_modes if m in GAME_MODE_LABELS]
+                        if displayable:
+                            lines = []
+                            for m in displayable:
+                                lbl = _(GAME_MODE_LABELS[m])
+                                pc = get_player_count(game, m)
+                                lines.append(f"{lbl} ({pc})" if pc else lbl)
+                            QToolTip.showText(event.globalPos(), "\n".join(lines), view)
+                            return True
+
+                # Hit-test bottom-left store badge region
+                stores = game.get("stores", [])
+                if stores and self._show_store_badges and len(stores) > 1:
+                    sbw = store_badge_width(self.STORE_BADGE_SIZE)
+                    ss_h = int(self._item_width * 9 / 16)
+                    if (rx < sbw + 30
+                            and ry > ss_h - self.STORE_BADGE_SIZE - 6):
+                        store_names = [PluginManager.get_store_display_name(s) for s in stores]
+                        QToolTip.showText(event.globalPos(), "\n".join(store_names), view)
+                        return True
+
+            title = index.data(ScreenshotRoles.Title) or ""
+            if not title:
+                return False
+
+            # Check if title would be truncated
+            title_width = option.rect.width() - self.PADDING * 2
+            fm = QFontMetrics(self._title_font)
+            elided = fm.elidedText(title, Qt.TextElideMode.ElideRight, title_width)
+
+            if elided != title:
+                tooltip = index.data(Qt.ItemDataRole.ToolTipRole) or title
+                QToolTip.showText(event.globalPos(), tooltip, view)
+                return True
+
+        return super().helpEvent(event, view, option, index)
 
 
 class ScreenshotView(QWidget):

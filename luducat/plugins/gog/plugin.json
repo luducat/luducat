@@ -14,7 +14,7 @@
   "store_class": "store.GogStore",
 
   "badge_label": "GOG",
-  "brand_colors": {"bg": "#362147", "text": "#b388ff"},
+  "brand_colors": {"bg": "#662d91", "text": "#ffffff"},
 
   "dependencies": {
     "python": ">=3.11",

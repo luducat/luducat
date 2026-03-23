@@ -108,6 +108,7 @@ _DEFAULT_FIELD_SOURCE_CAPABILITIES: Dict[str, List[str]] = {
     "price": ["steam", "gog", "epic"],
     "type": ["steam", "gog", "epic", "igdb"],
     "is_free": ["steam", "gog"],
+    "is_demo": ["steam"],
     # Platform detail
     "windows": ["pcgamingwiki", "igdb"],
     "mac": ["pcgamingwiki", "igdb"],
@@ -137,7 +138,7 @@ FIELD_GROUPS: Dict[str, List[str]] = {
         "title", "description", "short_description", "developers", "publishers",
         "genres", "release_date", "game_modes_detail", "crossplay",
         "supported_languages", "full_audio_languages", "features",
-        "type", "is_free", "required_age", "category", "status",
+        "type", "is_free", "is_demo", "required_age", "category", "status",
         "game_modes", "price",
     ],
     "Media": [
@@ -238,6 +239,7 @@ FIELD_LABELS: Dict[str, str] = {
     "price": N_("Price"),
     "type": N_("Type"),
     "is_free": N_("Free to Play"),
+    "is_demo": N_("Demo"),
     "windows": "Windows",
     "mac": "macOS",
     "linux": "Linux",
@@ -272,6 +274,7 @@ FIELD_TOOLTIPS: Dict[str, str] = {
     "features": N_("Store features like cloud saves, achievements, overlay."),
     "type": N_("Whether this is a game, DLC, demo, or mod."),
     "is_free": N_("Whether the game is free to play."),
+    "is_demo": N_("Whether this is a demo, trial, or prologue version."),
     "required_age": N_("Minimum age required by the store."),
     "category": N_("IGDB game category (main game, expansion, bundle, etc.)."),
     "status": N_("Release status (released, early access, cancelled, etc.)."),
@@ -388,6 +391,11 @@ _INTERNAL_FIELDS: frozenset = frozenset({
     "data_source",
     "enriched",
     "background_provider",
+    # Identity fields (per-store keys, DB primary keys)
+    "app_id",
+    "id",
+    "game_id",
+    "translation_id",
     # Cross-store IDs (single-source, used for cross-referencing only)
     "igdb_id",
     "igdb_url",
@@ -441,24 +449,24 @@ _SEED_GAME_MODES_PRIORITY = ["pcgamingwiki", "igdb"]
 
 _SEED_FIELD_PRIORITIES: Dict[str, List[str]] = {
     # General
-    "title": ["steam", "gog", "epic", "igdb", "pcgamingwiki"],
-    "description": ["steam", "gog", "igdb"],
-    "short_description": ["steam", "gog", "epic", "igdb"],
-    "developers": ["igdb", "pcgamingwiki", "steam", "gog", "epic"],
-    "publishers": ["igdb", "pcgamingwiki", "steam", "gog", "epic"],
-    "genres": ["pcgamingwiki", "igdb", "steam", "gog", "epic"],
-    "release_date": ["steam", "gog", "igdb", "pcgamingwiki"],  # Merged field
+    "title": ["steam", "gog", "epic", "zoom", "jastusa", "mangagamer", "igdb", "pcgamingwiki"],
+    "description": ["steam", "gog", "igdb", "zoom", "jastusa", "mangagamer"],
+    "short_description": ["steam", "gog", "epic", "zoom", "jastusa", "igdb"],
+    "developers": ["igdb", "pcgamingwiki", "steam", "gog", "epic", "zoom", "jastusa", "mangagamer"],
+    "publishers": ["igdb", "pcgamingwiki", "steam", "gog", "epic", "zoom", "jastusa"],
+    "genres": ["pcgamingwiki", "igdb", "steam", "gog", "epic", "zoom", "mangagamer"],
+    "release_date": ["steam", "gog", "igdb", "pcgamingwiki", "zoom", "jastusa", "mangagamer"],
     "game_modes_detail": ["pcgamingwiki", "steam", "gog", "igdb"],
     "crossplay": ["pcgamingwiki"],
     # Media
-    "cover": ["igdb", "steamgriddb", "steam", "epic", "gog"],
+    "cover": ["igdb", "steamgriddb", "steam", "epic", "gog", "zoom", "jastusa", "mangagamer"],
     "hero": ["steamgriddb", "igdb", "steam", "epic", "gog"],
-    "screenshots": ["steam", "gog", "epic", "igdb"],
+    "screenshots": ["steam", "gog", "epic", "igdb", "zoom", "jastusa", "mangagamer"],
     "header_url": ["steam", "epic", "gog"],
     "artworks": ["igdb"],
     "icon_url": ["steam", "gog"],
     "logo_url": ["steam", "gog", "epic"],
-    "videos": ["igdb", "gog"],
+    "videos": ["igdb", "gog", "jastusa"],
     # Ratings
     "rating": ["steam", "gog", "igdb"],
     "user_rating": ["igdb"],
@@ -480,7 +488,7 @@ _SEED_FIELD_PRIORITIES: Dict[str, List[str]] = {
     "tags": ["steam", "gog"],
     "themes": ["igdb", "pcgamingwiki"],
     "perspectives": ["igdb", "pcgamingwiki"],
-    "platforms": ["igdb", "pcgamingwiki", "steam", "gog", "epic"],
+    "platforms": ["igdb", "pcgamingwiki", "steam", "gog", "epic", "zoom"],
     "links": ["igdb", "pcgamingwiki", "steam", "gog", "epic"],
     "storyline": ["igdb"],
     "pacing": ["pcgamingwiki"],
@@ -505,19 +513,20 @@ _SEED_FIELD_PRIORITIES: Dict[str, List[str]] = {
     "monetization": ["pcgamingwiki"],
     "microtransactions": ["pcgamingwiki"],
     # Cross-store data fields
-    "supported_languages": ["steam", "gog"],
+    "supported_languages": ["steam", "gog", "zoom"],
     "full_audio_languages": ["steam", "gog"],
     "features": ["gog", "steam", "epic"],
     # Game classification
     "category": ["igdb"],
     "status": ["igdb"],
-    "game_modes": ["pcgamingwiki", "steam", "igdb"],
+    "game_modes": ["pcgamingwiki", "steam", "igdb", "zoom"],
     "required_age": ["steam", "gog", "igdb"],
     "content_descriptors": ["steam"],
     # Commercial
-    "price": ["steam", "gog", "epic"],
+    "price": ["steam", "gog", "epic", "zoom"],
     "type": ["steam", "gog", "epic", "igdb"],
-    "is_free": ["steam", "gog"],
+    "is_free": ["steam", "gog", "zoom"],
+    "is_demo": ["steam"],
     # Platform detail
     "windows": ["pcgamingwiki", "igdb"],
     "mac": ["pcgamingwiki", "igdb"],
@@ -558,11 +567,14 @@ class MetadataResolver:
     # as users re-sync and old metadata_json entries are overwritten.
     _PRIORITY_FIELD_ALIASES: Dict[str, str] = {
         "cover_url": "cover",
+        "cover_detail_url": "cover",
         "background_url": "hero",
         "websites": "links",
         "categories": "features",
         "franchises": "franchise",
         "languages": "supported_languages",
+        "operating_systems": "platforms",
+        "esrb_rating": "age_rating_esrb",
     }
 
     def __init__(
@@ -1140,11 +1152,14 @@ class MetadataResolver:
     # Old storage names → canonical names for _get_field backward compat
     _STORAGE_ALIASES: Dict[str, str] = {
         "cover_url": "cover",
+        "cover_detail_url": "cover",
         "background_url": "hero",
         "websites": "links",
         "categories": "features",
         "franchises": "franchise",
         "languages": "supported_languages",
+        "operating_systems": "platforms",
+        "esrb_rating": "age_rating_esrb",
     }
     # Reverse: canonical → old storage name (for metadata dicts that haven't been re-synced)
     _CANONICAL_TO_OLD: Dict[str, str] = {v: k for k, v in _STORAGE_ALIASES.items()}
@@ -1343,6 +1358,25 @@ class MetadataResolver:
                     f"app_id {target_id} for '{normalized_title}'"
                 )
                 return target_id
+
+        # Fallback: try the target store's own title-based resolution
+        # (e.g., ZOOM derives slugs from titles and probes its public API)
+        if normalized_title:
+            target_plugin = self._plugin_manager.get_plugin(target_store)
+            if target_plugin and hasattr(target_plugin, "resolve_by_title"):
+                try:
+                    result = target_plugin.resolve_by_title(normalized_title)
+                    if result and result.get("app_id"):
+                        logger.info(
+                            f"Title-based resolution: resolved {target_store} "
+                            f"for '{normalized_title}'"
+                        )
+                        return result["app_id"]
+                except Exception as e:
+                    logger.debug(
+                        f"Title-based resolution failed for "
+                        f"{target_store}/{normalized_title}: {e}"
+                    )
 
         return None
 
@@ -2240,10 +2274,8 @@ class MetadataResolver:
         if not self._plugin_manager:
             return {}
 
-        if not self._is_plugin_usable(store_name):
-            logger.debug(f"Store plugin {store_name} not usable for bulk fetch")
-            return {}
-
+        # Bulk metadata reads from local plugin DBs — no auth required.
+        # Only need the plugin to be enabled (get_plugin checks that).
         plugin = self._plugin_manager.get_plugin(store_name)
         if not plugin:
             return {}

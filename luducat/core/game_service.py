@@ -462,16 +462,22 @@ class GameService:
 
             from luducat.core.plugin_manager import PluginManager
 
-            authenticated_stores = {}
+            # Metadata fetch reads from local plugin DBs — no auth needed.
+            # Include any enabled plugin that has cached data on disk.
+            metadata_stores = {}
             for store_name, app_ids in store_app_ids.items():
                 plugin = self.plugin_manager.get_plugin(store_name)
-                if plugin and plugin.is_authenticated():
-                    authenticated_stores[store_name] = (plugin, app_ids)
+                if plugin:
+                    try:
+                        db_path = plugin.get_database_path()
+                        if db_path.exists():
+                            metadata_stores[store_name] = (plugin, app_ids)
+                        else:
+                            logger.debug(f"Skipping {store_name}: no plugin DB")
+                    except Exception:
+                        logger.debug(f"Skipping {store_name}: DB path check failed")
                 else:
-                    if plugin:
-                        logger.debug(f"Skipping {store_name}: not authenticated")
-                    else:
-                        logger.debug(f"Skipping {store_name}: plugin not found or disabled")
+                    logger.debug(f"Skipping {store_name}: plugin not found or disabled")
 
             # Progress layout:
             # 0-10%   DB query
@@ -479,7 +485,7 @@ class GameService:
             # 55-65%  Enrichment + game modes + ProtonDB
             # 65-95%  Game loop (per-game metadata resolution)
             # 95-100% FTS rebuild
-            num_stores = len(authenticated_stores)
+            num_stores = len(metadata_stores)
 
             all_metadata: Dict[str, Dict[str, Dict]] = {}
 
@@ -488,7 +494,7 @@ class GameService:
                 report(loading_msg, _("No configured stores (using cached data)"), 40)
 
             # Parallel store metadata fetch — each plugin has its own DB
-            total_games = sum(len(ids) for _, ids in authenticated_stores.values())
+            total_games = sum(len(ids) for _, ids in metadata_stores.values())
             report(
                 loading_msg,
                 _("Fetching metadata (%d games, %d stores)...") % (
@@ -509,7 +515,7 @@ class GameService:
             with ThreadPoolExecutor(max_workers=max(1, num_stores)) as executor:
                 futures = {
                     executor.submit(_fetch_store, item): item[0]
-                    for item in authenticated_stores.items()
+                    for item in metadata_stores.items()
                 }
                 for future in as_completed(futures):
                     store_name = futures[future]
@@ -996,11 +1002,15 @@ class GameService:
             franchise=_intern(_franchise) if _franchise else "",
             game_modes=_game_modes,
             themes=_themes,
-            is_free=(
-                metadata.get("is_free", False)
+            is_demo=(
+                metadata.get("is_demo", False)
                 or bool(_DEMO_TITLE.search(game.normalized_title))
             ),
-            is_demo=bool(_DEMO_TITLE.search(game.normalized_title)),
+            is_free=(
+                metadata.get("is_free", False)
+                and not metadata.get("is_demo", False)
+                and not bool(_DEMO_TITLE.search(game.normalized_title))
+            ),
             protondb_rating=_intern(_protondb) if _protondb else "",
             steam_deck_compat=_intern(_deck_compat) if _deck_compat else "",
             adult_confidence=(
@@ -1734,6 +1744,8 @@ class GameService:
 
         for name, metadata in discovered.items():
             if "store" not in metadata.plugin_types:
+                continue
+            if metadata.hidden:
                 continue
 
             if enabled_only:

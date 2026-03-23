@@ -36,7 +36,12 @@ IGDB age rating mappings (from provider.py):
     PEGI  category=2: rating  5 = "18"
 """
 
+import logging
+import re
+from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+logger = logging.getLogger(__name__)
 
 # ── Default threshold ─────────────────────────────────────────────────
 
@@ -71,6 +76,130 @@ _IGDB_RATING_WEIGHTS: Dict[str, float] = {
 # required_age field weight (scaled by age value)
 _REQUIRED_AGE_18_WEIGHT: float = 0.35  # required_age >= 18
 
+# ── File-based keyword scoring ───────────────────────────────────────
+
+_keyword_rules: Optional[Dict[tuple, float]] = None
+_KEYWORDS_FILE = Path(__file__).parent.parent / "assets" / "contentfilter" / "keywords.txt"
+
+
+def _load_keyword_rules() -> Dict[tuple, float]:
+    """Read keyword rules file, return {(field, keyword): score} dict."""
+    rules: Dict[tuple, float] = {}
+    try:
+        text = _KEYWORDS_FILE.read_text(encoding="utf-8")
+    except (OSError, IOError):
+        return rules
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        # Parse score from the end first (colon-safe)
+        parts = line.rsplit(":", 1)
+        if len(parts) != 2:
+            logger.debug("keyword rules: malformed line: %s", line)
+            continue
+        rest, score_str = parts
+        # Parse field:keyword
+        fk = rest.split(":", 1)
+        if len(fk) != 2:
+            logger.debug("keyword rules: malformed line: %s", line)
+            continue
+        field, keyword = fk[0].strip().lower(), fk[1].strip().lower()
+        if not field or not keyword:
+            logger.debug("keyword rules: empty field or keyword: %s", line)
+            continue
+        try:
+            score = float(score_str.strip())
+        except ValueError:
+            logger.debug("keyword rules: bad score: %s", line)
+            continue
+        rules[(field, keyword)] = score
+    return rules
+
+
+def _get_keyword_rules() -> Dict[tuple, float]:
+    """Lazy-cached access to keyword rules."""
+    global _keyword_rules
+    if _keyword_rules is None:
+        _keyword_rules = _load_keyword_rules()
+    return _keyword_rules
+
+
+def _compute_keyword_score(metadata: dict) -> float:
+    """Score a single metadata dict against keyword rules."""
+    rules = _get_keyword_rules()
+    if not rules:
+        return 0.0
+    total = 0.0
+    lowered: Dict[str, Any] = {}
+    for (field, keyword), score in rules.items():
+        value = metadata.get(field)
+        if value is None:
+            continue
+        if field not in lowered:
+            if isinstance(value, list):
+                lowered[field] = [str(v).lower() for v in value]
+            elif isinstance(value, str):
+                lowered[field] = value.lower()
+            else:
+                continue
+        cached = lowered[field]
+        if isinstance(cached, list):
+            if keyword in cached:
+                total += score
+        elif field == "title":
+            if re.search(r"\b" + re.escape(keyword) + r"\b", cached):
+                total += score
+        elif cached == keyword:
+            total += score
+    return total
+
+
+def _compute_keyword_score_from_sources(metadata_by_store: dict) -> float:
+    """Score keyword rules against the union of all sources."""
+    rules = _get_keyword_rules()
+    if not rules:
+        return 0.0
+    # Build union of field values across all stores
+    field_values: Dict[str, Any] = {}
+    for metadata in metadata_by_store.values():
+        if not isinstance(metadata, dict):
+            continue
+        for field in {f for f, _k in rules}:
+            value = metadata.get(field)
+            if value is None:
+                continue
+            if isinstance(value, list):
+                if field not in field_values:
+                    field_values[field] = set()
+                for v in value:
+                    field_values[field].add(str(v).lower())
+            elif isinstance(value, str):
+                if field not in field_values:
+                    field_values[field] = set()
+                field_values[field].add(value.lower())
+    if not field_values:
+        return 0.0
+    total = 0.0
+    for (field, keyword), score in rules.items():
+        vals = field_values.get(field)
+        if not vals:
+            continue
+        if field == "title":
+            for v in vals:
+                if re.search(r"\b" + re.escape(keyword) + r"\b", v):
+                    total += score
+                    break
+        elif keyword in vals:
+            total += score
+    return total
+
+
+def _reset_keyword_cache():
+    """Reset the keyword rules cache (for testing)."""
+    global _keyword_rules
+    _keyword_rules = None
+
 
 def adult_confidence(metadata: dict) -> float:
     """Compute adult-content confidence score from all available signals.
@@ -89,6 +218,11 @@ def adult_confidence(metadata: dict) -> float:
     """
     weights: List[float] = []
 
+    # ── Store-level adult baseline (declarative engine rulesets) ──
+    store_baseline = metadata.get("store_adult_baseline")
+    if isinstance(store_baseline, (int, float)) and store_baseline > 0:
+        weights.append(min(float(store_baseline), 1.0))
+
     # ── Steam content descriptors ─────────────────────────────────
     _collect_steam_descriptor_weights(metadata, weights)
 
@@ -100,10 +234,20 @@ def adult_confidence(metadata: dict) -> float:
     # ── IGDB / other age ratings ──────────────────────────────────
     _collect_age_rating_weights(metadata, weights)
 
+    # ── Keyword scoring ──────────────────────────────────────────
+    keyword_score = _compute_keyword_score(metadata)
+    if keyword_score > 0:
+        weights.append(min(keyword_score, 1.0))
+
     if not weights:
         return 0.0
 
-    return _combine_weights(weights)
+    combined = _combine_weights(weights)
+
+    if keyword_score < 0:
+        combined = max(0.0, combined + keyword_score)
+
+    return combined
 
 
 def adult_confidence_from_sources(
@@ -163,9 +307,21 @@ def adult_confidence_from_sources(
 
     weights: List[float] = []
 
+    seen_store_baseline = False
+
     for _store, metadata in metadata_by_store.items():
         if not isinstance(metadata, dict):
             continue
+
+        # Store-level adult baseline (declarative engine rulesets)
+        store_baseline = metadata.get("store_adult_baseline")
+        if (
+            isinstance(store_baseline, (int, float))
+            and store_baseline > 0
+            and not seen_store_baseline
+        ):
+            seen_store_baseline = True
+            weights.append(min(float(store_baseline), 1.0))
 
         # Content descriptors (Steam-specific but could come via enrichment)
         _collect_descriptor_weights_dedup(metadata, weights, seen_descriptor_ids)
@@ -183,10 +339,20 @@ def adult_confidence_from_sources(
         # Age ratings (IGDB, GOG, etc.)
         _collect_age_rating_weights_dedup(metadata, weights, seen_age_rating_keys)
 
+    # ── Keyword scoring (union across all sources) ───────────────
+    keyword_score = _compute_keyword_score_from_sources(metadata_by_store)
+    if keyword_score > 0:
+        weights.append(min(keyword_score, 1.0))
+
     if not weights:
         return 0.0
 
-    return _combine_weights(weights)
+    combined = _combine_weights(weights)
+
+    if keyword_score < 0:
+        combined = max(0.0, combined + keyword_score)
+
+    return combined
 
 
 def is_adult_content(metadata: dict, threshold: float = DEFAULT_ADULT_THRESHOLD) -> bool:

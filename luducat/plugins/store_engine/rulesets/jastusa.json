@@ -1,0 +1,81 @@
+{
+  "schema_version": 1,
+  "store_name": "jastusa",
+  "display_name": "JAST USA",
+  "homepage": "https://jastusa.com",
+  "badge_label": "JAST",
+
+  "brand_colors": {
+    "bg": "#0075D9",
+    "text": "#ffffff",
+    "badge_bg": "#0075D9",
+    "badge_text": "#ffffff"
+  },
+
+  "auth": {
+    "type": "browser_cookies",
+    "domain": "jastusa.com",
+    "cookie_name": "auth._token.local",
+    "token_cookie": "auth._token.local",
+    "login_url": "https://jastusa.com/auth/login",
+    "headers": {
+      "Accept": "application/json",
+      "Content-Type": "application/json",
+      "Origin": "https://jastusa.com",
+      "Referer": "https://jastusa.com/"
+    }
+  },
+
+  "library": {
+    "backend": "api",
+    "url": "https://app.jastusa.com/api/v2/shop/account/user-games?page={page}&itemsPerPage=100&sort=product_name_asc",
+    "method": "GET",
+    "items_path": "products",
+    "fields": {
+      "id": {"path": "variant.productCode"},
+      "title": {"path": "variant.productName"},
+      "cover_url": {"path": "variant.productImage", "prefix": "https://app.jastusa.com/media/image/"},
+      "game_id": {"path": "variant.gameId"},
+      "translation_id": {"path": "variant.game.translations.en_US.id"}
+    },
+    "pagination": {
+      "type": "page_param",
+      "param": "page",
+      "start": 1,
+      "total_path": "pages"
+    }
+  },
+
+  "detail": {
+    "backend": "api",
+    "url_template": "https://app.jastusa.com/api/v2/shop/products/{id}",
+    "fields": {
+      "description": {"path": "translations.en_US.description"},
+      "short_description": {"path": "translations.en_US.shortDescription"},
+      "publishers": {"path": "publishers[].name"},
+      "developers": {"path": "studios[].name"},
+      "release_date": {"path": "releaseDate", "transform": "parse_date"},
+      "screenshots": {
+        "path": "images[].path",
+        "filter": {"field": "type", "equals": ""},
+        "prefix": "https://app.jastusa.com/media/image/"
+      },
+      "cover_detail_url": {
+        "path": "images[].path",
+        "filter": {"field": "type", "equals": "cover"},
+        "prefix": "https://app.jastusa.com/media/image/",
+        "first": true
+      },
+      "videos": {"path": "trailers[].url"}
+    }
+  },
+
+  "launch": {
+    "url_template": "https://jastusa.com/games/{id}"
+  },
+
+  "rate_limit": {
+    "calls": 60,
+    "window_seconds": 60
+  }
+}

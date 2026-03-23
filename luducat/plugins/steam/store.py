@@ -1766,10 +1766,9 @@ class SteamStore(AbstractGameStore):
             "full_audio_languages": full_audio_languages,
             "type": getattr(game, "type", "") or "",
             "required_age": getattr(game, "required_age", None),
-            "is_free": (
-                getattr(game, "is_free", False)
-                or (getattr(game, "type", "") or "").lower() == "demo"
-                or (getattr(game, "name", "") or "").lower().endswith(" demo")
+            "is_free": getattr(game, "is_free", False),
+            "is_demo": (
+                (getattr(game, "type", "") or "").lower() == "demo"
             ),
             "achievements": getattr(game, "achievements", None),
             "recommendations": getattr(game, "recommendations", None),

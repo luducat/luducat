@@ -1,0 +1,75 @@
+{
+  "schema_version": 1,
+  "store_name": "mangagamer",
+  "display_name": "MangaGamer",
+  "homepage": "https://www.mangagamer.com",
+  "badge_label": "M♥G",
+
+  "brand_colors": {
+    "bg": "#eb4e9c",
+    "text": "#fafafa",
+    "badge_bg": "#eb4e9c",
+    "badge_text": "#fafafa"
+  },
+
+  "auth": {
+    "type": "form_login",
+    "login_url": "https://www.mangagamer.com/login_exe.php",
+    "fail_indicator": "account_login",
+    "form_fields": [
+      {"name": "hdnType", "value": "login"},
+      {"name": "hdnReferer", "value": "https://www.mangagamer.com/mypage_index.php"},
+      {"name": "txtLoginID", "value": "{email}"},
+      {"name": "txtLoginPassword", "value": "{password}"},
+      {"name": "remember", "value": "on"}
+    ],
+    "extra_cookies": [
+      {"name": "agechk", "value": "true"}
+    ]
+  },
+
+  "library": {
+    "backend": "html",
+    "url": "https://www.mangagamer.com/mypage_index.php?page={page}",
+    "method": "GET",
+    "item_selector": "table[width='660'][bordercolor] > tr",
+    "fields": {
+      "id": {"selector": "a[href*='detail.php']", "attr": "href", "regex": "product_code=(\\d+)"},
+      "title": {"selector": "a[href*='detail.php']", "text": true, "non_empty": true, "regex": "^(.+?)\\s*\\(download\\)\\s*$"},
+      "goods_type": {"selector": "a[href*='detail.php']", "attr": "href", "regex": "goods_type=(\\d+)"}
+    },
+    "pagination": {
+      "type": "page_param",
+      "param": "page",
+      "start": 1,
+      "stop_when": "no_items",
+      "item_selector": "table[width='660'][bordercolor] > tr"
+    }
+  },
+
+  "detail": {
+    "backend": "html",
+    "url_template": "https://www.mangagamer.com/r18/detail.php?goods_type={goods_type}&product_code={id}",
+    "fallback_url_template": "https://www.mangagamer.com/detail.php?goods_type={goods_type}&product_code={id}",
+    "fields": {
+      "description": {"selector": "#story, #characters", "html": true, "multiple": true, "transform": "join_html"},
+      "developers": {"selector": ".title_content a[href*='company=']", "text": true, "multiple": true},
+      "genres": {"selector": ".title_content a[href*='category_name=']", "text": true, "multiple": true},
+      "cover_url": {"selector": "img[src*='packages']", "attr": "src", "prefix": "https://www.mangagamer.com"},
+      "screenshots": {"selector": "img[src*='screenshots']", "attr": "src", "prefix": "https://www.mangagamer.com", "multiple": true}
+    }
+  },
+
+  "launch": {
+    "url_template": "https://www.mangagamer.com/detail.php?product_code={id}"
+  },
+
+  "content_filter": {
+    "adult_base_confidence": 0.50
+  },
+
+  "rate_limit": {
+    "calls": 30,
+    "window_seconds": 60
+  }
+}

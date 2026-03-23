@@ -51,6 +51,30 @@ _DEFAULT_BRAND_COLORS: Dict[str, str] = {"bg": "#2a2a2a", "text": "#ffffff"}
 # Fields already warned about (warn once per field per session)
 _warned_non_canonical: set = set()
 
+# Mapping from declarative store engine ruleset field names to standard metadata
+# field names used by MetadataResolver (matches _to_plugin_game() in store.py).
+_RULESET_TO_STANDARD: Dict[str, str] = {
+    "title": "title",
+    "short_description": "short_description",
+    "description": "description",
+    "developers": "developers",
+    "publishers": "publishers",
+    "genres": "genres",
+    "release_date": "release_date",
+    "cover_url": "cover",
+    "cover_detail_url": "cover",
+    "header_url": "header_url",
+    "background_url": "hero",
+    "screenshots": "screenshots",
+    "videos": "videos",
+    "game_modes": "game_modes",
+    "languages": "supported_languages",
+    "esrb_rating": "age_rating_esrb",
+    "operating_systems": "platforms",
+    "is_free": "is_free",
+    "price": "price",
+}
+
 
 def validate_metadata_fields(metadata: dict, plugin_name: str) -> None:
     """Warn if a plugin produces non-canonical field names.
@@ -145,6 +169,8 @@ class PluginManager:
     _badge_labels: Dict[str, str] = {}
     # Maps plugin name → capabilities dict from plugin.json
     _plugin_capabilities: Dict[str, Dict[str, bool]] = {}
+    # Set of hidden plugin names (excluded from UI store lists)
+    _hidden_plugins: set = set()
 
     @classmethod
     def get_store_display_name(cls, store: str) -> str:
@@ -165,8 +191,11 @@ class PluginManager:
 
     @classmethod
     def get_store_plugin_names(cls) -> List[str]:
-        """Get names of all discovered store-type plugins."""
-        return [name for name, types in cls._plugin_types.items() if "store" in types]
+        """Get names of all discovered visible store-type plugins."""
+        return [
+            name for name, types in cls._plugin_types.items()
+            if "store" in types and name not in cls._hidden_plugins
+        ]
 
     @classmethod
     def get_metadata_plugin_names(cls) -> List[str]:
@@ -748,6 +777,8 @@ class PluginManager:
                 PluginManager._badge_labels[metadata.name] = metadata.badge_label
             else:
                 PluginManager._badge_labels[metadata.name] = metadata.display_name.upper()[:3]
+            if metadata.hidden:
+                PluginManager._hidden_plugins.add(metadata.name)
             logger.debug(f"Discovered plugin: {metadata.name} v{metadata.version}")
 
         except Exception as e:
@@ -867,6 +898,14 @@ class PluginManager:
             metadata.settings_title = data["settings_title"]
         if "settings_description" in data:
             metadata.settings_description = data["settings_description"]
+
+        # Hidden flag (plugin not shown in Settings plugin list)
+        if data.get("hidden"):
+            metadata.hidden = True
+
+        # Multi-store flag (engine spawns multiple virtual stores)
+        if data.get("multi_store"):
+            metadata.multi_store = True
 
         # Credentials
         creds = data.get("credentials", {})
@@ -1135,6 +1174,31 @@ class PluginManager:
             plugin_settings = self.config.get_plugin_settings(plugin_name)
             enabled = plugin_settings.get("enabled", True)
 
+            # Multi-store: engine spawns virtual store instances
+            if metadata.multi_store and hasattr(instance, 'get_store_instances'):
+                loaded = LoadedPlugin(
+                    metadata=metadata,
+                    instance=instance,
+                    enabled=enabled,
+                    trust_state=verification.trust_state if verification else None,
+                    trust_tier=verification.trust_tier if verification else None,
+                    fingerprint=verification.fingerprint if verification else None,
+                )
+                self._loaded[plugin_name] = loaded
+
+                if enabled:
+                    virtual_stores = instance.get_store_instances()
+                    for vs in virtual_stores:
+                        self._register_virtual_store(
+                            vs, metadata, verification, plugin_name,
+                        )
+                    logger.info(
+                        "Loaded multi-store engine: %s (%d virtual stores)",
+                        plugin_name, len(virtual_stores),
+                    )
+
+                return loaded
+
             loaded = LoadedPlugin(
                 metadata=metadata,
                 instance=instance,
@@ -1172,6 +1236,142 @@ class PluginManager:
             )
             self._loaded[plugin_name] = loaded
             raise PluginError(f"Failed to load plugin {plugin_name}: {e}") from e
+
+    def _register_virtual_store(
+        self,
+        vs,
+        parent_metadata: PluginMetadata,
+        verification,
+        engine_name: str,
+    ) -> None:
+        """Register a virtual store spawned by a multi_store engine.
+
+        Each virtual store gets its own entry in _loaded, _brand_colors,
+        _badge_labels, _display_names, etc. — making it indistinguishable
+        from a regular store plugin in the UI and sync pipeline.
+        """
+        vs_name = vs.store_name
+
+        # Inject dependencies into the virtual store
+        if hasattr(vs, 'set_credential_manager'):
+            vs.set_credential_manager(self.credential_manager)
+        if hasattr(vs, 'set_settings'):
+            vs.set_settings(self.config.get_plugin_settings(vs_name))
+        if hasattr(vs, 'set_local_data_consent'):
+            consent = self.config.get("privacy.local_data_access_consent", False)
+            vs.set_local_data_consent(consent)
+        if hasattr(vs, 'set_storage'):
+            vs.set_storage(PluginStorage(
+                plugin_name=vs_name,
+                config_dir=vs.config_dir,
+                cache_dir=vs.cache_dir,
+                data_dir=vs.data_dir,
+            ))
+
+        # Register with NetworkManager — derive domains from ruleset
+        if hasattr(vs, 'set_http_client') and hasattr(vs, '_ruleset'):
+            domains = vs._ruleset.domains
+            rate = vs._ruleset.rate_limit
+            rate_limits = None
+            if rate:
+                rate_limits = {
+                    d: {"requests": rate.get("calls", 60),
+                        "window": rate.get("window_seconds", 60)}
+                    for d in domains
+                }
+            self._network_manager.register_plugin(
+                vs_name,
+                allowed_domains=domains,
+                rate_limits=rate_limits,
+            )
+            vs.set_http_client(PluginHttpClient(vs_name))
+
+        # Populate class-level registries so UI can find this store
+        ruleset = vs._ruleset
+        brand = ruleset.brand_colors
+        if brand:
+            colors = {
+                "bg": brand.get("badge_bg", brand.get("bg", "#2a2a2a")),
+                "text": brand.get("badge_text", brand.get("text", "#ffffff")),
+            }
+            if brand.get("badge_heart_color"):
+                colors["heart"] = brand["badge_heart_color"]
+            PluginManager._brand_colors[vs_name] = colors
+        PluginManager._display_names[vs_name] = ruleset.display_name
+        PluginManager._plugin_types[vs_name] = ["store"]
+        PluginManager._badge_labels[vs_name] = ruleset.badge_label
+        PluginManager._plugin_capabilities[vs_name] = dict(parent_metadata.capabilities)
+
+        # Build auth metadata and settings_schema from ruleset auth config
+        vs_auth = dict(ruleset.auth) if ruleset.auth else {"type": "none"}
+        vs_settings_schema = {}
+        auth_type = vs_auth.get("type", "none")
+
+        if auth_type == "bearer_redirect":
+            # Login handled by VirtualStore.get_config_actions() (native dialog)
+            # No settings_schema needed — token stored via login flow
+            pass
+        elif auth_type == "api_token":
+            vs_settings_schema["api_token"] = {
+                "type": "string",
+                "label": "API Token",
+                "description": "Your API token for this store.",
+                "secret": True,
+            }
+
+        # Derive provides_fields from ruleset field declarations so
+        # build_from_plugins() adds this store to FIELD_SOURCE_CAPABILITIES
+        vs_provides_fields: Dict[str, Dict[str, Any]] = {}
+        lib_fields = set(ruleset.library.get("fields", {}).keys())
+        det_fields = set(ruleset.detail.get("fields", {}).keys()) if ruleset.detail else set()
+        for rf in lib_fields | det_fields:
+            standard = _RULESET_TO_STANDARD.get(rf)
+            if standard and standard not in vs_provides_fields:
+                vs_provides_fields[standard] = {"priority": 50}
+
+        # Create a virtual PluginMetadata for this store
+        vs_metadata = PluginMetadata(
+            name=vs_name,
+            display_name=ruleset.display_name,
+            version=parent_metadata.version,
+            author=parent_metadata.author,
+            description=f"Virtual store: {ruleset.display_name}",
+            min_luducat_version=parent_metadata.min_luducat_version,
+            plugin_types=["store"],
+            brand_colors=PluginManager._brand_colors.get(vs_name, {}),
+            badge_label=ruleset.badge_label,
+            capabilities=dict(parent_metadata.capabilities),
+            is_bundled=parent_metadata.is_bundled,
+            auth=vs_auth,
+            settings_schema=vs_settings_schema,
+            provides_fields=vs_provides_fields,
+        )
+
+        # Seed config.toml enabled flag (so sync-all and sync menu find this store)
+        config_key = f"plugins.{vs_name}.enabled"
+        if self.config.get(config_key) is None:
+            self.config.set(config_key, True)
+            self.config.save()
+
+        vs_enabled = self.config.get(config_key, True)
+
+        # Register as loaded plugin
+        vs_loaded = LoadedPlugin(
+            metadata=vs_metadata,
+            instance=vs,
+            enabled=vs_enabled,
+            trust_state=verification.trust_state if verification else None,
+            trust_tier=verification.trust_tier if verification else None,
+            fingerprint=verification.fingerprint if verification else None,
+        )
+        self._loaded[vs_name] = vs_loaded
+
+        # Also add to _discovered so get_store_plugin_names() finds it
+        self._discovered[vs_name] = vs_metadata
+
+        if vs_enabled:
+            vs.on_enable()
+        logger.info("Registered virtual store: %s (%s, enabled=%s)", vs_name, ruleset.display_name, vs_enabled)
 
     def _import_plugin_class(
         self, plugin_dir: Path, class_path: str, expected_base: type
@@ -1311,7 +1511,7 @@ class PluginManager:
         Returns:
             Dict of loaded plugins
         """
-        for name, metadata in self._discovered.items():
+        for name, metadata in list(self._discovered.items()):
             plugin_settings = self.config.get_plugin_settings(name)
             enabled = plugin_settings.get("enabled", True)
 

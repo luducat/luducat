@@ -49,6 +49,7 @@ class ContentArea(QWidget):
     """
 
     game_launched = Signal(str, str)  # game_id, store_name
+    game_launched_via_runner = Signal(str, str, str)  # game_id, store_name, runner_name
     game_install_requested = Signal(str, str)  # game_id, store_name
     game_selected = Signal(str)  # game_id - for syncing game list selection
     view_mode_changed = Signal(str)  # mode - emitted when view mode changes programmatically
@@ -111,6 +112,7 @@ class ContentArea(QWidget):
     def _connect_signals(self) -> None:
         """Connect view signals"""
         self.list_view.game_launched.connect(self.game_launched.emit)
+        self.list_view.game_launched_via_runner.connect(self.game_launched_via_runner.emit)
         self.list_view.game_install_requested.connect(self.game_install_requested.emit)
         self.list_view.description_refresh_requested.connect(
             lambda uuid, app_id, store: self.description_refresh_requested.emit(uuid, app_id, store)

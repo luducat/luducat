@@ -484,6 +484,13 @@ class PluginMetadata:
     settings_title: Optional[str] = None
     settings_description: Optional[str] = None
 
+    # Hidden: plugin not shown in Settings plugin list (e.g., multi_store engines
+    # that only exist to spawn virtual stores)
+    hidden: bool = False
+
+    # Multi-store: plugin spawns multiple virtual store instances
+    multi_store: bool = False
+
     # Credential storage settings
     use_system_keyring: bool = True
     keyring_service: Optional[str] = None  # Defaults to "luducat.{name}"
@@ -886,6 +893,16 @@ class AbstractGameStore(ABC):
             if metadata:
                 result[app_id] = metadata
         return result
+
+    def get_ids_needing_refetch(self) -> List[str]:
+        """Return IDs of existing games that need metadata re-fetched.
+
+        Called after fetch_user_games() during sync. Allows plugins to signal
+        that previously-fetched games have stale metadata (e.g., detail ruleset
+        changed). The sync pipeline will call fetch_game_metadata() for these
+        but will NOT create skeleton games (they already exist in main DB).
+        """
+        return []
 
     def get_game_description(self, app_id: str) -> str:
         """Get description for a single game (lazy loading).

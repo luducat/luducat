@@ -458,6 +458,7 @@ class MainWindow(QMainWindow):
 
         # Game launch / install
         self.content_area.game_launched.connect(self._on_game_launched)
+        self.content_area.game_launched_via_runner.connect(self._on_game_launched_via_runner)
         self.content_area.game_install_requested.connect(self._on_game_install)
 
         # Favorite toggle
@@ -577,6 +578,15 @@ class MainWindow(QMainWindow):
         # Cover scaling mode
         cover_scaling = self.config.get("appearance.cover_scaling", "none")
         self.content_area.cover_view.delegate.set_cover_scaling(cover_scaling)
+
+        # Badge visibility
+        show_modes = self.config.get("appearance.show_game_mode_badges", True)
+        show_stores = self.config.get("appearance.show_store_badges", True)
+        self.content_area.cover_view.delegate.set_badge_visibility(show_modes, show_stores)
+        self.content_area.screenshot_view.delegate.set_badge_visibility(show_modes, show_stores)
+        default_store = self.config.get("ui.default_store", "")
+        self.content_area.cover_view.delegate.set_default_store(default_store)
+        self.content_area.screenshot_view.delegate.set_default_store(default_store)
 
         # View mode - restored AFTER density so slider syncs to correct value
         view_mode = self.config.get("ui.view_mode", VIEW_MODE_LIST)
@@ -832,12 +842,51 @@ class MainWindow(QMainWindow):
         else:
             self._launch_via_plugin(game_id, game, store_name, store_app_id)
 
+    def _on_game_launched_via_runner(
+        self, game_id: str, store_name: str, runner_name: str
+    ) -> None:
+        """Handle game launch with explicit runner override (e.g. Playnite)."""
+        if self._launch_overlay.isVisible():
+            return
+
+        game = self.game_service.get_game(game_id)
+        if not game:
+            return
+
+        store_app_id = game.get("store_app_ids", {}).get(store_name)
+        if not store_app_id:
+            return
+
+        store_display = PluginManager.get_store_display_name(store_name)
+        runner = self.runtime_manager.get_runner(runner_name) if self.runtime_manager else None
+        runner_display = runner.display_name if runner else runner_name
+
+        cover_pixmap = None
+        cover_url = game.get("cover_image", "")
+        if cover_url:
+            from ..utils.image_cache import get_cover_cache
+            cover_pixmap = get_cover_cache().get_image(cover_url)
+
+        self._launch_overlay.show_launch(
+            game.get("title", ""), store_display, runner_display, cover_pixmap,
+        )
+        self._set_game_running(game_id, True)
+
+        if self.runtime_manager:
+            self._launch_via_runtime_manager(
+                game_id, game, store_name, store_app_id,
+                runner_name=runner_name,
+            )
+        else:
+            self._launch_via_plugin(game_id, game, store_name, store_app_id)
+
     def _launch_via_runtime_manager(
         self,
         game_id: str,
         game: Dict[str, Any],
         store_name: str,
-        store_app_id: str
+        store_app_id: str,
+        runner_name: Optional[str] = None,
     ) -> None:
         """Launch game using RuntimeManager
 
@@ -846,6 +895,7 @@ class MainWindow(QMainWindow):
             game: Game data dict
             store_name: Store name
             store_app_id: Store-specific app ID
+            runner_name: Explicit runner override (e.g. "playnite")
         """
         import asyncio
 
@@ -865,6 +915,7 @@ class MainWindow(QMainWindow):
         async def do_launch():
             return await self.runtime_manager.launch_game(
                 game_proxy,
+                runner_name=runner_name,
                 exe_selection_callback=self._show_exe_selection_dialog,
                 native_exe_callback=lambda: self._show_native_exe_picker(
                     game.get("title", "Unknown"),
@@ -3066,9 +3117,17 @@ class MainWindow(QMainWindow):
             cover_scaling = self.config.get("appearance.cover_scaling", "none")
             self.content_area.cover_view.delegate.set_cover_scaling(cover_scaling)
 
-            # Update default store on list view
+            # Apply badge visibility to grid delegates
+            show_modes = self.config.get("appearance.show_game_mode_badges", True)
+            show_stores = self.config.get("appearance.show_store_badges", True)
+            self.content_area.cover_view.delegate.set_badge_visibility(show_modes, show_stores)
+            self.content_area.screenshot_view.delegate.set_badge_visibility(show_modes, show_stores)
+
+            # Update default store on list view and grid delegates
             new_default_store = self.config.get("ui.default_store", "")
             self.content_area.list_view.set_default_store(new_default_store)
+            self.content_area.cover_view.delegate.set_default_store(new_default_store)
+            self.content_area.screenshot_view.delegate.set_default_store(new_default_store)
 
             # Refresh plugin data caches on delegates (picks up new/changed plugins)
             self.game_list.delegate.refresh_plugin_data()

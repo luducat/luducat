@@ -1,0 +1,51 @@
+{
+  "name": "store_engine",
+  "display_name": "Declarative Store Engine",
+  "version": "1.0.1",
+  "author": "luducat",
+  "author_email": "luducat@trinity2k.net",
+  "description": "Rule-based store plugin engine that fetches game libraries using JSON rulesets",
+  "homepage": "https://www.luducat.org",
+  "min_luducat_version": "0.5.2",
+  "max_luducat_version": null,
+
+  "plugin_types": ["store"],
+  "multi_store": true,
+  "hidden": true,
+  "store_class": "store.StoreEngine",
+
+  "dependencies": {
+    "python": ">=3.11",
+    "packages": ["beautifulsoup4>=4.11.0"]
+  },
+
+  "platforms": {
+    "linux": true,
+    "windows": true,
+    "macos": true
+  },
+
+  "capabilities": {
+    "fetch_library": true,
+    "fetch_metadata": true,
+    "launch_games": false,
+    "track_playtime": false,
+    "achievements": false,
+    "cloud_saves": false
+  },
+
+  "auth": {
+    "type": "none"
+  },
+
+  "network": {
+    "allowed_domains": [],
+    "rate_limits": {}
+  },
+
+  "privacy": {
+    "telemetry": false,
+    "data_collection": "none",
+    "third_party_services": []
+  }
+}

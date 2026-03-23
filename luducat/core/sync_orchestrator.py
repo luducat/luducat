@@ -255,7 +255,7 @@ class SyncOrchestrator:
                 self._remove_store_data_fn(store_name)
                 if self._save_account_id_fn:
                     self._save_account_id_fn(store_name, None)
-            return [], []
+            return [], [], []
 
         if (
             last_account
@@ -315,10 +315,20 @@ class SyncOrchestrator:
             )
             new_ids = [app_id for app_id in all_ids if app_id not in synced_ids]
 
-        logger.info(
-            f"{store_name}: {len(all_ids)} total, {len(new_ids)} new"
-        )
-        return all_ids, new_ids
+        # Check for existing games needing metadata re-fetch
+        refetch_ids: List[str] = []
+        if not full_resync and hasattr(plugin, "get_ids_needing_refetch"):
+            refetch_ids = plugin.get_ids_needing_refetch()
+            # Don't double-process IDs already in new_ids
+            if refetch_ids:
+                new_set = set(new_ids)
+                refetch_ids = [i for i in refetch_ids if i in all_ids and i not in new_set]
+
+        msg = f"{store_name}: {len(all_ids)} total, {len(new_ids)} new"
+        if refetch_ids:
+            msg += f", {len(refetch_ids)} refetch"
+        logger.info(msg)
+        return all_ids, new_ids, refetch_ids
 
     def create_skeleton_games(
         self,

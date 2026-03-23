@@ -18,6 +18,23 @@ from typing import Any, Dict, List, Optional
 # Each item has optional "section" prefix and required "text"
 NEWS_ENTRIES: List[Dict[str, Any]] = [
     {
+        "version": "0.6.0",
+        "date": "2026-03-23",
+        "items": [
+            {"section": "Store Engine", "text":
+             "Declarative store plugin system for adding new DRM-free stores "
+             "via JSON rulesets. Ships with three new stores: ZOOM Platform, "
+             "JAST USA, and MangaGamer."},
+            {"section": "Badges", "text":
+             "SVG icon badges replace text store pills in all views. "
+             "Corner triangle badges for game modes scale with cover size."},
+            {"section": "", "text": "Demo detection separated from free-to-play games"},
+            {"section": "", "text": "Content filter keyword scoring for better adult content detection"},
+            {"section": "", "text": "Badge visibility toggles in Settings"},
+            {"section": "", "text": "Updated translations for all languages"},
+        ],
+    },
+    {
         "version": "0.5.1",
         "date": "2026-03-16",
         "items": [
@@ -87,6 +104,22 @@ def get_news_html() -> str:
 #   "improved" — Enhancements to things that already existed
 #   "fixed"    — User-impacting bugfixes
 UPDATE_SUMMARIES: Dict[str, Dict[str, List[str]]] = {
+    "0.6.0": {
+        "new": [
+            "Declarative store engine with ZOOM, JAST USA, and MangaGamer",
+            "SVG icon badges in all views",
+            "Demo game detection",
+        ],
+        "improved": [
+            "Content filter keyword scoring",
+            "Badge density and visibility controls",
+            "Translation updates",
+        ],
+        "fixed": [
+            "Store engine metadata re-enrichment loop",
+            "Badge overflow on small covers",
+        ],
+    },
     "0.5.1": {
         "new": [
             "Playnite bridge for remote game launching",

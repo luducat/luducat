@@ -514,24 +514,10 @@ class LazyMetadata:
         # --- Decide what to do ---
         needs_enrichment = self._needs_on_demand_enrichment(game_id)
 
-        # Also check for missing essential fields (original behaviour)
-        fields_to_check = [
-            "cover_image", "header_image", "short_description",
-            "release_date", "developers", "publishers", "genres",
-        ]
-        missing_fields = []
-        for f in fields_to_check:
-            value = game_data.get(f)
-            if not value or (isinstance(value, list) and len(value) == 0):
-                missing_fields.append(f)
-
-        if not needs_enrichment and not missing_fields:
+        if not needs_enrichment:
             return game_data
 
-        if needs_enrichment:
-            logger.debug(f"Game {game_id}: on-demand enrichment triggered")
-        elif missing_fields:
-            logger.debug(f"Game {game_id} has missing fields: {missing_fields}")
+        logger.debug(f"Game {game_id}: on-demand enrichment triggered")
 
         # --- Fetch from all priority sources ---
         result = self._resolver.fetch_metadata_for_game(
@@ -540,48 +526,29 @@ class LazyMetadata:
         metadata, source_map = result  # type: ignore[misc]
 
         if metadata:
-            updated = False
             db_updates: Dict[str, Any] = {}
 
-            if needs_enrichment:
-                # Full enrichment: persist ALL resolved fields to DB
-                # (including detail fields like background_url, franchise, etc.)
-                for db_key, value in metadata.items():
-                    if db_key.startswith("_"):
-                        continue  # Skip internal keys
-                    if value:
-                        db_updates[db_key] = value
+            # Full enrichment: persist ALL resolved fields to DB
+            # (including detail fields like background_url, franchise, etc.)
+            for db_key, value in metadata.items():
+                if db_key.startswith("_"):
+                    continue  # Skip internal keys
+                if value:
+                    db_updates[db_key] = value
 
-                # Update _games_cache with LIST_FIELDS only
-                for cache_key, db_key in self._FIELD_MAPPING.items():
-                    value = metadata.get(db_key)
-                    if value:
-                        if cache_key == "release_date":
-                            if isinstance(value, dict):
-                                value = min(value.values()) if value else ""
-                            else:
-                                from .dt import parse_release_date
-                                value = parse_release_date(value) or ""
-                        game_data[cache_key] = value
+            # Update _games_cache with LIST_FIELDS only
+            for cache_key, db_key in self._FIELD_MAPPING.items():
+                value = metadata.get(db_key)
+                if value:
+                    if cache_key == "release_date":
+                        if isinstance(value, dict):
+                            value = min(value.values()) if value else ""
+                        else:
+                            from .dt import parse_release_date
+                            value = parse_release_date(value) or ""
+                    game_data[cache_key] = value
 
-                updated = bool(db_updates)
-            else:
-                # Only fill missing fields
-                for field in missing_fields:
-                    db_key = self._FIELD_MAPPING.get(field, field)
-                    value = metadata.get(db_key)
-                    if value:
-                        if field == "release_date":
-                            if isinstance(value, dict):
-                                value = min(value.values()) if value else ""
-                            else:
-                                from .dt import parse_release_date
-                                value = parse_release_date(value) or ""
-                        game_data[field] = value
-                        db_updates[db_key] = value
-                        updated = True
-
-            if updated:
+            if db_updates:
                 # game_data is already the GameEntry in _games_cache (mutated in place)
                 # Add priority hash to source_map for persistence
                 source_map["_priority_hash"] = self._resolver.compute_priority_hash()
@@ -590,18 +557,17 @@ class LazyMetadata:
                     game_id, db_updates, source_map=source_map
                 )
                 logger.info(
-                    f"{'Enriched' if needs_enrichment else 'Filled missing for'} "
-                    f"game {game_id} ({len(db_updates)} fields)"
+                    f"Enriched game {game_id} ({len(db_updates)} fields)"
                 )
 
                 # Invalidate detail cache so next get_detail_fields() reads fresh data
                 self._detail_cache.pop(game_id, None)
-        elif needs_enrichment:
-            # Resolver returned None — offline or no plugins available.
-            # Do NOT mark _attempted_by so we retry when back online.
-            logger.debug(
-                f"Game {game_id}: enrichment returned no data (offline?), will retry later"
-            )
+            else:
+                # Metadata returned but no usable fields — treat same as no data
+                self._mark_enrichment_attempted(game_id)
+        else:
+            # No metadata returned — distinguish offline from online-but-nothing
+            self._mark_enrichment_attempted(game_id)
 
         # Fetch Steam Deck compat on-demand if missing (Steam games only)
         if not game_data.steam_deck_compat and "steam" in store_app_ids:
@@ -743,6 +709,33 @@ class LazyMetadata:
         finally:
             session.close()
 
+    def _mark_enrichment_attempted(self, game_id: str) -> None:
+        """Record that enrichment was attempted but produced no data.
+
+        Only marks when online — offline failures are left unmarked so
+        they retry when connectivity returns.
+        """
+        try:
+            from .network_monitor import get_network_monitor
+            is_online = get_network_monitor().is_online
+        except RuntimeError:
+            is_online = False
+
+        if is_online:
+            attempted_sources = list(self._resolver._get_all_priority_sources())
+            attempt_map = {
+                "_priority_hash": self._resolver.compute_priority_hash(),
+                "_attempted_by": attempted_sources,
+            }
+            self._persist_metadata_updates(game_id, {}, source_map=attempt_map)
+            logger.debug(
+                f"Game {game_id}: enrichment attempted online, no data — marked as tried"
+            )
+        else:
+            logger.debug(
+                f"Game {game_id}: enrichment skipped (offline), will retry when online"
+            )
+
     def _persist_metadata_updates(
         self,
         game_id: str,
@@ -758,7 +751,7 @@ class LazyMetadata:
             updates: Dict of field_name -> value to update
             source_map: Optional dict of field_name -> source_name for _sources tracking
         """
-        if not updates:
+        if not updates and not source_map:
             return
 
         session = self.database.new_session()

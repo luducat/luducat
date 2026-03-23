@@ -115,6 +115,8 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "screenshot_grid_density": DEFAULT_GRID_DENSITY,
         "cover_scaling": "stretch",
         "quick_tag_count": 5,  # Max quick-access tags in crumb bar
+        "show_game_mode_badges": True,
+        "show_store_badges": True,
     },
     "filters": {
         "quick_filter": FILTER_ALL,

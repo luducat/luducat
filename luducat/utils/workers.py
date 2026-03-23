@@ -320,7 +320,7 @@ class SyncWorker(QThread):
                 return  # Page progress shown in progress bar, not status bar
             self._on_status(message)
 
-        all_ids, new_ids = await self._game_service.execute_store_fetch(
+        all_ids, new_ids, refetch_ids = await self._game_service.execute_store_fetch(
             store_name,
             full_resync=self._full_resync,
             status_callback=_status_with_page_progress,
@@ -330,6 +330,7 @@ class SyncWorker(QThread):
         self._stats.setdefault(store_name, {})
         self._stats[store_name]["games_found"] = len(all_ids)
         self._stats[store_name]["games_new"] = len(new_ids)
+        self._stats[store_name]["games_refetch"] = len(refetch_ids)
 
         # Don't create metadata jobs if cancelled during fetch
         if cancel_or_skip():
@@ -396,17 +397,18 @@ class SyncWorker(QThread):
         # visible in the final _load_games() call
         self._game_service.invalidate_cache()
 
-        if new_ids:
+        metadata_ids = new_ids + refetch_ids
+        if metadata_ids:
             # Don't queue metadata jobs if cancelled during skeleton creation
             if cancel_or_skip():
                 self.phase_finished.emit(store_name)
                 return
 
-            # Create metadata fetch jobs for new games (batch of 50)
+            # Create metadata fetch jobs for new + refetch games (batch of 50)
             batch_size = 50
             batches = [
-                new_ids[i : i + batch_size]
-                for i in range(0, len(new_ids), batch_size)
+                metadata_ids[i : i + batch_size]
+                for i in range(0, len(metadata_ids), batch_size)
             ]
             metadata_jobs = []
             for idx, batch in enumerate(batches):
@@ -425,15 +427,20 @@ class SyncWorker(QThread):
 
             # Set up cumulative progress tracking for this store
             self._store_metadata_progress[store_name] = {
-                "done": 0, "total": len(new_ids),
+                "done": 0, "total": len(metadata_ids),
             }
             # Emit phase_started for metadata fetching (per-game total)
             self.phase_started.emit(
-                store_name, "fetching metadata", len(new_ids),
+                store_name, "fetching metadata", len(metadata_ids),
             )
 
+            parts = []
+            if new_ids:
+                parts.append(f"{len(new_ids)} new")
+            if refetch_ids:
+                parts.append(f"{len(refetch_ids)} refetch")
             logger.info(
-                f"{store_name}: {len(new_ids)} new games, "
+                f"{store_name}: {' + '.join(parts)} games, "
                 f"{len(batches)} metadata jobs queued"
             )
         else:

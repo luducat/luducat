@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "luducat"
-version = "0.5.1"
+version = "0.6.0"
 description = "Cross-platform game catalogue browser"
 readme = "README.md"
 license = {text = "GPL-3.0-or-later"}
@@ -41,6 +41,7 @@ dependencies = [
     "SecretStorage>=3.3.0;sys_platform=='linux'",
     "vdf>=3.4",
     "browser_cookie3>=0.19.0",
+    "cryptography>=41.0.0",
     "psutil>=5.9.0",
     "pillow-heif>=0.16.0",
     "python-dateutil>=2.8.0",
@@ -78,8 +79,11 @@ where = ["."]
 include = ["luducat*"]
 
 [tool.setuptools.package-data]
-"luducat" = ["assets/**/*.png", "assets/**/*.svg", "assets/**/*.ico", "assets/**/*.icns", "assets/**/*.qss", "assets/**/*.json", "assets/locale/**/*.po", "assets/locale/**/*.mo", "assets/locale/**/*.pot"]
+"luducat" = ["assets/**/*.png", "assets/**/*.svg", "assets/**/*.ico", "assets/**/*.icns", "assets/**/*.qss", "assets/**/*.json", "assets/**/*.txt", "assets/locale/**/*.po", "assets/locale/**/*.mo", "assets/locale/**/*.pot"]
 "luducat.plugins" = ["*/plugin.json", "*/icon.png"]
+"luducat.plugins.runners" = ["*/plugin.json"]
+"luducat.plugins.platforms" = ["*/plugin.json"]
+"luducat.plugins.store_engine" = ["rulesets/*.json"]
 
 [tool.black]
 line-length = 100
