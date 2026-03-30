@@ -1,54 +1,43 @@
 {
     "name": "Soft Warm Light",
     "description": "Soft neutral light theme with turquoise accents for low eye strain",
-
     "bg_primary": "#EEEFF2",
     "bg_secondary": "#E2E3E7",
     "bg_input": "#E8E9ED",
     "bg_hover": "#E0E2E8",
-
     "text_primary": "#2B2D30",
     "text_secondary": "#5E6066",
     "text_on_accent": "#F4F6F8",
-
     "accent": "#22756A",
     "accent_hover": "#3A9488",
     "accent_dark": "#1A5A51",
     "accent_bright": "#49A396",
-
     "border": "#D0D3DA",
     "selection": "#B8C0CC",
-
     "scrollbar_bg": "#EEEFF2",
     "scrollbar_handle": "#B0B5BE",
-
     "fav_color": "#f1c40f",
     "fav_checked": "#D4A80C",
     "fav_checked_hover": "#F5CF3A",
     "fav_checked_dark": "#B8920A",
     "fav_hover_alpha": "rgba(241, 196, 15, 15%)",
     "fav_hover_alpha_mid": "rgba(241, 196, 15, 8%)",
-
     "tag_bg": "#D0D3DA",
     "tag_border": "#22756A",
     "tag_text": "#2B2D30",
     "tag_hover_bg": "#E0E2E8",
-
     "fav_star_color": "#d4a80c",
-
     "download_completed": "#2e7d32",
     "download_failed": "#c62828",
     "download_paused": "#e65100",
-
     "score_positive": "#2e7d32",
     "score_negative": "#c62828",
-
     "title_color": "#2B2D30",
     "link_color": "#22756A",
     "light": "#F5F6F8",
     "btn_gradient_top": "#F5F6F8",
     "btn_border_color": "transparent",
     "license_text_color": "#4A4A4A",
-
-    "font_family": "-apple-system, BlinkMacSystemFont, \"Segoe UI Variable\", \"Segoe UI\", \"Inter\", \"Helvetica Neue\", Helvetica, Arial, sans-serif"
+    "font_family": "-apple-system, BlinkMacSystemFont, \"Segoe UI Variable\", \"Segoe UI\", \"Inter\", \"Helvetica Neue\", Helvetica, Arial, sans-serif",
+    "navbar_icon_color": "#4A4A4A"
 }

@@ -12,8 +12,11 @@ Phase 2: Full metadata (genres, DRM, controller support, etc.)
 """
 
 import logging
+from datetime import timedelta
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
+
+from luducat.plugins.sdk.datetime import utc_now
 
 from luducat.plugins.base import (
     AbstractMetadataProvider,
@@ -26,6 +29,9 @@ from .api import PcgwApi, PcgwApiError, ProgressCallback
 from .database import PcgwDatabase, PcgwGame, PcgwStoreMatch
 
 logger = logging.getLogger(__name__)
+
+# Re-fetch cached PCGW data after 30 days
+CACHE_TTL_DAYS = 30
 
 
 class PcgwProvider(AbstractMetadataProvider):
@@ -266,14 +272,22 @@ class PcgwProvider(AbstractMetadataProvider):
                 gog_games[game.store_app_id] = game
             # Epic: no direct ID mapping in PCGamingWiki
 
-        # Phase 2: Find uncached IDs
+        # Phase 2: Find uncached or stale IDs
+        cutoff = utc_now() - timedelta(days=CACHE_TTL_DAYS)
+
+        def _needs_fetch(store: str, app_id: str) -> bool:
+            match = db.get_store_match(store, app_id)
+            if match is None:
+                return True
+            if match.updated_at and match.updated_at < cutoff:
+                return True  # Stale — older than TTL
+            return False
+
         uncached_steam = [
-            sid for sid in steam_games
-            if db.get_store_match("steam", sid) is None
+            sid for sid in steam_games if _needs_fetch("steam", sid)
         ]
         uncached_gog = [
-            gid for gid in gog_games
-            if db.get_store_match("gog", gid) is None
+            gid for gid in gog_games if _needs_fetch("gog", gid)
         ]
 
         # Phase 3: Batch fetch uncached Steam games
@@ -860,8 +874,15 @@ class PcgwProvider(AbstractMetadataProvider):
     # =========================================================================
 
     def on_enable(self) -> None:
-        """Initialize database on enable"""
+        """Initialize database and check service status on enable"""
         self._get_db()
+        # Pre-check PCGW status page — trip breaker early if there's a known outage.
+        # Skip the NetworkMonitor check (may not be initialized yet at startup).
+        # The status page is on separate infrastructure and responds fast (~1s).
+        try:
+            self._get_api().check_status_page()
+        except Exception as e:
+            logger.debug("Status page pre-check skipped: %s", e)
         logger.info("PCGamingWiki provider enabled")
 
     def on_disable(self) -> None:

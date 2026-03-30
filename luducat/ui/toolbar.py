@@ -6,7 +6,7 @@
 Contains:
 - Filter controls (Filter dropdown, All, Favorites, Sort, Random) — merged from filter bar
 - Search box
-- View mode buttons (list, cover, screenshot)
+- View mode buttons (detail, cover, screenshot)
 - Sync dropdown
 - Tools, Settings buttons
 - About button
@@ -41,7 +41,7 @@ class Toolbar(QWidget):
     """Main toolbar widget
 
     Layout (merged single row):
-    [Filter▼][All][Fav] [Sort▼][🎲] | [Search...] ...stretch... [List|Cover|Screenshot] | [Sync▼] | [Tools▼][Settings][?]
+    [Filter▼][All][Fav] [Sort▼][🎲] | [Search...] ...stretch... [Detail|Cover|Screenshot] | [Sync▼] | [Tools▼][Settings][?]
 
     Signals:
         search_changed: Emitted when search text changes (debounced)
@@ -116,8 +116,8 @@ class Toolbar(QWidget):
         view_layout.setContentsMargins(0, 0, 0, 0)
         view_layout.setSpacing(0)
 
-        self.btn_list = QPushButton(_("List"))
-        self.btn_list.setToolTip(_("Show games as a text list"))
+        self.btn_list = QPushButton(_("Detail"))
+        self.btn_list.setToolTip(_("Show game details"))
         self.btn_cover = QPushButton(_("Cover"))
         self.btn_cover.setToolTip(_("Show games as cover art tiles"))
         self.btn_screenshot = QPushButton(_("Screenshot"))
@@ -322,11 +322,15 @@ class Toolbar(QWidget):
         """Get current search text"""
         return self.search_box.text()
 
+    def set_search_text(self, text: str) -> None:
+        """Set search text programmatically (e.g. when restoring a dynamic collection)."""
+        self.search_box.setText(text)
+
     def get_current_view_mode(self) -> str:
         """Get current view mode
 
         Returns:
-            View mode string (list, cover, screenshot)
+            View mode string (detail, cover, screenshot)
         """
         if self.btn_list.isChecked():
             return VIEW_MODE_LIST
@@ -339,7 +343,7 @@ class Toolbar(QWidget):
         """Set current view mode
 
         Args:
-            mode: View mode (list, cover, screenshot)
+            mode: View mode (detail, cover, screenshot)
         """
         if mode == VIEW_MODE_LIST:
             self.btn_list.setChecked(True)

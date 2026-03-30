@@ -284,6 +284,41 @@ def draw_license_circle(
     painter.drawText(text_rect, Qt.AlignmentFlag.AlignCenter, count_text)
 
 
+# ─── Status dots ─────────────────────────────────────────────────────
+
+# Steam status indicator colors
+STATUS_DOT_PRIVATE = QColor(255, 152, 0)    # Amber/orange — user-managed privacy
+STATUS_DOT_DELISTED = QColor(244, 67, 54)   # Red — removed from store
+
+
+def draw_status_dot(
+    painter: QPainter,
+    center_x: int,
+    center_y: int,
+    diameter: int,
+    color: QColor,
+) -> None:
+    """Draw a small filled circle status indicator.
+
+    Used for Steam private/delisted game markers.
+
+    Args:
+        painter: Active QPainter (caller manages save/restore).
+        center_x: Center X of the dot.
+        center_y: Center Y of the dot.
+        diameter: Dot diameter in pixels (7 for list, 8 for cover/screenshot).
+        color: Fill color.
+    """
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+    painter.setPen(Qt.PenStyle.NoPen)
+    painter.setBrush(color)
+    radius = diameter / 2.0
+    painter.drawEllipse(
+        int(center_x - radius), int(center_y - radius),
+        diameter, diameter,
+    )
+
+
 # ─── Store text badges ───────────────────────────────────────────────
 
 # Width-to-height ratio for uniform store badges (all same width)

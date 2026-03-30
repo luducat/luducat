@@ -428,6 +428,9 @@ _INTERNAL_FIELDS: frozenset = frozenset({
     "release_year",  # Computed from release_date dict
     # Plural variants of aliased fields
     "engines",  # PCGamingWiki plural → engine
+    # Store engine internal fields
+    "store_adult_baseline",  # Adult content baseline from store engine rulesets
+    "goods_type",  # MangaGamer URL construction parameter
 })
 
 # Merged fields — collected from ALL sources (not priority-resolved).

@@ -42,7 +42,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 # Current schema version (increment when adding new migrations)
-CURRENT_SCHEMA_VERSION = 19
+CURRENT_SCHEMA_VERSION = 21
 
 # Mapping from Alembic revision IDs to internal version numbers
 ALEMBIC_REVISION_MAP = {
@@ -855,6 +855,93 @@ def migrate_018_to_019(conn: "Connection") -> None:
     conn.commit()
 
 
+def migrate_019_to_020(conn: "Connection") -> None:
+    """Add is_private_app and is_delisted columns to store_games.
+
+    Steam-specific status flags:
+    - is_private_app: game marked private on user's Steam profile
+    - is_delisted: game no longer in the public Steam store catalog
+    """
+    logger.info("Migration 19->20: Adding is_private_app and is_delisted to store_games")
+
+    cols = conn.execute(text("PRAGMA table_info(store_games)")).fetchall()
+    col_names = {c[1] for c in cols}
+
+    if "is_private_app" not in col_names:
+        conn.execute(text(
+            "ALTER TABLE store_games ADD COLUMN is_private_app INTEGER NOT NULL DEFAULT 0"
+        ))
+        conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS ix_store_games_is_private_app "
+            "ON store_games (is_private_app)"
+        ))
+        logger.info("Migration 19->20: Added is_private_app column")
+
+    if "is_delisted" not in col_names:
+        conn.execute(text(
+            "ALTER TABLE store_games ADD COLUMN is_delisted INTEGER NOT NULL DEFAULT 0"
+        ))
+        conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS ix_store_games_is_delisted "
+            "ON store_games (is_delisted)"
+        ))
+        logger.info("Migration 19->20: Added is_delisted column")
+
+    conn.commit()
+
+
+def migrate_020_to_021(conn: "Connection") -> None:
+    """Add collections and collection_games tables.
+
+    Collections are user-created groups: either dynamic (saved filter queries)
+    or static (manual game lists).
+    """
+    logger.info("Migration 20->21: Adding collections and collection_games tables")
+
+    tables = {
+        r[0] for r in conn.execute(
+            text("SELECT name FROM sqlite_master WHERE type='table'")
+        ).fetchall()
+    }
+
+    if "collections" not in tables:
+        conn.execute(text("""
+            CREATE TABLE collections (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                type TEXT NOT NULL,
+                color TEXT,
+                filter_json TEXT,
+                position INTEGER NOT NULL DEFAULT 0,
+                is_hidden BOOLEAN NOT NULL DEFAULT 0,
+                notes TEXT,
+                created_at DATETIME,
+                updated_at DATETIME
+            )
+        """))
+        logger.info("Migration 20->21: Created collections table")
+
+    if "collection_games" not in tables:
+        conn.execute(text("""
+            CREATE TABLE collection_games (
+                collection_id INTEGER NOT NULL,
+                game_id TEXT NOT NULL,
+                position INTEGER NOT NULL DEFAULT 0,
+                added_at DATETIME,
+                PRIMARY KEY (collection_id, game_id),
+                FOREIGN KEY (collection_id) REFERENCES collections(id) ON DELETE CASCADE,
+                FOREIGN KEY (game_id) REFERENCES games(id) ON DELETE CASCADE
+            )
+        """))
+        conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS ix_collection_games_game_id "
+            "ON collection_games (game_id)"
+        ))
+        logger.info("Migration 20->21: Created collection_games table")
+
+    conn.commit()
+
+
 # Migration registry: list of (from_version, to_version, migration_function)
 MIGRATIONS = [
     (0, 1, migrate_000_to_001),
@@ -876,4 +963,6 @@ MIGRATIONS = [
     (16, 17, migrate_016_to_017),
     (17, 18, migrate_017_to_018),
     (18, 19, migrate_018_to_019),
+    (19, 20, migrate_019_to_020),
+    (20, 21, migrate_020_to_021),
 ]

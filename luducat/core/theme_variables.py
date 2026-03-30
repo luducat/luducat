@@ -63,6 +63,9 @@ THEME_VARIABLES: List[Tuple[str, str, str]] = [
     ("badge_bg", "Game mode badge background", "palette(mid)"),
     ("badge_text", "Game mode badge text color", "palette(window-text)"),
 
+    # === Navbar Icon Color (used for SVG icon tinting in navbar buttons) ===
+    ("navbar_icon_color", "Icon tint color for navbar buttons", "#C7D5E0"),
+
     # === Favorite Star Color (used by view delegates for painted stars) ===
     ("fav_star_color", "Favorite star color in game list/grid views", "#f1c40f"),
 

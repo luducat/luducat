@@ -4,7 +4,7 @@
 """Content area for luducat
 
 Stacked widget containing view modes:
-- List View: Detail panel for selected game with tabbed interface
+- Detail View: Detail panel for selected game with tabbed interface
 - Cover View: Grid of game covers (2:3 portrait)
 - Screenshot View: Grid of game screenshots (16:9 landscape)
 """
@@ -95,7 +95,7 @@ class ContentArea(QWidget):
         # Stacked widget for view modes
         self.stack = QStackedWidget()
 
-        # List view (detail panel with tabs)
+        # Detail view (detail panel with tabs)
         self.list_view = ListView()
         self.stack.addWidget(self.list_view)
 

@@ -1,54 +1,43 @@
 {
     "name": "Sunset",
     "description": "Warm sunset colors with oranges, reds, and purples for evening gaming",
-
     "bg_primary": "#1A0F14",
     "bg_secondary": "#2A1820",
     "bg_input": "#2A1820",
     "bg_hover": "#4A3540",
-
     "text_primary": "#FFE6D5",
     "text_secondary": "#D0C4B0",
     "text_on_accent": "#1A0F14",
-
     "accent": "#FF6B35",
     "accent_hover": "#FF8866",
     "accent_dark": "#D04A15",
     "accent_bright": "#FFA988",
-
     "border": "#4A3038",
     "selection": "#5A4048",
-
     "scrollbar_bg": "#1A0F14",
     "scrollbar_handle": "#3A2028",
-
     "fav_color": "#F7B731",
     "fav_checked": "#E8A821",
     "fav_checked_hover": "#FFD061",
     "fav_checked_dark": "#C89811",
     "fav_hover_alpha": "rgba(247, 183, 49, 40%)",
     "fav_hover_alpha_mid": "rgba(247, 183, 49, 20%)",
-
     "tag_bg": "#4A3038",
     "tag_border": "#FF6B35",
     "tag_text": "#FFE6D5",
     "tag_hover_bg": "#4A3540",
-
     "fav_star_color": "#F7B731",
-
     "download_completed": "#7ec87e",
     "download_failed": "#e05555",
     "download_paused": "#F7B731",
-
     "score_positive": "#7ec87e",
     "score_negative": "#e05555",
-
     "title_color": "#FFFFFF",
     "link_color": "#F7B731",
     "light": "#6A5058",
     "btn_gradient_top": "#6A5058",
     "btn_border_color": "transparent",
     "license_text_color": "#FFE6D5",
-
-    "font_family": "-apple-system, BlinkMacSystemFont, \"Segoe UI Variable\", \"Segoe UI\", \"Inter\", \"Helvetica Neue\", Helvetica, Arial, sans-serif"
+    "font_family": "-apple-system, BlinkMacSystemFont, \"Segoe UI Variable\", \"Segoe UI\", \"Inter\", \"Helvetica Neue\", Helvetica, Arial, sans-serif",
+    "navbar_icon_color": "#F0D0C0"
 }

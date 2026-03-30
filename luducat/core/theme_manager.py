@@ -64,6 +64,21 @@ QPushButton#filterChip {
     min-height: 20px;
 }
 
+#filterBarWidget QPushButton#tagChip {
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid transparent;
+    border-radius: 0px;
+    padding: 3px 8px;
+    min-height: 18px;
+}
+
+#filterBarWidget QPushButton#tagChip:hover {
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid transparent;
+}
+
 /* ========================================
    MENUS - Hover highlight for QMenu items
    ======================================== */
@@ -328,6 +343,22 @@ QDialog QCheckBox::indicator {
 QDialog QCheckBox::indicator:checked {
     background-color: palette(highlight);
     border-color: palette(highlight);
+}
+
+QDialog QRadioButton::indicator:unchecked {
+    width: 12px;
+    height: 12px;
+    border: 2px solid palette(mid);
+    border-radius: 8px;
+    background-color: palette(base);
+}
+
+QDialog QRadioButton::indicator:checked {
+    width: 12px;
+    height: 12px;
+    border: 2px solid palette(highlight);
+    border-radius: 8px;
+    background-color: palette(highlight);
 }
 
 /* ========================================
@@ -1322,6 +1353,7 @@ class ThemeManager(QObject):
         self._download_paused: str = DEFAULT_VALUES["download_paused"]
         self._score_positive: str = DEFAULT_VALUES["score_positive"]
         self._score_negative: str = DEFAULT_VALUES["score_negative"]
+        self._navbar_icon_color: str = DEFAULT_VALUES["navbar_icon_color"]
 
         # Cache for generated QSS from variants
         self._variant_qss_cache: Dict[str, str] = {}
@@ -1398,8 +1430,10 @@ class ThemeManager(QObject):
         # Pin flagship themes at top, rest alphabetical by name
         pinned = [
             THEME_SYSTEM,
-            "variant:luducat",
+            "package:luducat",
+            "variant:luducat-classic",
             "variant:steam-client",
+            "package:steam-2003",
             "variant:gog-galaxy",
         ]
         pinned_order = {tid: i for i, tid in enumerate(pinned)}
@@ -1505,7 +1539,8 @@ class ThemeManager(QObject):
                         self._fav_color = metadata["fav_color"]
                     for _key in ("fav_star_color", "download_completed",
                                  "download_failed", "download_paused",
-                                 "score_positive", "score_negative"):
+                                 "score_positive", "score_negative",
+                                 "navbar_icon_color"):
                         if _key in metadata:
                             setattr(self, f"_{_key}", metadata[_key])
                 except Exception:
@@ -1773,6 +1808,8 @@ class ThemeManager(QObject):
                     self._download_paused = complete.get("download_paused", dv["download_paused"])
                     self._score_positive = complete.get("score_positive", dv["score_positive"])
                     self._score_negative = complete.get("score_negative", dv["score_negative"])
+                    self._navbar_icon_color = complete.get(
+                        "navbar_icon_color", dv["navbar_icon_color"])
             except Exception:
                 pass  # Keep default
 
@@ -1888,6 +1925,10 @@ class ThemeManager(QObject):
     def get_fav_star_color(self) -> str:
         """Get the current theme's favorite star color (painted in delegates)."""
         return self._fav_star_color
+
+    def get_navbar_icon_color(self) -> str:
+        """Get the current theme's navbar icon tint color."""
+        return self._navbar_icon_color
 
     def get_download_colors(self) -> Dict[str, str]:
         """Get download status colors for the current theme."""

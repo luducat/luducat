@@ -45,7 +45,7 @@ from ..core.constants import (
     INSTALLED_BADGE_LABEL,
 )
 from ..core.plugin_manager import PluginManager, _DEFAULT_BRAND_COLORS
-from .badge_painter import draw_badge, draw_icon_badge, draw_store_icon_badge, get_player_count, game_mode_badge_width, store_badge_width
+from .badge_painter import draw_badge, draw_icon_badge, draw_store_icon_badge, draw_status_dot, get_player_count, game_mode_badge_width, store_badge_width, STATUS_DOT_PRIVATE, STATUS_DOT_DELISTED
 
 logger = logging.getLogger(__name__)
 
@@ -448,6 +448,16 @@ class GameListDelegate(QStyledItemDelegate):
             draw_badge(painter, badge_rect, INSTALLED_BADGE_COLOR["bg"], INSTALLED_BADGE_COLOR["text"], inst_text)
             badge_x += badge_width + self.BADGE_PADDING
 
+        # Status dots (private / delisted)
+        dot_diameter = 7
+        dot_cy = y + self.BADGE_HEIGHT // 2
+        if game.get("is_private_app", False):
+            draw_status_dot(painter, badge_x + dot_diameter // 2, dot_cy, dot_diameter, STATUS_DOT_PRIVATE)
+            badge_x += dot_diameter + self.BADGE_PADDING
+        if game.get("is_delisted", False):
+            draw_status_dot(painter, badge_x + dot_diameter // 2, dot_cy, dot_diameter, STATUS_DOT_DELISTED)
+            badge_x += dot_diameter + self.BADGE_PADDING
+
         painter.restore()
 
     def refresh_plugin_data(self) -> None:
@@ -486,6 +496,8 @@ class GameListDelegate(QStyledItemDelegate):
                 tooltip = self._store_tooltip_at(pos.x(), option, index)
                 if not tooltip:
                     tooltip = self._game_mode_tooltip_at(pos.x(), option, index)
+                if not tooltip:
+                    tooltip = self._status_dot_tooltip_at(pos.x(), option, index)
                 if tooltip:
                     QToolTip.showText(event.globalPos(), tooltip, view)
                     return True
@@ -557,6 +569,63 @@ class GameListDelegate(QStyledItemDelegate):
                     ).format(count=player_count)
                 return tip
             badge_x = badge_end + self.BADGE_PADDING
+
+        return None
+
+    def _status_dot_tooltip_at(
+        self, mouse_x: int, option: QStyleOptionViewItem, index: QModelIndex
+    ) -> Optional[str]:
+        """Check if mouse_x is over a status dot, return tooltip."""
+        game = index.data(GameRoles.GameData) or {}
+        is_private = game.get("is_private_app", False)
+        is_delisted = game.get("is_delisted", False)
+        if not is_private and not is_delisted:
+            return None
+
+        # Replay layout to find dot positions (after all other badges)
+        stores = index.data(GameRoles.Stores) or []
+        is_favorite = index.data(GameRoles.IsFavorite) or False
+        game_modes = index.data(GameRoles.GameModes) or []
+        is_installed = index.data(GameRoles.IsInstalled) or False
+
+        badge_x = option.rect.x() + 10
+        sbw = store_badge_width(self.STORE_BADGE_SIZE)
+
+        # Skip store badges
+        for _store in stores:
+            badge_x += sbw + self.BADGE_PADDING
+
+        # Skip favorite
+        if is_favorite:
+            badge_x += 14 + self.BADGE_PADDING
+
+        # Skip game mode badges
+        for mode_name in game_modes:
+            if mode_name not in GAME_MODE_LABELS:
+                continue
+            player_count = get_player_count(game, mode_name)
+            badge_w = game_mode_badge_width(mode_name, self.BADGE_HEIGHT, player_count)
+            if badge_w == 0:
+                badge_w = self.BADGE_HEIGHT
+            badge_x += badge_w + self.BADGE_PADDING
+
+        # Skip installed badge
+        if is_installed:
+            badge_fm = QFontMetrics(self._badge_font)
+            inst_text = _(INSTALLED_BADGE_LABEL)
+            badge_x += badge_fm.horizontalAdvance(inst_text) + 10 + self.BADGE_PADDING
+
+        # Check status dots
+        dot_diameter = 7
+        if is_private:
+            dot_end = badge_x + dot_diameter
+            if badge_x <= mouse_x <= dot_end:
+                return _("Marked private on Steam profile")
+            badge_x = dot_end + self.BADGE_PADDING
+        if is_delisted:
+            dot_end = badge_x + dot_diameter
+            if badge_x <= mouse_x <= dot_end:
+                return _("No longer available on Steam store")
 
         return None
 

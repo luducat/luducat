@@ -62,7 +62,7 @@ from ..core.constants import (
 )
 from ..core.plugin_manager import PluginManager, _DEFAULT_BRAND_COLORS
 from ..utils.image_cache import get_screenshot_cache, ImageCache
-from .badge_painter import draw_badge, draw_icon_badge, draw_store_icon_badge, draw_license_circle, draw_corner_triangle, draw_overflow_pill, get_player_count, game_mode_badge_width, store_badge_width
+from .badge_painter import draw_badge, draw_icon_badge, draw_store_icon_badge, draw_license_circle, draw_corner_triangle, draw_overflow_pill, draw_status_dot, get_player_count, game_mode_badge_width, store_badge_width, STATUS_DOT_PRIVATE, STATUS_DOT_DELISTED
 
 logger = logging.getLogger(__name__)
 
@@ -506,6 +506,18 @@ class ScreenshotItemDelegate(QStyledItemDelegate):
                 draw_badge(painter, badge_rect, colors["bg"], colors["text"], translated)
                 tr_x -= self.BADGE_PADDING
 
+        # Status dots (private / delisted) — left of compat badges in top-right
+        dot_diameter = 8
+        dot_cy = tr_y + dot_diameter // 2
+        if game.get("is_delisted", False):
+            tr_x -= dot_diameter
+            draw_status_dot(painter, tr_x + dot_diameter // 2, dot_cy, dot_diameter, STATUS_DOT_DELISTED)
+            tr_x -= self.BADGE_PADDING
+        if game.get("is_private_app", False):
+            tr_x -= dot_diameter
+            draw_status_dot(painter, tr_x + dot_diameter // 2, dot_cy, dot_diameter, STATUS_DOT_PRIVATE)
+            tr_x -= self.BADGE_PADDING
+
         # Draw store badges (bottom-left of screenshot) — primary + overflow
         sb = self.STORE_BADGE_SIZE
         sbw = store_badge_width(sb)
@@ -685,7 +697,7 @@ class ScreenshotView(QWidget):
     """Grid view of game screenshots using QListView for virtual scrolling
 
     Signals:
-        game_selected: Emitted when a screenshot is double-clicked (switches to list view)
+        game_selected: Emitted when a screenshot is clicked (switches to detail view)
         view_screenshot_requested: Emitted when a screenshot is clicked (opens fullscreen)
     """
 

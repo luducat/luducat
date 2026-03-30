@@ -13,7 +13,7 @@ import logging
 from typing import Dict, List, Optional, Set
 
 from PySide6.QtCore import QSize, Qt, Signal
-from PySide6.QtGui import QAction, QActionGroup
+from PySide6.QtGui import QAction, QActionGroup, QColor, QIcon
 from PySide6.QtWidgets import (
     QWidget,
     QHBoxLayout,
@@ -104,35 +104,10 @@ class TagChip(FilterChip):
         return "black" if (0.299 * r + 0.587 * g + 0.114 * b) > 128 else "white"
 
     def _update_style(self) -> None:
-        """Update chip style with tag color accent"""
-        from ..core.constants import TAG_SOURCE_COLORS
-        checked_text = self._contrast_text(self.tag_color)
-
-        # Source color accent: 3px left border in brand color
-        source_border = ""
-        if self._source_colors_enabled and self.tag_source != "native":
-            brand = TAG_SOURCE_COLORS.get(self.tag_source)
-            if brand:
-                source_border = f"border-left: 3px solid {brand};"
-
-        self.setStyleSheet(f"""
-            QPushButton#tagChip {{
-                background: {self.tag_color}40;
-                color: palette(text);
-                border: 1px solid {self.tag_color};
-                {source_border}
-                padding: 4px 8px;
-                border-radius: 3px;
-            }}
-            QPushButton#tagChip:checked {{
-                background: {self.tag_color};
-                color: {checked_text};
-                {source_border}
-            }}
-            QPushButton#tagChip:hover {{
-                background: {self.tag_color}60;
-            }}
-        """)
+        """Set the tag's identity color as bottom border only."""
+        self.setStyleSheet(
+            f"QPushButton#tagChip {{ border-bottom-color: {self.tag_color}; }}"
+        )
 
     def set_color(self, color: str) -> None:
         """Update tag color"""
@@ -232,7 +207,7 @@ class FilterBar(QWidget):
     """Filter bar widget
 
     Layout:
-    [ Filter ▼ ] [All] [Favorites] | [ Sort: Name ▼ ] | Tags: ...
+    [ Filter ▼ ] [All] [Favorites ▼] | [ Sort: Name ▼ ] | Tags: ...
 
     Signals:
         filters_changed: Emitted when any filter changes
@@ -245,6 +220,10 @@ class FilterBar(QWidget):
     sort_changed = Signal(str, bool, bool)  # mode, reverse, favorites_first
     add_tag_requested = Signal()
     random_game_requested = Signal()
+    collection_activated = Signal(dict)  # collection dict (dynamic or static)
+    collection_deactivated = Signal()
+    save_collection_requested = Signal()  # user clicked "Save current filter..."
+    manage_collections_requested = Signal()
 
     def __init__(self, parent: Optional[QWidget] = None):
         super().__init__(parent)
@@ -262,9 +241,15 @@ class FilterBar(QWidget):
         self._active_years: Set[str] = set()  # year strings like "2024"
         self._filter_family_shared: bool = False
         self._filter_orphaned: bool = False
+        self._filter_private_apps: bool = False
+        self._filter_delisted: bool = False
         self._filter_protondb: bool = False
         self._filter_steam_deck: bool = False
         self._exact_stores_filter: bool = False
+
+        # Collection state
+        self._active_collection: Optional[dict] = None  # Currently active collection
+        self._collections_list: List[dict] = []  # All collections from service
 
         # Sort state
         self._current_sort_mode = SORT_MODE_NAME
@@ -320,10 +305,11 @@ class FilterBar(QWidget):
         self.btn_all.clicked.connect(self._on_all_clicked)
         controls_layout.addWidget(self.btn_all)
 
-        self.btn_favorites = FilterChip(_("Favorites"), FILTER_TYPE_FAVORITES)
-        self.btn_favorites.setToolTip(_("Show only favorite games"))
-        self.btn_favorites.clicked.connect(self._on_favorites_clicked)
-        controls_layout.addWidget(self.btn_favorites)
+        self.btn_collections = QPushButton(_("Favorites"))
+        self.btn_collections.setObjectName("collectionsButton")
+        self.btn_collections.setToolTip(_("Favorites and collections"))
+        self._setup_collections_menu()
+        controls_layout.addWidget(self.btn_collections)
 
         # Separator before sort
         sep1 = QFrame()
@@ -484,6 +470,18 @@ class FilterBar(QWidget):
         self.orphaned_action.setVisible(False)
         self.orphaned_action.triggered.connect(self._on_orphaned_toggled)
 
+        # Private apps filter (visible only when private app data exists)
+        self.private_apps_action = menu.addAction(_("Private Apps"))
+        self.private_apps_action.setCheckable(True)
+        self.private_apps_action.setVisible(False)
+        self.private_apps_action.triggered.connect(self._on_private_apps_toggled)
+
+        # Delisted filter (visible only when delisted game data exists)
+        self.delisted_action = menu.addAction(_("Delisted"))
+        self.delisted_action.setCheckable(True)
+        self.delisted_action.setVisible(False)
+        self.delisted_action.triggered.connect(self._on_delisted_toggled)
+
         # Compatibility filter actions (visible only when data exists)
         self.protondb_action = menu.addAction(_("ProtonDB Rated"))
         self.protondb_action.setCheckable(True)
@@ -511,6 +509,166 @@ class FilterBar(QWidget):
         self._reset_separator = self.filter_menu.addSeparator()
         self._reset_action = self.filter_menu.addAction(_("Reset Filters"))
         self._reset_action.triggered.connect(self._on_all_clicked)
+
+    def _setup_collections_menu(self) -> None:
+        """Create collections dropdown menu (Favorites + saved collections)."""
+        self._collections_menu = QMenu(self)
+        self.btn_collections.setMenu(self._collections_menu)
+        self._collections_menu.aboutToShow.connect(self._rebuild_collections_menu)
+
+    def _rebuild_collections_menu(self) -> None:
+        """Rebuild collections menu from current state."""
+        menu = self._collections_menu
+        menu.clear()
+
+        # Favorites toggle (always first)
+        self.action_fav_toggle = QAction(_("Favorites"), menu)
+        self.action_fav_toggle.setCheckable(True)
+        is_fav_active = FILTER_TYPE_FAVORITES in self._type_filters
+        self.action_fav_toggle.setChecked(is_fav_active)
+        self.action_fav_toggle.triggered.connect(self._on_favorites_toggled)
+        menu.addAction(self.action_fav_toggle)
+
+        # Dynamic collections
+        dynamic = [c for c in self._collections_list if c["type"] == "dynamic"]
+        if dynamic:
+            menu.addSeparator()
+            for coll in dynamic:
+                action = QAction(coll["name"], menu)
+                action.setData(coll)
+                is_active = (
+                    self._active_collection is not None
+                    and self._active_collection.get("id") == coll["id"]
+                )
+                action.setCheckable(True)
+                action.setChecked(is_active)
+                action.triggered.connect(
+                    lambda checked, c=coll: self._on_collection_clicked(c)
+                )
+                menu.addAction(action)
+
+        # Static collections
+        static = [c for c in self._collections_list if c["type"] == "static"]
+        if static:
+            menu.addSeparator()
+            for coll in static:
+                action = QAction(coll["name"], menu)
+                action.setData(coll)
+                is_active = (
+                    self._active_collection is not None
+                    and self._active_collection.get("id") == coll["id"]
+                )
+                action.setCheckable(True)
+                action.setChecked(is_active)
+                action.triggered.connect(
+                    lambda checked, c=coll: self._on_collection_clicked(c)
+                )
+                menu.addAction(action)
+
+        # Actions
+        menu.addSeparator()
+        save_action = menu.addAction(_("Save current filter..."))
+        save_action.triggered.connect(self.save_collection_requested.emit)
+        manage_action = menu.addAction(_("Manage collections..."))
+        manage_action.triggered.connect(self.manage_collections_requested.emit)
+
+    def _on_favorites_toggled(self, checked: bool) -> None:
+        """Handle favorites toggle from collections menu."""
+        # Clear active collection — favorites and collections are mutually exclusive
+        if self._active_collection is not None:
+            self._active_collection = None
+            self.collection_deactivated.emit()
+        if checked:
+            self._type_filters = {FILTER_TYPE_FAVORITES}
+            self.action_favorites.setChecked(True)
+            self.action_free.setChecked(False)
+            self.action_installed.setChecked(False)
+        else:
+            self._type_filters.discard(FILTER_TYPE_FAVORITES)
+            self.action_favorites.setChecked(False)
+        self._update_button_states()
+        self._emit_filters_changed()
+
+    def _on_collection_clicked(self, collection: dict) -> None:
+        """Handle collection selection from dropdown."""
+        if (
+            self._active_collection is not None
+            and self._active_collection.get("id") == collection["id"]
+        ):
+            # Clicking active collection deactivates it
+            self._active_collection = None
+            self.collection_deactivated.emit()
+            self._update_button_states()
+            self._emit_filters_changed()
+        else:
+            self._reset_filters_silent()
+            self._active_collection = collection
+            self.collection_activated.emit(collection)
+            # Dynamic: _on_collection_activated handler restores saved filters
+            # via set_active_filters, which already emits filters_changed.
+            # Static: no follow-up handler, so emit here.
+            if collection["type"] == "static":
+                self._update_button_states()
+                self._emit_filters_changed()
+
+    def _reset_filters_silent(self) -> None:
+        """Reset all filter state to defaults without emitting signals."""
+        self._base_filter = FILTER_BASE_ALL
+        self._type_filters.clear()
+        self._active_stores = set(self._available_stores)
+        self._active_tags.clear()
+        self._active_game_modes.clear()
+        self._active_developers.clear()
+        self._active_publishers.clear()
+        self._active_genres.clear()
+        self._active_years.clear()
+        self._exact_stores_filter = False
+        self._filter_family_shared = False
+        self._filter_orphaned = False
+        self._filter_private_apps = False
+        self._filter_delisted = False
+        self._filter_protondb = False
+        self._filter_steam_deck = False
+        # Sync menu checkmarks
+        self.action_all_games.setChecked(True)
+        self.action_favorites.setChecked(False)
+        self.action_free.setChecked(False)
+        self.action_installed.setChecked(False)
+        self.action_demos.setChecked(False)
+        for action in self._store_actions.values():
+            action.setChecked(True)
+        for action in self._game_mode_actions.values():
+            action.setChecked(False)
+        self._exact_stores_action.setChecked(False)
+        self.family_shared_action.setChecked(False)
+        self.orphaned_action.setChecked(False)
+        self.private_apps_action.setChecked(False)
+        self.delisted_action.setChecked(False)
+        self.protondb_action.setChecked(False)
+        self.steam_deck_action.setChecked(False)
+
+    def set_collections(self, collections: list) -> None:
+        """Update the list of available collections (called by main_window)."""
+        self._collections_list = collections
+
+    def get_active_collection(self) -> Optional[dict]:
+        """Return the currently active collection, or None."""
+        return self._active_collection
+
+    def clear_active_collection(self) -> None:
+        """Deactivate the current collection."""
+        if self._active_collection is not None:
+            self._active_collection = None
+            self.collection_deactivated.emit()
+            self._update_button_states()
+            self._emit_filters_changed()
+
+    def activate_collection(self, collection: dict) -> None:
+        """Activate a collection programmatically (e.g., from manager preview)."""
+        self._reset_filters_silent()
+        self._active_collection = collection
+        self._update_button_states()
+        self._emit_filters_changed()
 
     def _setup_sort_menu(self) -> None:
         """Create sort dropdown menu"""
@@ -742,7 +900,7 @@ class FilterBar(QWidget):
             default_start = current_year
             default_end = current_year
 
-        dialog = QDialog(self)
+        dialog = QDialog(self.window())
         dialog.setWindowTitle(_("Filter by Release Year"))
         layout = QVBoxLayout(dialog)
 
@@ -810,9 +968,22 @@ class FilterBar(QWidget):
         self._update_button_states()
         self._emit_filters_changed()
 
+    def _on_private_apps_toggled(self) -> None:
+        """Handle Private Apps filter toggle."""
+        self._filter_private_apps = self.private_apps_action.isChecked()
+        self._update_button_states()
+        self._emit_filters_changed()
+
+    def _on_delisted_toggled(self) -> None:
+        """Handle Delisted filter toggle."""
+        self._filter_delisted = self.delisted_action.isChecked()
+        self._update_button_states()
+        self._emit_filters_changed()
+
     def set_compat_filters_available(
         self, protondb: bool, steam_deck: bool,
         family_shared: bool = False, orphaned: bool = False,
+        private_apps: bool = False, delisted: bool = False,
     ) -> None:
         """Show or hide compatibility filter actions based on available data.
 
@@ -830,8 +1001,17 @@ class FilterBar(QWidget):
         if not orphaned:
             self._filter_orphaned = False
             self.orphaned_action.setChecked(False)
+        self.private_apps_action.setVisible(private_apps)
+        if not private_apps:
+            self._filter_private_apps = False
+            self.private_apps_action.setChecked(False)
+        self.delisted_action.setVisible(delisted)
+        if not delisted:
+            self._filter_delisted = False
+            self.delisted_action.setChecked(False)
         self.compat_separator.setVisible(
             protondb or steam_deck or family_shared or orphaned
+            or private_apps or delisted
         )
         self.protondb_action.setVisible(protondb)
         self.steam_deck_action.setVisible(steam_deck)
@@ -890,7 +1070,7 @@ class FilterBar(QWidget):
         # Filter out empty/whitespace-only entries
         available = [x for x in available if x and x.strip()]
 
-        dialog = QDialog(self)
+        dialog = QDialog(self.window())
         dialog.setWindowTitle(title)
         layout = QVBoxLayout(dialog)
 
@@ -898,17 +1078,6 @@ class FilterBar(QWidget):
         search_input = QLineEdit()
         search_input.setPlaceholderText(_("Search..."))
         layout.addWidget(search_input)
-
-        # --- Selected panel (lightweight: only shows active items) ---
-        selected_label = QLabel(_("Selected:"))
-        selected_label.setObjectName("hintLabel")
-        layout.addWidget(selected_label)
-
-        selected_list = QListView()
-        selected_list.setMaximumHeight(120)
-        selected_model = QStandardItemModel(selected_list)
-        selected_list.setModel(selected_model)
-        layout.addWidget(selected_list)
 
         # --- Full list using QListView with checkable items ---
         cat = title.replace(_("Filter by "), "")
@@ -937,6 +1106,17 @@ class FilterBar(QWidget):
         full_list.setModel(proxy)
         full_list.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
         layout.addWidget(full_list)
+
+        # --- Selected panel below full list (avoids layout jump when items are toggled) ---
+        selected_label = QLabel(_("Selected:"))
+        selected_label.setObjectName("hintLabel")
+        layout.addWidget(selected_label)
+
+        selected_list = QListView()
+        selected_list.setMaximumHeight(120)
+        selected_model = QStandardItemModel(selected_list)
+        selected_list.setModel(selected_model)
+        layout.addWidget(selected_list)
 
         def _rebuild_selected_panel():
             """Refresh the selected panel from source model check states."""
@@ -1120,6 +1300,11 @@ class FilterBar(QWidget):
 
     def _on_all_clicked(self) -> None:
         """Handle All button click - reset all filters to defaults"""
+        # Clear active collection
+        if self._active_collection is not None:
+            self._active_collection = None
+            self.collection_deactivated.emit()
+
         # Set base filter to All
         self._base_filter = FILTER_BASE_ALL
         self.action_all_games.setChecked(True)
@@ -1159,28 +1344,14 @@ class FilterBar(QWidget):
         self.family_shared_action.setChecked(False)
         self._filter_orphaned = False
         self.orphaned_action.setChecked(False)
+        self._filter_private_apps = False
+        self.private_apps_action.setChecked(False)
+        self._filter_delisted = False
+        self.delisted_action.setChecked(False)
         self._filter_protondb = False
         self.protondb_action.setChecked(False)
         self._filter_steam_deck = False
         self.steam_deck_action.setChecked(False)
-
-        self._update_button_states()
-        self._emit_filters_changed()
-
-    def _on_favorites_clicked(self) -> None:
-        """Handle Favorites button click - toggle favorites-only filter"""
-        is_checked = self.btn_favorites.isChecked()
-
-        if is_checked:
-            # Show only favorites
-            self._type_filters = {FILTER_TYPE_FAVORITES}
-            self.action_favorites.setChecked(True)
-            self.action_free.setChecked(False)
-            self.action_installed.setChecked(False)
-        else:
-            # Clear favorites filter
-            self._type_filters.discard(FILTER_TYPE_FAVORITES)
-            self.action_favorites.setChecked(False)
 
         self._update_button_states()
         self._emit_filters_changed()
@@ -1214,18 +1385,21 @@ class FilterBar(QWidget):
             len(self._active_tags) == 0 and
             not self._filter_family_shared and
             not self._filter_orphaned and
+            not self._filter_private_apps and
+            not self._filter_delisted and
             not self._filter_protondb and
             not self._filter_steam_deck and
             not self._exact_stores_filter and
-            self._active_stores == set(self._available_stores)
+            self._active_stores == set(self._available_stores) and
+            self._active_collection is None
         )
         self.btn_all.setChecked(is_all)
 
-        # Favorites button: checked if ONLY favorites type is selected
-        self.btn_favorites.setChecked(
-            FILTER_TYPE_FAVORITES in self._type_filters and
-            len(self._type_filters) == 1
-        )
+        # Favorites indicator on collections button (star suffix when active)
+        if FILTER_TYPE_FAVORITES in self._type_filters:
+            self.btn_collections.setText(_("Favorites") + " *")
+        else:
+            self.btn_collections.setText(_("Favorites"))
 
         # Category checkmarks in filter dropdown
         self.game_modes_action.setChecked(bool(self._active_game_modes))
@@ -1344,6 +1518,12 @@ class FilterBar(QWidget):
         if self._filter_orphaned:
             lines.append(_("Unlinked"))
 
+        # Steam status
+        if self._filter_private_apps:
+            lines.append(_("Private Apps"))
+        if self._filter_delisted:
+            lines.append(_("Delisted"))
+
         # Compatibility
         compat_parts = []
         if self._filter_protondb:
@@ -1360,7 +1540,7 @@ class FilterBar(QWidget):
         tooltip = "<br>".join(lines)
         self.btn_filter.setToolTip(tooltip)
         self.btn_all.setToolTip(tooltip)
-        self.btn_favorites.setToolTip(tooltip)
+        self.btn_collections.setToolTip(tooltip)
 
     def _update_active_chips(self) -> None:
         """Rebuild the crumb bar: quick-access tags + active filter crumbs."""
@@ -1409,6 +1589,18 @@ class FilterBar(QWidget):
         # --- Active filter crumbs (right side) ---
         # chips: list of (label, callback, crumb_type, crumb_color, tooltip_detail)
         chips = []
+
+        # Active collection crumb (static collections only — shown first)
+        if self._active_collection is not None and self._active_collection["type"] == "static":
+            coll_color = self._active_collection.get("color") or ""
+            chips.append((
+                self._active_collection["name"],
+                self.clear_active_collection,
+                "special", coll_color,
+                _("Collection: {name} — click to remove").format(
+                    name=self._active_collection["name"]
+                ),
+            ))
 
         # Base filter (only if not default "all")
         if self._base_filter == "recent":
@@ -1522,6 +1714,12 @@ class FilterBar(QWidget):
         if self._filter_orphaned:
             chips.append((_("Unlinked"), self._clear_orphaned_filter, "filter", "", ""))
 
+        # Steam status
+        if self._filter_private_apps:
+            chips.append((_("Private Apps"), self._clear_private_apps_filter, "filter", "", ""))
+        if self._filter_delisted:
+            chips.append((_("Delisted"), self._clear_delisted_filter, "filter", "", ""))
+
         # Compatibility
         if self._filter_protondb:
             chips.append((
@@ -1587,7 +1785,6 @@ class FilterBar(QWidget):
         self._type_filters.discard(filter_type)
         if filter_type == FILTER_TYPE_FAVORITES:
             self.action_favorites.setChecked(False)
-            self.btn_favorites.setChecked(False)
         elif filter_type == FILTER_TYPE_FREE:
             self.action_free.setChecked(False)
         elif filter_type == FILTER_TYPE_INSTALLED:
@@ -1661,6 +1858,18 @@ class FilterBar(QWidget):
         self._update_button_states()
         self._emit_filters_changed()
 
+    def _clear_private_apps_filter(self) -> None:
+        self._filter_private_apps = False
+        self.private_apps_action.setChecked(False)
+        self._update_button_states()
+        self._emit_filters_changed()
+
+    def _clear_delisted_filter(self) -> None:
+        self._filter_delisted = False
+        self.delisted_action.setChecked(False)
+        self._update_button_states()
+        self._emit_filters_changed()
+
     def _remove_tag_filter(self, tag_name: str) -> None:
         self._active_tags.discard(tag_name)
         self._update_button_states()
@@ -1681,9 +1890,12 @@ class FilterBar(QWidget):
             "years": list(self._active_years),
             "filter_family_shared": self._filter_family_shared,
             "filter_orphaned": self._filter_orphaned,
+            "filter_private_apps": self._filter_private_apps,
+            "filter_delisted": self._filter_delisted,
             "filter_protondb": self._filter_protondb,
             "filter_steam_deck": self._filter_steam_deck,
             "exact_stores": self._exact_stores_filter,
+            "active_collection": self._active_collection,
         }
         logger.debug(f"Filters changed: {filters}")
         self.filters_changed.emit(filters)
@@ -1767,9 +1979,12 @@ class FilterBar(QWidget):
             "years": list(self._active_years),
             "filter_family_shared": self._filter_family_shared,
             "filter_orphaned": self._filter_orphaned,
+            "filter_private_apps": self._filter_private_apps,
+            "filter_delisted": self._filter_delisted,
             "filter_protondb": self._filter_protondb,
             "filter_steam_deck": self._filter_steam_deck,
             "exact_stores": self._exact_stores_filter,
+            "active_collection": self._active_collection,
         }
 
     def set_active_filters(self, filters: dict) -> None:
@@ -1826,6 +2041,14 @@ class FilterBar(QWidget):
             self._filter_orphaned = filters.get("filter_orphaned", False)
             self.orphaned_action.setChecked(self._filter_orphaned)
 
+        if self.private_apps_action.isVisible():
+            self._filter_private_apps = filters.get("filter_private_apps", False)
+            self.private_apps_action.setChecked(self._filter_private_apps)
+
+        if self.delisted_action.isVisible():
+            self._filter_delisted = filters.get("filter_delisted", False)
+            self.delisted_action.setChecked(self._filter_delisted)
+
         if self.protondb_action.isVisible():
             self._filter_protondb = filters.get("filter_protondb", False)
             self.protondb_action.setChecked(self._filter_protondb)
@@ -1835,6 +2058,7 @@ class FilterBar(QWidget):
             self.steam_deck_action.setChecked(self._filter_steam_deck)
 
         self._update_button_states()
+        self._emit_filters_changed()
 
     def set_available_stores(self, stores: List[tuple]) -> None:
         """Set available store filters from game_service format
@@ -1931,15 +2155,21 @@ class FilterBar(QWidget):
         self._active_years &= set(years)
 
     def _update_dice_icon(self) -> None:
-        """Create a theme-aware dice icon for the random button."""
+        """Tint dice SVG icon using the theme's navbar_icon_color."""
         size = max(18, self.btn_random.height() - 8)
-        icon = load_tinted_icon("dice.svg", size=size)
+        color = getattr(self, '_navbar_icon_color', None)
+        icon = load_tinted_icon("dice.svg", size=size, color=color)
         if icon.isNull():
             self.btn_random.setText("?")
             return
         self.btn_random.setIcon(icon)
         self.btn_random.setIconSize(QSize(size, size))
         self.btn_random.setText("")
+
+    def set_navbar_icon_color(self, color_str: str) -> None:
+        """Receive navbar icon color from theme manager and refresh icons."""
+        self._navbar_icon_color = QColor(color_str)
+        self._update_dice_icon()
 
     def set_source_colors_enabled(self, enabled: bool) -> None:
         """Enable or disable source brand color accents on tag chips/crumbs.

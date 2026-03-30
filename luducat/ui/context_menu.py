@@ -1,7 +1,7 @@
 # This file is part of luducat. License: GPL-3.0-or-later. Contact: luducat@trinity2k.net
 # context_menu.py
 
-"""Context menu for game items in all views (list, cover, screenshot).
+"""Context menu for game items in all views (detail, cover, screenshot).
 
 Reusable QMenu subclass that builds a context menu from game data and emits
 signals for all actions. Business logic is handled by MainWindow.
@@ -18,7 +18,7 @@ from PySide6.QtWidgets import (
     QWidgetAction,
 )
 
-from ..core.constants import GAME_MODE_FILTERS
+from ..core.constants import GAME_MODE_FILTERS, VIEW_MODE_COVER, VIEW_MODE_SCREENSHOT
 from ..core.plugin_manager import PluginManager
 from ..utils.browser import open_url
 
@@ -46,6 +46,8 @@ class GameContextMenu(QMenu):
     force_rescan_requested = Signal(str)            # game_id
     switch_to_notes_requested = Signal(str)         # game_id
     switch_to_properties_requested = Signal(str)    # game_id
+    show_details_requested = Signal(str)                   # game_id
+    collection_toggled = Signal(int, str, bool)           # collection_id, game_id, add (True) or remove (False)
     cover_author_score_requested = Signal(str, str, int)  # game_id, author_name, score_delta
 
     def build(
@@ -56,6 +58,8 @@ class GameContextMenu(QMenu):
         view_mode: str = "",
         sgdb_cover_author: str = "",
         sgdb_author_steam_id: str = "",
+        static_collections: List[Dict[str, Any]] = None,
+        game_collection_ids: List[int] = None,
     ) -> None:
         """Build context menu from game data.
 
@@ -78,6 +82,14 @@ class GameContextMenu(QMenu):
         # 3-4. Play / Play with...
         self._add_play_actions(game, game_id, default_store)
         self.addSeparator()
+
+        # 5. Show Details (only in cover/screenshot views)
+        if view_mode in (VIEW_MODE_COVER, VIEW_MODE_SCREENSHOT):
+            details_action = self.addAction(_("Show Details"))
+            details_action.triggered.connect(
+                lambda checked, gid=game_id: self.show_details_requested.emit(gid)
+            )
+            self.addSeparator()
 
         # 6. Favorite / Unfavorite
         is_fav = game.get("is_favorite", False)
@@ -105,6 +117,12 @@ class GameContextMenu(QMenu):
 
         # 10. Filter submenu
         self._add_filter_submenu(game)
+
+        # 10b. Collections submenu (static collections only)
+        if static_collections:
+            self._add_collections_submenu(
+                game_id, static_collections, game_collection_ids or []
+            )
         self.addSeparator()
 
         # 12. Screenshots
@@ -364,6 +382,32 @@ class GameContextMenu(QMenu):
             action.setToolTip(tooltip)
             action.triggered.connect(
                 lambda checked, gid=game_id, v=value: self.nsfw_override_changed.emit(gid, v)
+            )
+
+    def _add_collections_submenu(
+        self,
+        game_id: str,
+        static_collections: List[Dict[str, Any]],
+        game_collection_ids: List[int],
+    ) -> None:
+        """Add Collections submenu for adding/removing game from static collections."""
+        submenu = self.addMenu(_("Collections"))
+        member_set = set(game_collection_ids)
+
+        if not static_collections:
+            no_colls = submenu.addAction(_("No collections yet"))
+            no_colls.setEnabled(False)
+            return
+
+        for coll in static_collections:
+            cid = coll["id"]
+            is_member = cid in member_set
+            action = submenu.addAction(coll["name"])
+            action.setCheckable(True)
+            action.setChecked(is_member)
+            action.triggered.connect(
+                lambda checked, _cid=cid, _gid=game_id, _was=is_member:
+                    self.collection_toggled.emit(_cid, _gid, not _was)
             )
 
     def _add_sgdb_author_submenu(

@@ -1,54 +1,43 @@
 {
     "name": "Discord Dark",
     "description": "Dark theme inspired by Discord's dark mode with blurple accents",
-
     "bg_primary": "#36393F",
     "bg_secondary": "#2F3136",
     "bg_input": "#2F3136",
     "bg_hover": "#3C3F45",
-
     "text_primary": "#DCDDDE",
     "text_secondary": "#B9BBBE",
     "text_on_accent": "#FFFFFF",
-
     "accent": "#5865F2",
     "accent_hover": "#7289DA",
     "accent_dark": "#4752C4",
     "accent_bright": "#8E9BFF",
-
     "border": "#202225",
     "selection": "#404249",
-
     "scrollbar_bg": "#36393F",
     "scrollbar_handle": "#202225",
-
     "fav_color": "#f1c40f",
     "fav_checked": "#E8B80D",
     "fav_checked_hover": "#F5CF3A",
     "fav_checked_dark": "#B8920A",
     "fav_hover_alpha": "rgba(241, 196, 15, 40%)",
     "fav_hover_alpha_mid": "rgba(241, 196, 15, 20%)",
-
     "tag_bg": "#202225",
     "tag_border": "#5865F2",
     "tag_text": "#DCDDDE",
     "tag_hover_bg": "#3C3F45",
-
     "fav_star_color": "#f1c40f",
-
     "download_completed": "#57F287",
     "download_failed": "#ED4245",
     "download_paused": "#FEE75C",
-
     "score_positive": "#57F287",
     "score_negative": "#ED4245",
-
     "title_color": "#FFFFFF",
     "link_color": "#00AFF4",
     "light": "#4F545C",
     "btn_gradient_top": "#4F545C",
     "btn_border_color": "transparent",
     "license_text_color": "#DCDDDE",
-
-    "font_family": "\"Whitney\", -apple-system, BlinkMacSystemFont, \"Segoe UI Variable\", \"Segoe UI\", \"Inter\", \"Helvetica Neue\", Helvetica, Arial, sans-serif"
+    "font_family": "\"Whitney\", -apple-system, BlinkMacSystemFont, \"Segoe UI Variable\", \"Segoe UI\", \"Inter\", \"Helvetica Neue\", Helvetica, Arial, sans-serif",
+    "navbar_icon_color": "#B5BAC1"
 }

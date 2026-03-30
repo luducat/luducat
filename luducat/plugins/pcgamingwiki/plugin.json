@@ -1,7 +1,7 @@
 {
   "name": "pcgamingwiki",
   "display_name": "PCGamingWiki",
-  "version": "1.3.3",
+  "version": "1.3.4",
   "author": "luducat",
   "description": "PCGamingWiki metadata provider - game modes and technical details",
   "min_luducat_version": "0.2.9.24",
@@ -57,10 +57,11 @@
 
   "network": {
     "allowed_domains": [
-      "www.pcgamingwiki.com"
+      "www.pcgamingwiki.com",
+      "status.pcgamingwiki.com"
     ],
     "rate_limits": {
-      "www.pcgamingwiki.com": {"requests": 2, "window": 1}
+      "www.pcgamingwiki.com": {"requests": 1, "window": 1}
     }
   },
 

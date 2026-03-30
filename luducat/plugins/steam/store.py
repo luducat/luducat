@@ -11,7 +11,7 @@ from luducat.plugins.sdk.json import json
 import logging
 import platform
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
 
 from PySide6.QtWidgets import QApplication
 from PySide6.QtCore import QThread
@@ -27,7 +27,9 @@ from luducat.plugins.base import (
 from luducat.plugins.sdk.network import RequestException, RequestTimeout
 
 # Import family sharing API
-from .family_api import SharedApp, FamilyGroup, fetch_family_shared_games
+from .family_api import (
+    SharedApp, FamilyGroup, SteamFamilyAPI, fetch_family_shared_games,
+)
 from .family_sharing import find_steam_path, get_family_shared_games
 from .vdf_scanner import parse_login_users, parse_user_config, scan_installed_games
 
@@ -72,6 +74,9 @@ class SteamStore(AbstractGameStore):
         # Maps app_id -> owner_steamid (or None if owner unknown)
         self._family_shared_apps: Dict[str, Optional[str]] = {}
         self._family_sharing_warning: Optional[str] = None
+        # Steam status tracking sets (populated during sync)
+        self._private_app_ids: set = set()
+        self._delisted_app_ids: set = set()
         self._title_index: Optional[Dict[str, int]] = None
         # Playtime data from last fetch_user_games() call, consumed by get_playtime_sync_data()
         self._playtime_cache: Optional[Dict[str, Dict[str, Any]]] = None
@@ -463,6 +468,28 @@ class SteamStore(AbstractGameStore):
                     include_family_shared,
                 )
 
+            # Clear status tracking from previous syncs
+            self._private_app_ids = set()
+            self._delisted_app_ids = set()
+
+            # Detect private apps (games hidden on user's Steam profile)
+            if cancel_check and cancel_check():
+                return app_ids
+            if self.get_setting("detect_private_apps"):
+                token = self._get_access_token_for_private_apps(steam_id)
+                if token:
+                    self._private_app_ids = self._fetch_private_app_list(token)
+                else:
+                    logger.info("No access token — skipping private app detection")
+
+            # Detect delisted games (no longer in public Steam catalog)
+            if cancel_check and cancel_check():
+                return app_ids
+            if self.get_setting("detect_delisted_games"):
+                self._delisted_app_ids = self._detect_delisted_apps(
+                    owned_app_ids, api_key,
+                )
+
             return app_ids
 
         except RequestTimeout as e:
@@ -473,6 +500,117 @@ class SteamStore(AbstractGameStore):
             raise
         except Exception as e:
             raise NetworkError(f"Failed to fetch user games: {e}") from e
+
+    def _fetch_private_app_list(self, access_token: str) -> Set[str]:
+        """Fetch app IDs marked private on user's Steam profile."""
+        url = "https://api.steampowered.com/IAccountPrivateAppsService/GetPrivateAppList/v1/"
+        try:
+            response = self.http.get(
+                url, params={"access_token": access_token}, timeout=30,
+            )
+            if response.status_code != 200:
+                logger.warning(
+                    "GetPrivateAppList failed: HTTP %d", response.status_code,
+                )
+                return set()
+
+            data = response.json()
+            logger.debug("GetPrivateAppList raw response: %s", data)
+
+            resp = data.get("response", {})
+            private_apps = resp.get("private_apps", {})
+
+            if isinstance(private_apps, dict) and "appids" in private_apps:
+                app_ids = {str(a) for a in private_apps["appids"]}
+                logger.info("Found %d private apps", len(app_ids))
+                return app_ids
+
+            if not private_apps:
+                logger.info("No private apps found")
+                return set()
+
+            logger.warning("Unexpected GetPrivateAppList format: %s", resp)
+            return set()
+        except Exception as e:
+            logger.warning("Private app detection failed: %s", e)
+            return set()
+
+    def _get_access_token_for_private_apps(self, steam_id: str) -> Optional[str]:
+        """Acquire a WebAPI access token via browser cookies (family_api pattern)."""
+        try:
+            api = SteamFamilyAPI(steamid=steam_id, http_client=self.http)
+            if api.load_cookies_from_browser():
+                token = api.get_access_token()
+                if token:
+                    return token
+                logger.debug("Cookie session loaded but token acquisition failed")
+            else:
+                logger.debug("No Steam browser cookies available")
+            return None
+        except Exception as e:
+            logger.warning("Access token acquisition failed: %s", e)
+            return None
+
+    _DELISTED_PAGE_SIZE = 50000
+
+    def _detect_delisted_apps(
+        self, owned_app_ids: Set[str], api_key: str,
+    ) -> Set[str]:
+        """Detect owned games not in the public Steam store catalog."""
+        url = "https://api.steampowered.com/IStoreService/GetAppList/v1/"
+        try:
+            catalog_ids: set[int] = set()
+            last_appid = 0
+            page = 0
+
+            while True:
+                params: dict = {
+                    "key": api_key, "max_results": self._DELISTED_PAGE_SIZE,
+                }
+                if last_appid:
+                    params["last_appid"] = last_appid
+
+                response = self.http.get(url, params=params, timeout=60)
+                if response.status_code != 200:
+                    logger.warning(
+                        "GetAppList failed on page %d: HTTP %d",
+                        page + 1, response.status_code,
+                    )
+                    if catalog_ids:
+                        break
+                    return set()
+
+                data = response.json().get("response", {})
+                apps = data.get("apps", [])
+                page += 1
+
+                for app in apps:
+                    catalog_ids.add(app["appid"])
+
+                logger.debug(
+                    "App list page %d: %d apps (total: %d)",
+                    page, len(apps), len(catalog_ids),
+                )
+
+                if not data.get("have_more_results"):
+                    break
+                last_appid = data.get("last_appid", 0)
+
+            if not catalog_ids:
+                logger.warning("Empty app list from IStoreService")
+                return set()
+
+            logger.info("Fetched %d apps from Steam catalog", len(catalog_ids))
+
+            owned_ints = {int(aid) for aid in owned_app_ids}
+            delisted = owned_ints - catalog_ids
+            delisted_strs = {str(aid) for aid in delisted}
+
+            logger.info("Found %d potentially delisted apps", len(delisted_strs))
+            return delisted_strs
+        except Exception as e:
+            logger.warning("Delisted game detection failed: %s", e)
+            return set()
 
     def _store_basic_game_info(self, games: List[dict]) -> None:
         """Store basic game info from GetOwnedGames response
@@ -839,11 +977,15 @@ class SteamStore(AbstractGameStore):
             for appid, sg in scraper_games.items():
                 # Check if this game is family shared and get owner
                 app_id_str = str(appid)
-                if app_id_str in self._family_shared_apps:
-                    owner = self._family_shared_apps[app_id_str]
-                    game = self._convert_game(sg, family_shared=1, family_shared_owner=owner)
-                else:
-                    game = self._convert_game(sg, family_shared=0, family_shared_owner=None)
+                fs = 1 if app_id_str in self._family_shared_apps else 0
+                fs_owner = self._family_shared_apps.get(app_id_str) if fs else None
+                game = self._convert_game(
+                    sg,
+                    family_shared=fs,
+                    family_shared_owner=fs_owner,
+                    is_private_app=1 if app_id_str in self._private_app_ids else 0,
+                    is_delisted=1 if app_id_str in self._delisted_app_ids else 0,
+                )
                 if game:
                     games.append(game)
 
@@ -879,7 +1021,9 @@ class SteamStore(AbstractGameStore):
         self,
         scraper_game,
         family_shared: int = 0,
-        family_shared_owner: Optional[str] = None
+        family_shared_owner: Optional[str] = None,
+        is_private_app: int = 0,
+        is_delisted: int = 0,
     ) -> Optional[Game]:
         """Convert steamscraper Game to plugin Game format
 
@@ -928,6 +1072,8 @@ class SteamStore(AbstractGameStore):
                 playtime_minutes=scraper_game.average_playtime_forever,
                 family_shared=family_shared,
                 family_shared_owner=family_shared_owner,
+                is_private_app=is_private_app,
+                is_delisted=is_delisted,
             )
 
         except Exception as e:

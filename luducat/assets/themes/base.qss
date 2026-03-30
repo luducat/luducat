@@ -1097,6 +1097,32 @@ QPushButton#filterChip:hover {
     color: {{text_on_accent}};
 }
 
+/* --- Tag Chips (quick-access tag buttons in filter bar) ---
+   Parent-scoped to override #filterBarWidget QPushButton:hover.
+   No border-radius (bottom-only border). No hover. Tag color via inline border-bottom-color. */
+#filterBarWidget QPushButton#tagChip {
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid transparent;
+    border-radius: 0px;
+    padding: 3px 8px;
+    min-height: 18px;
+    color: {{text_primary}};
+}
+
+#filterBarWidget QPushButton#tagChip:hover {
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid transparent;
+}
+
+#filterBarWidget QPushButton#tagChip:checked {
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid {{accent}};
+    color: {{text_primary}};
+}
+
 /* --- Filter Crumbs (removable filter chips in crumb bar) --- */
 QFrame#filterCrumb {
     background: {{bg_secondary}};
@@ -1254,6 +1280,22 @@ QDialog QCheckBox::indicator {
 QDialog QCheckBox::indicator:checked {
     background-color: {{accent}};
     border-color: {{accent}};
+}
+
+QDialog QRadioButton::indicator:unchecked {
+    width: 12px;
+    height: 12px;
+    border: 2px solid {{border}};
+    border-radius: 8px;
+    background-color: {{bg_input}};
+}
+
+QDialog QRadioButton::indicator:checked {
+    width: 12px;
+    height: 12px;
+    border: 2px solid {{accent}};
+    border-radius: 8px;
+    background-color: {{accent}};
 }
 
 /* Inputs */

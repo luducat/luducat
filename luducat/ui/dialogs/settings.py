@@ -285,7 +285,7 @@ class GeneralSettingsTab(QWidget):
         view_grid.addWidget(QLabel(_("View mode:")), 0, 0)
         self.cmb_default_view = QComboBox()
         self.cmb_default_view.setToolTip(_("Which view to show when luducat starts"))
-        self.cmb_default_view.addItem(_("List"), VIEW_MODE_LIST)
+        self.cmb_default_view.addItem(_("Detail"), VIEW_MODE_LIST)
         self.cmb_default_view.addItem(_("Cover Grid"), VIEW_MODE_COVER)
         self.cmb_default_view.addItem(_("Screenshot Grid"), VIEW_MODE_SCREENSHOT)
         view_grid.addWidget(self.cmb_default_view, 0, 1)

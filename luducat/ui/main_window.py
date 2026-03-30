@@ -13,6 +13,7 @@ The main window contains:
 import logging
 import random
 import time
+from collections import deque
 from typing import Any, Dict, List, Optional
 
 try:
@@ -175,6 +176,8 @@ class MainWindow(QMainWindow):
         self._adult_content_ids: set = set()
         self._family_shared_ids: set = set()
         self._orphaned_ids: set = set()  # Games with no store links
+        self._private_app_ids: set = set()
+        self._delisted_ids: set = set()
         self._protondb_game_ids: set = set()
         self._steam_deck_game_ids: set = set()
         self._recent_cache: set = set()  # computed on demand
@@ -193,6 +196,11 @@ class MainWindow(QMainWindow):
         # Incremental filtering: cache filter result to avoid rebuild on search-only changes
         self._prev_filter_state: Optional[dict] = None  # filters without search text
         self._prev_filter_result_ids: set = set()  # result set from filters only
+
+        # Collection filter cache (static collection game IDs)
+        self._active_collection_ids: Optional[set] = None
+        self._random_blacklist: deque = deque()
+        self._active_collection_id: Optional[int] = None
 
         # Sort settings (will be restored from config)
         self._current_sort_mode = SORT_MODE_NAME
@@ -391,6 +399,9 @@ class MainWindow(QMainWindow):
         # Filters
         self.filter_bar.filters_changed.connect(self._on_filters_changed)
         self.filter_bar.add_tag_requested.connect(self._on_add_tag_from_filter_bar)
+        self.filter_bar.collection_activated.connect(self._on_collection_activated)
+        self.filter_bar.save_collection_requested.connect(self._on_save_collection)
+        self.filter_bar.manage_collections_requested.connect(self._on_manage_collections)
 
         # Sort (moved from toolbar to filter bar)
         self.filter_bar.sort_changed.connect(self._on_sort_changed)
@@ -661,7 +672,7 @@ class MainWindow(QMainWindow):
         # Update content area
         self.content_area.set_view_mode(mode)
 
-        # List view mode always shows game list
+        # Detail view mode always shows game list
         self.game_list.setVisible(True)
 
         # Show/hide density slider based on view mode (status bar always visible)
@@ -943,20 +954,34 @@ class MainWindow(QMainWindow):
                 if result.launch_method != LaunchMethod.EXECUTABLE:
                     self.game_service.record_launch(game_id, store_name)
 
-                # Track process for EXECUTABLE launches
+                # Track process for EXECUTABLE launches (direct binary)
                 if (
                     result.launch_method == LaunchMethod.EXECUTABLE
                     and result.process_id
+                    and not result.url_handler_fallback
                 ):
                     self._start_process_monitor(
                         result.process_id, game_id, store_name
                     )
                 else:
-                    # URL_SCHEME: no process to track, revert after timeout
+                    # URL_SCHEME or fallback: "Starting..." for 20s
                     QTimer.singleShot(
-                        5000,
+                        20000,
                         lambda gid=game_id: self._set_game_running(gid, False),
                     )
+
+                # Post-launch alive check
+                if result.launcher_process_name:
+                    wait_ms = 3000 if result.launcher_was_running else 10000
+                    QTimer.singleShot(
+                        wait_ms,
+                        lambda pn=result.launcher_process_name, gid=game_id:
+                            self._check_launcher_alive(pn, gid),
+                    )
+
+                # URI handler fallback warning
+                if result.url_handler_fallback:
+                    self._show_uri_handler_warning(result)
             else:
                 logger.warning(
                     f"RuntimeManager launch failed: {result.error_message}"
@@ -1121,6 +1146,76 @@ class MainWindow(QMainWindow):
             self._launch_process_timer.deleteLater()
             self._launch_process_timer = None
         self._launch_monitor_data = None
+
+    # -----------------------------------------------------------------
+    # Launcher alive check & URI handler warning
+    # -----------------------------------------------------------------
+
+    def _check_launcher_alive(self, process_name: str, game_id: str) -> None:
+        """Deferred post-launch check: is the launcher process still alive?
+
+        Runs the subprocess check in a thread to avoid blocking the GUI.
+        """
+        import threading
+
+        def _check():
+            from luducat.core.runtime_manager import check_process_running
+            alive = check_process_running(process_name)
+            if alive:
+                logger.info("Launcher '%s' alive after handoff", process_name)
+            else:
+                logger.warning(
+                    "Launcher '%s' not running after handoff (game %s)",
+                    process_name, game_id,
+                )
+
+        threading.Thread(target=_check, daemon=True).start()
+
+    _uri_handler_warning_shown = False
+
+    def _show_uri_handler_warning(self, result) -> None:
+        """Show one-time info dialog about broken URI handler."""
+        if MainWindow._uri_handler_warning_shown:
+            return
+        if self.config and self.config.get("ui.suppress_uri_handler_warning", False):
+            return
+
+        MainWindow._uri_handler_warning_shown = True
+
+        # Derive scheme from platform_id (e.g. "runner/steam" → "steam")
+        scheme = getattr(result, "platform_id", "").replace("runner/", "") or "steam"
+
+        import platform as _platform
+        if _platform.system() == "Linux":
+            fix_hint = _(
+                "\n\nTo fix permanently, run in a terminal:\n"
+                "xdg-mime default {scheme}.desktop x-scheme-handler/{scheme}"
+            ).format(scheme=scheme)
+        else:
+            fix_hint = ""
+
+        msg = _(
+            "The {scheme}:// protocol handler is not registered on your "
+            "system. This can happen after switching how the application "
+            "is installed (e.g. Flatpak to system package).\n\n"
+            "The game was launched using the binary directly as a "
+            "workaround.{fix_hint}"
+        ).format(scheme=scheme, fix_hint=fix_hint)
+
+        from PySide6.QtWidgets import QCheckBox
+        dialog = QMessageBox(
+            QMessageBox.Icon.Information,
+            _("URI Handler Not Registered"),
+            msg,
+            QMessageBox.StandardButton.Ok,
+            self,
+        )
+        cb = QCheckBox(_("Don't show this again"))
+        dialog.setCheckBox(cb)
+        dialog.exec()
+
+        if cb.isChecked() and self.config:
+            self.config.set("ui.suppress_uri_handler_warning", True)
 
     # -----------------------------------------------------------------
 
@@ -2040,11 +2135,14 @@ class MainWindow(QMainWindow):
         # Set compatibility filter visibility based on available data
         has_family_shared = len(self._family_shared_ids) > 0
         has_orphaned = len(self._orphaned_ids) > 0
+        has_private_apps = len(self._private_app_ids) > 0
+        has_delisted = len(self._delisted_ids) > 0
         has_protondb = len(self._protondb_game_ids) > 0
         has_steam_deck = len(self._steam_deck_game_ids) > 0
         self.filter_bar.set_compat_filters_available(
             has_protondb, has_steam_deck,
             family_shared=has_family_shared, orphaned=has_orphaned,
+            private_apps=has_private_apps, delisted=has_delisted,
         )
         self.filter_bar.set_family_sort_available(has_family_shared)
 
@@ -2072,6 +2170,9 @@ class MainWindow(QMainWindow):
         self.filter_bar.set_available_publishers(publishers)
         self.filter_bar.set_available_genres(genres)
         self.filter_bar.set_available_years(years)
+
+        # Load collections for the dropdown menu
+        self._refresh_collections_list()
 
         # Restore filter state (handles gracefully if stores/tags changed)
         # Only restore if we had active filters (not first load)
@@ -2222,6 +2323,8 @@ class MainWindow(QMainWindow):
         self._adult_content_ids.clear()
         self._family_shared_ids.clear()
         self._orphaned_ids.clear()
+        self._private_app_ids.clear()
+        self._delisted_ids.clear()
         self._protondb_game_ids.clear()
         self._steam_deck_game_ids.clear()
         self._recent_cache.clear()
@@ -2329,6 +2432,12 @@ class MainWindow(QMainWindow):
             if not game.get("stores"):
                 self._orphaned_ids.add(gid)
 
+            # Steam status indexes
+            if game.get("is_private_app"):
+                self._private_app_ids.add(gid)
+            if game.get("is_delisted"):
+                self._delisted_ids.add(gid)
+
             # Compatibility indexes
             if game.get("protondb_rating"):
                 self._protondb_game_ids.add(gid)
@@ -2401,9 +2510,12 @@ class MainWindow(QMainWindow):
             "years": tuple(sorted(active_years)),
             "family_shared": filters.get("filter_family_shared", False),
             "orphaned": filters.get("filter_orphaned", False),
+            "private_apps": filters.get("filter_private_apps", False),
+            "delisted": filters.get("filter_delisted", False),
             "protondb": filters.get("filter_protondb", False),
             "steam_deck": filters.get("filter_steam_deck", False),
             "exact_stores": filters.get("exact_stores", False),
+            "collection_id": (filters.get("active_collection") or {}).get("id"),
         }
 
         # Incremental optimization: if only search text changed, reuse cached filter results
@@ -2423,6 +2535,18 @@ class MainWindow(QMainWindow):
             # Step 1b: Content filter — implicit exclusion of adult content
             if self.config.get("content_filter.enabled", True) and self._adult_content_ids:
                 result -= self._adult_content_ids
+
+            # Step 1c: Collection pre-filter (static collections narrow the universe)
+            active_collection = filters.get("active_collection")
+            if active_collection and active_collection.get("type") == "static":
+                coll_id = active_collection["id"]
+                if self._active_collection_ids is None or self._active_collection_id != coll_id:
+                    self._active_collection_ids = self.game_service.get_collection_game_ids(coll_id)
+                    self._active_collection_id = coll_id
+                result &= self._active_collection_ids
+            else:
+                self._active_collection_ids = None
+                self._active_collection_id = None
 
             # Step 2: Type filters (favorites, free)
             if "favorites" in type_filters:
@@ -2503,6 +2627,10 @@ class MainWindow(QMainWindow):
                 result &= self._family_shared_ids
             if filters.get("filter_orphaned"):
                 result &= self._orphaned_ids
+            if filters.get("filter_private_apps"):
+                result &= self._private_app_ids
+            if filters.get("filter_delisted"):
+                result &= self._delisted_ids
             if filters.get("filter_protondb"):
                 result &= self._protondb_game_ids
             if filters.get("filter_steam_deck"):
@@ -2541,6 +2669,9 @@ class MainWindow(QMainWindow):
 
         # Apply current sort to filtered results
         self._sort_games()
+
+        # Reset random game blacklist when filters change
+        self._random_blacklist.clear()
 
         self._update_game_displays()
 
@@ -3196,6 +3327,10 @@ class MainWindow(QMainWindow):
         self.content_area.screenshot_view.delegate.update_theme_colors(fav_star)
         self.game_list.delegate.update_theme_colors(fav_star)
 
+        # Push navbar icon color to filter bar for SVG tinting
+        navbar_icon = self.theme_manager.get_navbar_icon_color()
+        self.filter_bar.set_navbar_icon_color(navbar_icon)
+
         # Cache score colors for dialogs opened on demand
         self._score_colors = self.theme_manager.get_score_colors()
 
@@ -3213,21 +3348,47 @@ class MainWindow(QMainWindow):
         dialog.exec_()
 
     def _on_random_game(self) -> None:
-        """Pick a random game from the currently filtered list and select it."""
+        """Pick a random game from the currently filtered list and select it.
+
+        Uses a recency blacklist (FIFO) to avoid repeats. The blacklist holds
+        up to 20% of the filtered set so games don't repeat until enough
+        others have been shown first.
+        """
         if not self._filtered_games:
             return
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         QApplication.processEvents()
-        game = random.choice(self._filtered_games)
-        game_id = game.get("id", "")
+
+        # Resize blacklist to 20% of filtered set (min 5, max 500)
+        pool_size = len(self._filtered_games)
+        cap = max(5, min(500, pool_size // 5))
+        blacklist = self._random_blacklist
+
+        # Pick a game not in the blacklist (retry up to 50 times)
+        game_id = ""
+        for _ in range(50):
+            game = random.choice(self._filtered_games)
+            gid = game.get("id", "")
+            if gid and gid not in blacklist:
+                game_id = gid
+                break
+        else:
+            # All retries exhausted (tiny set or bad luck) — use last pick
+            game_id = game.get("id", "") if game else ""
+
         if not game_id:
             QApplication.restoreOverrideCursor()
             return
+
+        # Update blacklist: add new pick, trim to capacity
+        blacklist.append(game_id)
+        while len(blacklist) > cap:
+            blacklist.popleft()
+
         self.game_list.select_game(game_id)
         self._on_game_selected(game_id)
         QApplication.restoreOverrideCursor()
-        # Blink the selection 3 times to draw attention
-        self._blink_selection(game_id, 3)
+        self._blink_selection(game_id, 8)
 
     def _blink_selection(self, game_id: str, times: int) -> None:
         """Blink the selection in game list and active grid view simultaneously."""
@@ -3280,9 +3441,9 @@ class MainWindow(QMainWindow):
                 for lv, idx in targets:
                     lv.setCurrentIndex(idx)
             step[0] += 1
-            QTimer.singleShot(120, _toggle)
+            QTimer.singleShot(200, _toggle)
 
-        QTimer.singleShot(80, _toggle)
+        QTimer.singleShot(100, _toggle)
 
     def _on_platform_changed(self, game_id: str, platform_id: str) -> None:
         """Handle platform selection change for a game
@@ -3849,9 +4010,21 @@ class MainWindow(QMainWindow):
         # Look up SGDB cover author if applicable
         sgdb_cover_author, sgdb_author_steam_id = self._lookup_cover_author(game_data)
 
+        # Get static collections and game membership for context menu (single query)
+        static_collections = [
+            c for c in self.game_service.get_collections()
+            if c["type"] == "static"
+        ]
+        game_id = game_data.get("id", "")
+        game_collection_ids = list(
+            self.game_service.get_collection_ids_for_game(game_id)
+        ) if game_id else []
+
         menu.build(game_data, default_store, active_filters, view_mode,
                    sgdb_cover_author=sgdb_cover_author,
-                   sgdb_author_steam_id=sgdb_author_steam_id)
+                   sgdb_author_steam_id=sgdb_author_steam_id,
+                   static_collections=static_collections,
+                   game_collection_ids=game_collection_ids)
 
         # Connect signals to handlers
         menu.play_requested.connect(self._on_game_launched)
@@ -3872,6 +4045,8 @@ class MainWindow(QMainWindow):
         menu.switch_to_notes_requested.connect(self._on_switch_to_notes)
         menu.switch_to_properties_requested.connect(self._on_switch_to_properties)
         menu.cover_author_score_requested.connect(self._on_cover_author_score)
+        menu.show_details_requested.connect(self._on_show_details)
+        menu.collection_toggled.connect(self._on_collection_toggled)
 
         menu.exec(global_pos)
 
@@ -4088,8 +4263,13 @@ class MainWindow(QMainWindow):
         # Restore scroll so grid stays where the user was browsing
         self.content_area.restore_grid_scroll_position(scroll_pos)
 
+    def _on_show_details(self, game_id: str) -> None:
+        """Switch to detail view for game."""
+        self._on_game_selected(game_id)
+        self._on_view_mode_changed(VIEW_MODE_LIST)
+
     def _on_switch_to_notes(self, game_id: str) -> None:
-        """Switch to list view Notes tab for game."""
+        """Switch to detail view Notes tab for game."""
         # Select the game first
         self._on_game_selected(game_id)
         # Switch to list view mode
@@ -4098,8 +4278,260 @@ class MainWindow(QMainWindow):
         self.content_area.set_active_tab(4)
 
     def _on_switch_to_properties(self, game_id: str) -> None:
-        """Switch to list view Settings tab for game."""
+        """Switch to detail view Settings tab for game."""
         self._on_game_selected(game_id)
         self._on_view_mode_changed(VIEW_MODE_LIST)
         # Switch to Settings tab (index 1)
         self.content_area.set_active_tab(1)
+
+    # ── Collections ────────────────────────────────────────────────────
+
+    def _refresh_collections_list(self) -> None:
+        """Reload collections from DB and push to filter bar.
+
+        Also invalidates the cached collection game IDs and refilters
+        if a static collection is currently active.
+        """
+        collections = self.game_service.get_collections(include_hidden=False)
+        self.filter_bar.set_collections(collections)
+        # Invalidate cached game IDs so _apply_filters reloads them
+        self._active_collection_ids = None
+        self._active_collection_id = None
+        # Refilter if a collection is active
+        if self.filter_bar.get_active_collection() is not None:
+            self._apply_filters()
+
+    def _on_collection_activated(self, collection: dict) -> None:
+        """Handle collection activation from filter bar dropdown."""
+        # Always clear search first — dynamic restores its own, static starts clean
+        self.toolbar.set_search_text("")
+
+        if collection["type"] == "dynamic":
+            # Dynamic: restore saved filter state + search text
+            from luducat.core.json_compat import json
+            try:
+                saved_filters = json.loads(collection.get("filter_json") or "{}")
+            except (json.JSONDecodeError, TypeError):
+                logger.warning(f"Invalid filter_json for collection {collection['name']}")
+                return
+            saved_filters.pop("active_collection", None)
+            search_text = saved_filters.pop("search", "")
+            if search_text:
+                self.toolbar.set_search_text(search_text)
+            self.filter_bar.set_active_filters(saved_filters)
+        # Static collections are handled by the filter pipeline via active_collection
+        # in the filter dict — _apply_filters picks it up automatically
+
+    def _on_save_collection(self) -> None:
+        """Open save collection dialog with current filter state."""
+        from .dialogs.save_collection import SaveCollectionDialog
+
+        filters = self.filter_bar.get_active_filters()
+        # Remove active_collection from the saved filter to avoid nesting
+        filters.pop("active_collection", None)
+        # Include search text (lives in toolbar, not filter bar)
+        filters["search"] = self.toolbar.get_search_text()
+        matched_count = len(self._filtered_games)
+
+        dlg = SaveCollectionDialog(filters, matched_count, parent=self)
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        result = dlg.get_result()
+        from luducat.core.json_compat import json
+
+        if result["type"] == "dynamic":
+            self.game_service.create_collection(
+                name=result["name"],
+                collection_type="dynamic",
+                filter_json=json.dumps(filters),
+                color=result["color"],
+                notes=result["notes"],
+            )
+        else:
+            # Static: snapshot current filtered game IDs
+            game_ids = {g["id"] for g in self._filtered_games}
+            coll = self.game_service.create_collection(
+                name=result["name"],
+                collection_type="static",
+                color=result["color"],
+                notes=result["notes"],
+            )
+            if game_ids:
+                self.game_service.add_games_to_collection(coll["id"], game_ids)
+
+        self._refresh_collections_list()
+        logger.info(f"Saved {result['type']} collection: {result['name']}")
+
+    def _on_manage_collections(self) -> None:
+        """Open or focus the collection manager dialog."""
+        if hasattr(self, "_collection_manager") and self._collection_manager is not None:
+            self._collection_manager.raise_()
+            self._collection_manager.activateWindow()
+            return
+
+        from .dialogs.collection_manager import CollectionManagerDialog
+
+        def _get_game_title(game_id: str) -> str:
+            entry = self._games_by_id.get(game_id)
+            if entry:
+                return entry.get("title", game_id[:8])
+            return game_id[:8]
+
+        def _get_game_export_data(game_id: str) -> dict:
+            """Build export data for a game (title, normalized_title, store IDs)."""
+            entry = self._games_by_id.get(game_id)
+            if not entry:
+                return None
+            # stores is a list of store name strings,
+            # store_app_ids is a {store_name: app_id} dict
+            store_app_ids = entry.get("store_app_ids") or {}
+            stores = {sn: store_app_ids.get(sn, "") for sn in (entry.get("stores") or [])}
+            return {
+                "title": entry.get("title", ""),
+                "normalized_title": entry.get("normalized_title", ""),
+                "stores": stores,
+            }
+
+        # Build lookup indices once for O(1) import resolution
+        _title_index = {}
+        _store_index = {}
+        for gid, entry in self._games_by_id.items():
+            nt = (entry.get("normalized_title") or "").lower()
+            if nt:
+                _title_index.setdefault(nt, gid)
+            for sn, aid in (entry.get("store_app_ids") or {}).items():
+                if sn and aid:
+                    _store_index.setdefault((sn, str(aid)), gid)
+
+        def _resolve_game_id_for_import(export_entry: dict) -> str:
+            """Match an export entry to a game in the library."""
+            target = (export_entry.get("normalized_title") or "").lower()
+            if target and target in _title_index:
+                return _title_index[target]
+            for store_name, app_id in (export_entry.get("stores") or {}).items():
+                if app_id and (store_name, app_id) in _store_index:
+                    return _store_index[(store_name, app_id)]
+            return None
+
+        def _get_all_game_titles():
+            """Return all (game_id, title) pairs for add-game search."""
+            return [
+                (gid, entry.get("title", ""))
+                for gid, entry in self._games_by_id.items()
+            ]
+
+        def _count_dynamic_matches(filter_json: str) -> int:
+            """Count approximate matches for a dynamic collection.
+
+            Returns -1 for complex filters (non-search), indicating the count
+            cannot be cheaply computed. The manager shows '~' for these.
+            """
+            from luducat.core.json_compat import json as _json
+            try:
+                fdata = _json.loads(filter_json) if filter_json else {}
+            except (_json.JSONDecodeError, TypeError):
+                return 0
+            # Check if any filters beyond search text are active.
+            # Default/no-op values: False, [], "all", full store set.
+            all_stores = {s for s in self.filter_bar._available_stores} if hasattr(self, "filter_bar") else set()
+            skip = {"search", "base_filter", "active_collection"}
+            has_narrowing = False
+            for k, v in fdata.items():
+                if k in skip:
+                    continue
+                if not v or v == "all" or v == []:
+                    continue
+                if k == "stores" and set(v) == all_stores:
+                    continue
+                has_narrowing = True
+                break
+            if has_narrowing:
+                return -1  # complex filter, can't cheaply count
+            search = fdata.get("search", "").lower()
+            if search:
+                return sum(
+                    1 for e in self._games_by_id.values()
+                    if search in e.get("title", "").lower()
+                )
+            return len(self._non_hidden_ids) if hasattr(self, "_non_hidden_ids") else 0
+
+        self._collection_manager = CollectionManagerDialog(
+            self.game_service, _get_game_title,
+            _get_game_export_data, _resolve_game_id_for_import,
+            _get_all_game_titles, _count_dynamic_matches,
+            parent=self,
+        )
+        self._collection_manager.collection_preview_requested.connect(
+            self._on_collection_preview
+        )
+        self._collection_manager.convert_to_static_requested.connect(
+            self._on_convert_to_static
+        )
+        self._collection_manager.save_current_requested.connect(
+            self._on_save_collection
+        )
+        self._collection_manager.collections_changed.connect(
+            self._refresh_collections_list
+        )
+        self._collection_manager.destroyed.connect(
+            lambda: setattr(self, "_collection_manager", None)
+        )
+        self._collection_manager.show()
+
+    def _on_collection_toggled(self, collection_id: int, game_id: str, add: bool) -> None:
+        """Handle add/remove game from static collection via context menu."""
+        if add:
+            self.game_service.add_games_to_collection(collection_id, {game_id})
+        else:
+            self.game_service.remove_games_from_collection(collection_id, {game_id})
+        # Refresh manager if open
+        if hasattr(self, "_collection_manager") and self._collection_manager is not None:
+            self._collection_manager.refresh()
+        self._refresh_collections_list()
+
+    def _on_convert_to_static(self, collection: dict) -> None:
+        """Convert a dynamic collection to static by running its filter and snapshotting."""
+        from luducat.core.json_compat import json
+        try:
+            saved_filters = json.loads(collection.get("filter_json") or "{}")
+        except (json.JSONDecodeError, TypeError):
+            logger.warning(f"Invalid filter_json for collection {collection['name']}")
+            return
+        saved_filters.pop("active_collection", None)
+
+        # Compute matching game set without visible state changes.
+        # Block filter bar signals so set_active_filters doesn't trigger
+        # refilter, then restore. Qt defers paint events so no flash.
+        # Search text lives in the toolbar, not the filter bar — save/restore it too.
+        prev_filters = self.filter_bar.get_active_filters()
+        prev_search = self.toolbar.get_search_text()
+        search_text = saved_filters.pop("search", "")
+        self.toolbar.set_search_text(search_text)
+        self.filter_bar.blockSignals(True)
+        self.filter_bar.set_active_filters(saved_filters)
+        self.filter_bar.blockSignals(False)
+        self._apply_filters()
+        game_ids = {g["id"] for g in self._filtered_games}
+
+        # Restore original state
+        self.toolbar.set_search_text(prev_search)
+        self.filter_bar.blockSignals(True)
+        self.filter_bar.set_active_filters(prev_filters)
+        self.filter_bar.blockSignals(False)
+
+        self.game_service.convert_collection_to_static(collection["id"], game_ids)
+        self.filter_bar.clear_active_collection()
+        self._refresh_collections_list()
+        if hasattr(self, "_collection_manager") and self._collection_manager is not None:
+            self._collection_manager.refresh()
+        logger.info(
+            f"Converted '{collection['name']}' to static with {len(game_ids)} games"
+        )
+
+    def _on_collection_preview(self, collection: dict) -> None:
+        """Preview a collection in the main window (from manager dialog)."""
+        if collection["type"] == "dynamic":
+            self._on_collection_activated(collection)
+        else:
+            self.filter_bar.activate_collection(collection)

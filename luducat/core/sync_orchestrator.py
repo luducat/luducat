@@ -108,6 +108,7 @@ class SyncOrchestrator:
         self._remove_store_data_fn: Optional[Callable] = None
         self._reconcile_stale_fn: Optional[Callable] = None
         self._save_account_id_fn: Optional[Callable] = None
+        self._update_status_flags_fn: Optional[Callable] = None
 
     def set_game_service_callbacks(
         self,
@@ -118,6 +119,7 @@ class SyncOrchestrator:
         remove_store_data: Optional[Callable] = None,
         reconcile_stale: Optional[Callable] = None,
         save_account_id: Optional[Callable] = None,
+        update_status_flags: Optional[Callable] = None,
     ) -> None:
         """Inject callbacks to GameService methods that stay on GameService.
 
@@ -129,6 +131,7 @@ class SyncOrchestrator:
             remove_store_data: GameService.remove_store_data
             reconcile_stale: GameService.reconcile_stale_games
             save_account_id: GameService._save_last_account_id
+            update_status_flags: GameService.update_status_flags
         """
         self._save_plugin_game_fn = save_plugin_game
         self._get_synced_app_ids_fn = get_synced_app_ids
@@ -137,6 +140,7 @@ class SyncOrchestrator:
         self._remove_store_data_fn = remove_store_data
         self._reconcile_stale_fn = reconcile_stale
         self._save_account_id_fn = save_account_id
+        self._update_status_flags_fn = update_status_flags
 
     def build_sync_jobs(
         self,
@@ -301,6 +305,12 @@ class SyncOrchestrator:
                         f"{store_name}: removed {removed} stale games "
                         "no longer owned"
                     )
+
+        # --- Update status flags (private/delisted) on existing games ---
+        private_ids = getattr(plugin, "_private_app_ids", set())
+        delisted_ids = getattr(plugin, "_delisted_app_ids", set())
+        if (private_ids or delisted_ids) and self._update_status_flags_fn:
+            self._update_status_flags_fn(store_name, private_ids, delisted_ids)
 
         # Save current account identifier
         if current_account and self._save_account_id_fn:
