@@ -11,6 +11,7 @@ Respects current filter state and exports only visible games.
 """
 
 import csv
+import json
 import logging
 import re
 from pathlib import Path
@@ -264,6 +265,16 @@ class CsvExportDialog(QDialog):
 
         self._adv_check.toggled.connect(_on_advanced_toggled)
 
+        # Delisted per-store export override
+        self._delisted_check = QCheckBox(
+            _("Export delisted games per store (no dedup)")
+        )
+        self._delisted_check.setToolTip(
+            _("Override current selection and export all delisted games "
+              "as raw per-store entries — one row per store, not deduplicated")
+        )
+        outer.addWidget(self._delisted_check)
+
         # ── Bottom button row ──────────────────────────────────────────
         btn_row = QHBoxLayout()
 
@@ -458,6 +469,9 @@ class CsvExportDialog(QDialog):
     # ── Export execution ───────────────────────────────────────────────
 
     def _do_export(self) -> None:
+        if self._delisted_check.isChecked():
+            return self._do_export_delisted_raw()
+
         if not self._filtered_games:
             QMessageBox.information(
                 self, _("Export"), _("No games to export.")
@@ -521,6 +535,86 @@ class CsvExportDialog(QDialog):
         msg.setText(
             _("Exported {count} games to {filename}").format(
                 count=game_count, filename=output_path.name
+            )
+        )
+        open_btn = msg.addButton(
+            _("Open exported file"), QMessageBox.ButtonRole.AcceptRole
+        )
+        msg.addButton(_("Close"), QMessageBox.ButtonRole.RejectRole)
+        msg.exec()
+
+        if msg.clickedButton() == open_btn:
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(output_path)))
+
+        self.accept()
+
+    def _do_export_delisted_raw(self) -> None:
+        """Export all delisted StoreGame entries per store, no dedup."""
+        output_path = Path(self._file_edit.text()).expanduser()
+        output_folder = output_path.parent
+
+        from luducat.core.directory_health import check_directory
+        health = check_directory(output_folder)
+        if not health.writable:
+            QMessageBox.critical(
+                self, _("Export Error"),
+                _("Output folder is not writable: {error}").format(
+                    error=health.error or _("permission denied")
+                ),
+            )
+            return
+
+        try:
+            from luducat.core.database import StoreGame
+            session = self._game_service.database.get_session()
+            delisted = (
+                session.query(
+                    StoreGame.store_name,
+                    StoreGame.store_app_id,
+                    StoreGame.metadata_json,
+                )
+                .filter(StoreGame.is_delisted == 1)
+                .order_by(StoreGame.store_name, StoreGame.store_app_id)
+                .all()
+            )
+
+            if not delisted:
+                QMessageBox.information(
+                    self, _("Export"), _("No delisted games found.")
+                )
+                return
+
+            with open(output_path, "w", newline="", encoding="utf-8") as f:
+                writer = csv.writer(f)
+                writer.writerow([_("Store"), _("App ID"), _("Title")])
+                for store_name, app_id, meta_json in delisted:
+                    title = ""
+                    if meta_json:
+                        try:
+                            meta = (
+                                json.loads(meta_json)
+                                if isinstance(meta_json, str) else meta_json
+                            )
+                            title = meta.get("title", "")
+                        except Exception:
+                            pass
+                    writer.writerow([store_name, app_id, title])
+
+            count = len(delisted)
+        except Exception as e:
+            logger.error("Delisted CSV export failed: %s", e)
+            QMessageBox.critical(
+                self, _("Export Error"),
+                _("Failed to export CSV: {error}").format(error=e),
+            )
+            return
+
+        msg = QMessageBox(self)
+        msg.setWindowTitle(_("Export Complete"))
+        msg.setIcon(QMessageBox.Icon.Information)
+        msg.setText(
+            _("Exported {count} delisted store entries to {filename}").format(
+                count=count, filename=output_path.name
             )
         )
         open_btn = msg.addButton(

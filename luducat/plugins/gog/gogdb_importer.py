@@ -406,6 +406,10 @@ class GogdbImporter:
                 f"{stats['skipped']} skipped, {stats['errors']} errors"
             )
 
+            # Rebuild bundle lookup table from is_included_in data
+            bundle_count = self.db.rebuild_bundle_map()
+            logger.info(f"Bundle map: {bundle_count} game→bundle mappings")
+
         except Exception as e:
             logger.error(f"GOGdb import failed: {e}")
             raise

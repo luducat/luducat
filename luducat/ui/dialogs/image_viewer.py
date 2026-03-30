@@ -14,7 +14,7 @@ import logging
 from typing import List, Optional
 
 from PySide6.QtCore import Qt, Signal, QSize
-from PySide6.QtGui import QPixmap, QWheelEvent, QShortcut, QKeySequence
+from PySide6.QtGui import QMouseEvent, QPixmap, QWheelEvent, QShortcut, QKeySequence
 from PySide6.QtWidgets import (
     QDialog,
     QVBoxLayout,
@@ -420,6 +420,17 @@ class ImageViewerDialog(QDialog):
         elif delta < 0:
             self._zoom_out()
         event.accept()
+
+    def mousePressEvent(self, event: QMouseEvent) -> None:
+        """Left click = next image, right click = previous image."""
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._go_next()
+            event.accept()
+        elif event.button() == Qt.MouseButton.RightButton:
+            self._go_prev()
+            event.accept()
+        else:
+            super().mousePressEvent(event)
 
     def current_index(self) -> int:
         """Get current image index"""

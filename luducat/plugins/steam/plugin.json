@@ -1,7 +1,7 @@
 {
   "name": "steam",
   "display_name": "Steam",
-  "version": "1.11.11",
+  "version": "1.12.1",
   "author": "luducat",
   "author_email": "luducat@trinity2k.net",
   "description": "Steam game library integration via Steam Web API",
@@ -108,6 +108,18 @@
       "type": "boolean",
       "label": "Include Family Shared Games",
       "description": "Import your Steam Family Shared games.",
+      "default": false
+    },
+    "detect_private_apps": {
+      "type": "boolean",
+      "label": "Detect Private Apps",
+      "description": "Track games marked private on your Steam profile. Requires browser login.",
+      "default": false
+    },
+    "detect_delisted_games": {
+      "type": "boolean",
+      "label": "Detect Delisted Games",
+      "description": "Track games no longer listed on the Steam store.",
       "default": false
     }
   },

@@ -116,6 +116,11 @@ class StoreGame(Base):
     # Comma-separated SteamIDs of family members who own this game (for borrowed games)
     family_shared_owner: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
 
+    # Steam privacy status (0=normal, 1=marked private on user's Steam profile)
+    is_private_app: Mapped[int] = mapped_column(Integer, nullable=False, default=0, index=True)
+    # Delisted status (0=still listed, 1=not in public Steam app catalog as of last sync)
+    is_delisted: Mapped[int] = mapped_column(Integer, nullable=False, default=0, index=True)
+
     # Installation status (synced from store plugins)
     is_installed: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
     install_path: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
@@ -262,6 +267,55 @@ class PlaySession(Base):
             f"<PlaySession(game_id={self.game_id[:8]}, "
             f"store={self.store_name}, source={self.source})>"
         )
+
+
+class Collection(Base):
+    """User-created game collection (dynamic filter or static game list)
+
+    Dynamic collections store a serialized filter dict and compute results on the fly.
+    Static collections store an explicit set of game IDs via CollectionGame.
+    """
+    __tablename__ = "collections"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    type: Mapped[str] = mapped_column(String(20), nullable=False)  # "dynamic" or "static"
+    color: Mapped[Optional[str]] = mapped_column(String(7), nullable=True)  # hex color
+    filter_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # dynamic only
+    position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    is_hidden: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, onupdate=utc_now)
+
+    # Relationship (static collections only)
+    collection_games: Mapped[List["CollectionGame"]] = relationship(
+        "CollectionGame", back_populates="collection", cascade="all, delete-orphan"
+    )
+
+    def __repr__(self) -> str:
+        return f"<Collection(id={self.id}, name='{self.name}', type='{self.type}')>"
+
+
+class CollectionGame(Base):
+    """Many-to-many association between static collections and games"""
+    __tablename__ = "collection_games"
+
+    collection_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("collections.id", ondelete="CASCADE"), primary_key=True
+    )
+    game_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("games.id", ondelete="CASCADE"), primary_key=True
+    )
+    position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    added_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+
+    # Relationships
+    collection: Mapped["Collection"] = relationship("Collection", back_populates="collection_games")
+    game: Mapped["Game"] = relationship("Game")
+
+    def __repr__(self) -> str:
+        return f"<CollectionGame(collection_id={self.collection_id}, game_id={self.game_id[:8]})>"
 
 
 class SchemaMeta(Base):
@@ -564,6 +618,8 @@ def find_or_create_game(
     metadata: Optional[dict] = None,
     family_shared: int = 0,
     family_shared_owner: Optional[str] = None,
+    is_private_app: int = 0,
+    is_delisted: int = 0,
 ) -> Game:
     """Find existing game or create new one
 
@@ -604,9 +660,11 @@ def find_or_create_game(
             existing_store_game.metadata_json = existing_meta
             flag_modified(existing_store_game, "metadata_json")
             existing_store_game.metadata_fetched = utc_now()
-        # Update family_shared status
+        # Update family_shared and steam status flags
         existing_store_game.family_shared = family_shared
         existing_store_game.family_shared_owner = family_shared_owner
+        existing_store_game.is_private_app = is_private_app
+        existing_store_game.is_delisted = is_delisted
         return existing_store_game.game
 
     # Try to find game by normalized title
@@ -666,6 +724,8 @@ def find_or_create_game(
         launch_url=launch_url,
         family_shared=family_shared,
         family_shared_owner=family_shared_owner,
+        is_private_app=is_private_app,
+        is_delisted=is_delisted,
         metadata_json=metadata,
         metadata_fetched=utc_now() if metadata else None,
     )

@@ -50,6 +50,7 @@ from .sync_orchestrator import SyncOrchestrator, METADATA_JOB_BATCH_SIZE
 from .constants import DEFAULT_TAG_COLOR
 from .content_filter import adult_confidence, adult_confidence_from_sources
 from .dt import parse_release_date
+from .collection_service import CollectionService
 from .tag_service import TagService
 from .user_data_service import UserDataService
 from ..plugins.base import Game as PluginGame
@@ -75,8 +76,8 @@ def _strip_company_prefix(items: list) -> list:
 LIST_FIELDS = frozenset({
     "id", "title", "normalized_title", "primary_store",
     "stores", "store_app_ids", "launch_urls",
-    "is_favorite", "is_hidden", "is_family_shared", "family_license_count",
-    "is_installed",
+    "is_favorite", "is_hidden", "is_family_shared", "is_private_app", "is_delisted",
+    "family_license_count", "is_installed",
     "tags", "added_at", "last_launched", "launch_count", "playtime_minutes", "notes",
     "short_description", "header_image", "cover_image", "screenshots",
     "release_date", "developers", "publishers", "genres", "franchise", "game_modes", "themes",
@@ -177,6 +178,7 @@ class GameService:
         # --- Wire up extracted services ---
         self._tags = TagService(database, self._games_cache, config=self._config)
         self._user_data = UserDataService(database, self._games_cache)
+        self._collections = CollectionService(database)
         self._enrichment = EnrichmentService(
             database, self._resolver, self._games_cache,
         )
@@ -197,6 +199,7 @@ class GameService:
             remove_store_data=self.remove_store_data,
             reconcile_stale=self.reconcile_stale_games,
             save_account_id=self._save_last_account_id,
+            update_status_flags=self.update_status_flags,
         )
 
         # Check if cache directory was deleted and invalidate stale paths
@@ -925,6 +928,8 @@ class GameService:
         launch_urls = {sg.store_name: sg.launch_url for sg in active_store_games}
 
         is_family_shared = any(sg.family_shared == 1 for sg in active_store_games)
+        is_private_app = any(sg.is_private_app == 1 for sg in active_store_games)
+        is_delisted = any(sg.is_delisted == 1 for sg in active_store_games)
 
         # Family license count from batch-fetched data or metadata_json fallback
         family_license_count = 0
@@ -983,6 +988,8 @@ class GameService:
             is_favorite=is_favorite,
             is_hidden=is_hidden,
             is_family_shared=is_family_shared,
+            is_private_app=is_private_app,
+            is_delisted=is_delisted,
             family_license_count=family_license_count,
             is_installed=is_installed,
             tags=tags,
@@ -1431,6 +1438,51 @@ class GameService:
         finally:
             pass
 
+    def update_status_flags(
+        self,
+        store_name: str,
+        private_app_ids: set,
+        delisted_app_ids: set,
+    ) -> int:
+        """Bulk-update is_private_app and is_delisted on existing StoreGame rows.
+
+        Called after fetch_user_games to propagate detection results to all
+        existing games, not just newly created ones.
+
+        Returns:
+            Number of rows updated.
+        """
+        session = self.database.get_session()
+        updated = 0
+        try:
+            store_games = session.query(StoreGame).filter_by(
+                store_name=store_name
+            ).all()
+            for sg in store_games:
+                new_private = 1 if sg.store_app_id in private_app_ids else 0
+                new_delisted = 1 if sg.store_app_id in delisted_app_ids else 0
+                changed = False
+                if sg.is_private_app != new_private:
+                    sg.is_private_app = new_private
+                    changed = True
+                if sg.is_delisted != new_delisted:
+                    sg.is_delisted = new_delisted
+                    changed = True
+                if changed:
+                    updated += 1
+            if updated:
+                session.commit()
+                logger.info(
+                    "%s: updated status flags on %d games "
+                    "(%d private, %d delisted)",
+                    store_name, updated,
+                    len(private_app_ids), len(delisted_app_ids),
+                )
+        except Exception as e:
+            session.rollback()
+            logger.warning("Failed to update status flags for %s: %s", store_name, e)
+        return updated
+
     def remove_family_shared_games(self, store_name: str) -> int:
         """Remove family shared games for a store from the database.
 
@@ -1725,6 +1777,8 @@ class GameService:
             metadata=metadata,
             family_shared=plugin_game.family_shared,
             family_shared_owner=plugin_game.family_shared_owner,
+            is_private_app=plugin_game.is_private_app,
+            is_delisted=plugin_game.is_delisted,
         )
 
         session.commit()
@@ -2060,6 +2114,50 @@ class GameService:
 
     def get_play_sessions_summary(self, game_id):
         return self._user_data.get_play_sessions_summary(game_id)
+
+    # ── Delegation: CollectionService ─────────────────────────────────
+
+    def create_collection(self, name, collection_type, **kwargs):
+        return self._collections.create_collection(name, collection_type, **kwargs)
+
+    def get_collections(self, include_hidden=False):
+        return self._collections.get_collections(include_hidden)
+
+    def get_collection(self, collection_id):
+        return self._collections.get_collection(collection_id)
+
+    def update_collection(self, collection_id, **kwargs):
+        return self._collections.update_collection(collection_id, **kwargs)
+
+    def delete_collection(self, collection_id):
+        return self._collections.delete_collection(collection_id)
+
+    def reorder_collections(self, id_order):
+        return self._collections.reorder_collections(id_order)
+
+    def add_games_to_collection(self, collection_id, game_ids):
+        return self._collections.add_games_to_collection(collection_id, game_ids)
+
+    def remove_games_from_collection(self, collection_id, game_ids):
+        return self._collections.remove_games_from_collection(collection_id, game_ids)
+
+    def get_collection_game_ids(self, collection_id):
+        return self._collections.get_collection_game_ids(collection_id)
+
+    def get_collection_game_count(self, collection_id):
+        return self._collections.get_collection_game_count(collection_id)
+
+    def get_collection_ids_for_game(self, game_id):
+        return self._collections.get_collection_ids_for_game(game_id)
+
+    def convert_collection_to_static(self, collection_id, game_ids):
+        return self._collections.convert_to_static(collection_id, game_ids)
+
+    def export_collection(self, collection_id, get_game_data):
+        return self._collections.export_collection(collection_id, get_game_data)
+
+    def import_collection(self, data, mode, resolve_game_id):
+        return self._collections.import_collection(data, mode, resolve_game_id)
 
     # ── Delegation: LazyMetadata ───────────────────────────────────────
 

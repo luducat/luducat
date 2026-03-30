@@ -1,55 +1,43 @@
 {
     "name": "Steam Client",
     "description": "Dark theme inspired by the Steam desktop client with blue accents",
-
     "bg_primary": "#0E141B",
     "bg_secondary": "#151C26",
     "bg_input": "#0B1018",
     "bg_hover": "#1B2838",
-
     "text_primary": "#E0E0E0",
     "text_secondary": "#6B7785",
     "text_on_accent": "#FFFFFF",
-
     "accent": "#1A9FFF",
     "accent_hover": "#47B2FF",
     "accent_dark": "#1580CC",
     "accent_bright": "#66C0F4",
-
     "border": "#1B2838",
     "selection": "#2A475E",
-
     "scrollbar_bg": "#0E141B",
     "scrollbar_handle": "#2A475E",
-
     "btn_gradient_top": "#2A475E",
     "btn_border_color": "transparent",
-
     "fav_color": "#f1c40f",
     "fav_checked": "#E8B80D",
     "fav_checked_hover": "#F5CF3A",
     "fav_checked_dark": "#B8920A",
     "fav_hover_alpha": "rgba(241, 196, 15, 55%)",
     "fav_hover_alpha_mid": "rgba(241, 196, 15, 30%)",
-
     "tag_bg": "#1B2838",
     "tag_border": "#1A9FFF",
     "tag_text": "#E0E0E0",
     "tag_hover_bg": "#1B2838",
-
     "fav_star_color": "#f1c40f",
-
     "download_completed": "#5ba32b",
     "download_failed": "#cd3333",
     "download_paused": "#e09b1a",
-
     "score_positive": "#5ba32b",
     "score_negative": "#cd3333",
-
     "title_color": "#FFFFFF",
     "link_color": "#1A9FFF",
     "light": "#2A475E",
     "license_text_color": "#ACB2B8",
-
-    "font_family": "-apple-system, BlinkMacSystemFont, \"Segoe UI Variable\", \"Segoe UI\", \"Inter\", \"Helvetica Neue\", Helvetica, Arial, sans-serif"
+    "font_family": "-apple-system, BlinkMacSystemFont, \"Segoe UI Variable\", \"Segoe UI\", \"Inter\", \"Helvetica Neue\", Helvetica, Arial, sans-serif",
+    "navbar_icon_color": "#C7D5E0"
 }

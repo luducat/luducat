@@ -18,6 +18,28 @@ from typing import Any, Dict, List, Optional
 # Each item has optional "section" prefix and required "text"
 NEWS_ENTRIES: List[Dict[str, Any]] = [
     {
+        "version": "0.7.0",
+        "date": "2026-03-30",
+        "items": [
+            {"section": "Collections", "text":
+             "Organize games into custom collections. Create, rename, reorder, "
+             "import and export collections. Dynamic filters convert to static "
+             "lists. Right-click any game to add it to a collection."},
+            {"section": "Delisted Games", "text":
+             "Detect games removed from Steam and GOG storefronts. "
+             "Filter and export delisted titles."},
+            {"section": "Themes", "text":
+             "Steam Classic and GOG Classic theme packages. "
+             "Luducat identity theme. Navbar icon tinting."},
+            {"section": "Launchers", "text":
+             "Smarter Steam launch detection with URI handler fallback. "
+             "Lutris metadata provider for tags and favourites."},
+            {"section": "", "text": "PCGW caching and rate limit improvements"},
+            {"section": "", "text": "Tag chip visual restyle"},
+            {"section": "", "text": "Updated translations for all languages"},
+        ],
+    },
+    {
         "version": "0.6.0",
         "date": "2026-03-23",
         "items": [
@@ -104,6 +126,20 @@ def get_news_html() -> str:
 #   "improved" — Enhancements to things that already existed
 #   "fixed"    — User-impacting bugfixes
 UPDATE_SUMMARIES: Dict[str, Dict[str, List[str]]] = {
+    "0.7.0": {
+        "new": [
+            "Collections with import/export",
+            "Delisted game detection (Steam + GOG)",
+            "Steam Classic and GOG Classic themes",
+            "Lutris metadata provider",
+        ],
+        "improved": [
+            "Steam launcher detection and fallback",
+            "PCGW caching and rate limits",
+            "Tag chip visuals",
+            "Translation updates",
+        ],
+    },
     "0.6.0": {
         "new": [
             "Declarative store engine with ZOOM, JAST USA, and MangaGamer",

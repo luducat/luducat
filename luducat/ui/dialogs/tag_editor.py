@@ -38,9 +38,11 @@ class ColorButton(QPushButton):
 
     color_changed = Signal(str)
 
-    def __init__(self, color: str = DEFAULT_TAG_COLOR, parent: Optional[QWidget] = None):
+    def __init__(self, color: str = DEFAULT_TAG_COLOR, parent: Optional[QWidget] = None,
+                 dialog_title: str = ""):
         super().__init__(parent)
         self._color = color
+        self._dialog_title = dialog_title
         self.setFixedSize(24, 24)
         self.clicked.connect(self._pick_color)
         self._update_style()
@@ -58,10 +60,11 @@ class ColorButton(QPushButton):
         """)
 
     def _pick_color(self) -> None:
+        title = self._dialog_title or _("Choose Tag Color")
         color = QColorDialog.getColor(
             QColor(self._color),
             self,
-            _("Choose Tag Color")
+            title
         )
         if color.isValid():
             self._color = color.name()

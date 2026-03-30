@@ -28,15 +28,17 @@ ProgressCallback = Optional[Callable[[str, int, int], None]]
 
 # PCGamingWiki API
 PCGW_API_URL = "https://www.pcgamingwiki.com/w/api.php"
+# Status page (separate infrastructure, stays up when wiki is down)
+PCGW_STATUS_URL = "https://status.pcgamingwiki.com"
 
 # Defaults
-DEFAULT_RATE_LIMIT_DELAY = 0.5  # seconds between requests
+DEFAULT_RATE_LIMIT_DELAY = 1.0  # seconds between requests
 MAX_RESULTS_PER_QUERY = 500
-DEFAULT_BATCH_SIZE = 30  # Store IDs per batch query
+DEFAULT_BATCH_SIZE = 60  # Store IDs per batch query
 
 # Retry settings for transient errors
-MAX_RETRIES = 3
-BASE_RETRY_DELAY = 1.0   # seconds (doubles each retry: 1, 2, 4)
+MAX_ATTEMPTS = 2          # total attempts (initial + retries)
+BASE_RETRY_DELAY = 1.0    # seconds (doubles each retry)
 MAX_RETRY_DELAY = 8.0
 RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
 
@@ -127,12 +129,38 @@ class PcgwApi:
         self._rate_limit_delay = rate_limit_delay
         self._last_request_time = 0.0
 
+        # Disable urllib3's internal retries — we handle retries in _cargo_query().
+        # The shared session has Retry(total=3) which causes 4 connections × 15s
+        # timeout before a ConnectionError surfaces, turning a dead-server check
+        # into a 60s hang.
+        self._disable_urllib3_retries()
+
         # Cancel support (matching IGDB API pattern)
         self._cancelled = False
 
         # Circuit breaker state
         self._consecutive_server_errors = 0
         self._breaker_open_until = 0.0  # Unix timestamp; 0 = closed
+
+    def _disable_urllib3_retries(self) -> None:
+        """Mount a no-retry adapter for pcgamingwiki.com on the HTTP session.
+
+        The shared plugin session has urllib3 Retry(total=3) which causes
+        4 connections × 15s timeout = 60s before ConnectionError surfaces.
+        We handle retries in _cargo_query() so urllib3 retries are redundant.
+        """
+        if self._http is None:
+            return
+        try:
+            session = self._http.session
+            # Get the adapter class from the existing https adapter
+            existing = session.get_adapter("https://www.pcgamingwiki.com")
+            AdapterClass = type(existing)
+            no_retry = AdapterClass(max_retries=0)
+            session.mount("https://www.pcgamingwiki.com", no_retry)
+            session.mount("https://status.pcgamingwiki.com", no_retry)
+        except Exception:
+            pass  # Non-critical
 
     def cancel(self):
         """Signal cancellation — interrupts batch loops"""
@@ -141,6 +169,34 @@ class PcgwApi:
     def reset_cancel(self):
         """Reset cancel flag for reuse"""
         self._cancelled = False
+
+    def check_status_page(self) -> None:
+        """Check the PCGW status page and pre-trip the breaker if there's an incident.
+
+        Call this at startup or when switching from offline to online mode.
+        If the status page reports an ongoing incident, the breaker is tripped
+        immediately so no API calls are wasted on a known-dead server.
+        """
+        import re
+
+        try:
+            response = self._http.get(PCGW_STATUS_URL, timeout=3)
+            if response.status_code != 200:
+                return
+
+            match = re.search(
+                r'class="system-status--description"[^>]*>\s*(.*?)\s*</div>',
+                response.text,
+                re.DOTALL,
+            )
+            if match:
+                status_text = match.group(1).strip()
+                if "incident" in status_text.lower():
+                    self._trip_breaker(f"status page: {status_text}")
+                else:
+                    logger.debug("PCGW status page: %s", status_text)
+        except Exception as e:
+            logger.debug("PCGW status page check failed: %s", e)
 
     def _rate_limit(self) -> None:
         """Enforce rate limiting between requests"""
@@ -201,10 +257,44 @@ class PcgwApi:
             return True
 
     def _probe(self) -> bool:
-        """Send a lightweight query to test if the server is back.
+        """Check the PCGW status page to see if the service has recovered.
 
-        Returns True if the server responds with valid JSON, False otherwise.
+        Uses the external status page (separate infrastructure from the wiki)
+        instead of hitting the potentially dead API server. Parses the
+        system-status--description div for incident indicators.
+
+        Falls back to a lightweight Cargo API query if the status page
+        itself is unreachable.
+
+        Returns True if the service appears operational, False otherwise.
         """
+        import re
+
+        # Try status page first (fast, separate infrastructure)
+        try:
+            response = self._http.get(PCGW_STATUS_URL, timeout=3)
+            if response.status_code == 200:
+                match = re.search(
+                    r'class="system-status--description"[^>]*>\s*(.*?)\s*</div>',
+                    response.text,
+                    re.DOTALL,
+                )
+                if match:
+                    status_text = match.group(1).strip().lower()
+                    if "incident" in status_text:
+                        logger.info(
+                            "PCGamingWiki status page reports incident: %s",
+                            match.group(1).strip(),
+                        )
+                        return False
+                    logger.info("PCGamingWiki status page reports operational")
+                    return True
+                # Div not found — page structure changed, fall through
+                logger.debug("Status page div not found, falling back to API probe")
+        except Exception as e:
+            logger.debug("Status page unreachable (%s), falling back to API probe", e)
+
+        # Fallback: lightweight Cargo API query
         try:
             response = self._http.get(
                 PCGW_API_URL,
@@ -262,12 +352,11 @@ class PcgwApi:
         join_on: str = "",
         limit: int = MAX_RESULTS_PER_QUERY,
         offset: int = 0,
-        max_retries: Optional[int] = None,
+        max_attempts: Optional[int] = None,
     ) -> List[Dict[str, Any]]:
         """Execute a Cargo query against PCGamingWiki API
 
         Includes exponential backoff on HTTP 429, 5xx, and connection errors.
-        Max 3 retries with delays: 1s, 2s, 4s (capped at 8s).
 
         Args:
             tables: Cargo table names (e.g., "Infobox_game,Multiplayer")
@@ -276,7 +365,7 @@ class PcgwApi:
             join_on: JOIN condition
             limit: Max results per page
             offset: Result offset for pagination
-            max_retries: Override default MAX_RETRIES (e.g., 1 for on-demand lookups)
+            max_attempts: Total attempts (initial + retries). Default MAX_ATTEMPTS.
 
         Returns:
             List of result dicts (each from cargoquery[].title)
@@ -292,7 +381,7 @@ class PcgwApi:
 
         self._rate_limit()
 
-        retries = max_retries if max_retries is not None else MAX_RETRIES
+        attempts = max_attempts if max_attempts is not None else MAX_ATTEMPTS
 
         params = {
             "action": "cargoquery",
@@ -308,7 +397,7 @@ class PcgwApi:
             params["join_on"] = join_on
 
         last_error = None
-        for attempt in range(retries + 1):
+        for attempt in range(attempts):
             try:
                 response = self._http.get(
                     PCGW_API_URL, params=params, timeout=15
@@ -323,14 +412,14 @@ class PcgwApi:
 
                 if (
                     response.status_code in RETRYABLE_STATUS_CODES
-                    and attempt < retries
+                    and attempt < attempts - 1
                 ):
                     delay = min(
                         BASE_RETRY_DELAY * (2 ** attempt), MAX_RETRY_DELAY
                     )
                     logger.warning(
                         f"PCGamingWiki API returned {response.status_code}, "
-                        f"retry {attempt + 1}/{retries} in {delay:.1f}s"
+                        f"attempt {attempt + 1}/{attempts}, retrying in {delay:.1f}s"
                     )
                     time.sleep(delay)
                     self._last_request_time = time.time()
@@ -339,21 +428,12 @@ class PcgwApi:
                 response.raise_for_status()
 
             except RequestConnectionError as e:
-                last_error = e
-                if attempt < retries:
-                    delay = min(
-                        BASE_RETRY_DELAY * (2 ** attempt), MAX_RETRY_DELAY
-                    )
-                    logger.warning(
-                        f"PCGamingWiki connection error, "
-                        f"retry {attempt + 1}/{retries} in {delay:.1f}s: {e}"
-                    )
-                    time.sleep(delay)
-                    self._last_request_time = time.time()
-                    continue
-                self._record_query_failure()
+                # Connection errors (including read timeouts) on a dead host
+                # won't resolve within seconds — trip breaker immediately
+                # to avoid blocking the UI with minutes of futile retries.
+                self._trip_breaker(f"connection error: {e}")
                 raise PcgwApiError(
-                    f"HTTP request failed after {retries} retries: {e}"
+                    f"PCGamingWiki unreachable: {e}"
                 ) from e
 
             except RequestException as e:
@@ -378,10 +458,10 @@ class PcgwApi:
                 results.append(item.get("title", {}))
             return results
 
-        # All retries exhausted with server errors — record for breaker
+        # All attempts exhausted with server errors — record for breaker
         self._record_query_failure()
         raise PcgwApiError(
-            f"Request failed after {retries} retries: {last_error}"
+            f"Request failed after {attempts} attempts: {last_error}"
         )
 
     # -------------------------------------------------------------------------
@@ -393,7 +473,7 @@ class PcgwApi:
         steam_ids: List[str],
         batch_size: int = DEFAULT_BATCH_SIZE,
         status_callback: ProgressCallback = None,
-        max_retries: Optional[int] = None,
+        max_attempts: Optional[int] = None,
     ) -> Dict[str, Dict[str, Any]]:
         """Look up games by Steam AppID in batches
 
@@ -404,7 +484,7 @@ class PcgwApi:
             steam_ids: List of Steam AppID strings
             batch_size: IDs per API request
             status_callback: Progress callback (message, current, total)
-            max_retries: Override default retry count (e.g., 1 for on-demand)
+            max_attempts: Total attempts (default MAX_ATTEMPTS)
 
         Returns:
             Dict mapping steam_app_id -> combined Infobox+Multiplayer data
@@ -415,7 +495,7 @@ class PcgwApi:
             store_label="Steam",
             batch_size=batch_size,
             status_callback=status_callback,
-            max_retries=max_retries,
+            max_attempts=max_attempts,
         )
 
     def lookup_by_gog_ids_batch(
@@ -423,7 +503,7 @@ class PcgwApi:
         gog_ids: List[str],
         batch_size: int = DEFAULT_BATCH_SIZE,
         status_callback: ProgressCallback = None,
-        max_retries: Optional[int] = None,
+        max_attempts: Optional[int] = None,
     ) -> Dict[str, Dict[str, Any]]:
         """Look up games by GOG ID in batches
 
@@ -435,7 +515,7 @@ class PcgwApi:
             store_label="GOG",
             batch_size=batch_size,
             status_callback=status_callback,
-            max_retries=max_retries,
+            max_attempts=max_attempts,
         )
 
     def _lookup_by_store_ids_batch(
@@ -445,7 +525,7 @@ class PcgwApi:
         store_label: str,
         batch_size: int,
         status_callback: ProgressCallback,
-        max_retries: Optional[int] = None,
+        max_attempts: Optional[int] = None,
     ) -> Dict[str, Dict[str, Any]]:
         """Internal batch lookup for any store ID field
 
@@ -458,7 +538,7 @@ class PcgwApi:
             store_label: Display name for progress messages
             batch_size: IDs per request
             status_callback: Progress callback
-            max_retries: Override default retry count for _cargo_query
+            max_attempts: Total attempts for _cargo_query
 
         Returns:
             Dict mapping store_id -> data dict
@@ -502,7 +582,7 @@ class PcgwApi:
                     where=where,
                     join_on=join_on,
                     limit=MAX_RESULTS_PER_QUERY,
-                    max_retries=max_retries,
+                    max_attempts=max_attempts,
                 )
 
                 # Map results back to queried store IDs
@@ -584,7 +664,7 @@ class PcgwApi:
             Game data dict or None if not found
         """
         result = self.lookup_by_steam_ids_batch(
-            [steam_id], batch_size=1, max_retries=1
+            [steam_id], batch_size=1, max_attempts=1
         )
         return result.get(steam_id)
 
@@ -594,7 +674,7 @@ class PcgwApi:
         Uses reduced retries (1) to avoid long blocking on server errors.
         """
         result = self.lookup_by_gog_ids_batch(
-            [gog_id], batch_size=1, max_retries=1
+            [gog_id], batch_size=1, max_attempts=1
         )
         return result.get(gog_id)
 

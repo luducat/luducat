@@ -392,7 +392,59 @@ class GogStore(StorePlugin):
             except Exception:
                 pass
 
-            return [str(gogid) for gogid in owned_ids]
+            app_ids = [str(gogid) for gogid in owned_ids]
+
+            # Detect delisted games: owned but no longer in GOG catalog
+            # Round 1: catalog delta (owned - catalog = candidates)
+            # Round 2: bundle resolution (filter out re-packaged games)
+            self._delisted_app_ids = set()
+            if self.get_setting("detect_delisted_games"):
+                try:
+                    api = self._get_api_client()
+                    catalog = await api.fetch_full_catalog(
+                        status_callback=status_callback,
+                        cancel_check=cancel_check,
+                    )
+                    if not catalog:
+                        logger.warning("Empty catalog — skipping delisted detection")
+                    else:
+                        catalog_id_strs = {str(gid) for gid in catalog}
+                        candidates = set(app_ids) - catalog_id_strs
+
+                        if candidates:
+                            # Round 2: check bundle availability
+                            db = self._get_db()
+                            resolved = set()
+                            for cid in candidates:
+                                bundle_ids = db.get_bundle_ids(int(cid))
+                                if not bundle_ids:
+                                    continue  # no bundle → stays as candidate
+                                for bid in bundle_ids:
+                                    if str(bid) in catalog_id_strs:
+                                        resolved.add(cid)
+                                        # Also resolve siblings in same bundle
+                                        for sib in db.get_games_in_bundle(bid):
+                                            s = str(sib)
+                                            if s in candidates:
+                                                resolved.add(s)
+                                        break
+                            candidates -= resolved
+                            if resolved:
+                                logger.info(
+                                    "Bundle resolution: %d games in active bundles, "
+                                    "removed from delisted candidates",
+                                    len(resolved),
+                                )
+
+                        self._delisted_app_ids = candidates
+                        logger.info(
+                            "GOG delisted: %d confirmed (owned: %d, catalog: %d)",
+                            len(candidates), len(app_ids), len(catalog),
+                        )
+                except Exception as e:
+                    logger.warning("Delisted detection failed: %s", e)
+
+            return app_ids
         except Exception as e:
             logger.error(f"Failed to fetch owned games: {e}")
             raise PluginError(f"Failed to fetch owned games: {e}") from e

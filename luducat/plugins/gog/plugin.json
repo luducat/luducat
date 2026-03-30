@@ -1,7 +1,7 @@
 {
   "name": "gog",
   "display_name": "GOG",
-  "version": "2.7.0",
+  "version": "2.7.4",
   "author": "luducat",
   "author_email": "luducat@trinity2k.net",
   "description": "GOG.com game library integration",
@@ -82,7 +82,14 @@
     "help_text": "Uses browser cookies from GOG.com"
   },
 
-  "settings_schema": {},
+  "settings_schema": {
+    "detect_delisted_games": {
+      "type": "boolean",
+      "label": "Detect Delisted Games",
+      "description": "Track games no longer available on the GOG store.",
+      "default": false
+    }
+  },
 
   "network": {
     "allowed_domains": [

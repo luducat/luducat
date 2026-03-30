@@ -77,6 +77,10 @@ class GameEntry:
     game_modes: list = field(default_factory=list)
     themes: list = field(default_factory=list)
 
+    # Steam status flags
+    is_private_app: bool = False
+    is_delisted: bool = False
+
     # Flags
     is_free: bool = False
     is_demo: bool = False

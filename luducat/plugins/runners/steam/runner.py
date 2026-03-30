@@ -3,9 +3,15 @@
 
 """Steam Client Runner
 
-Trivial runner — Steam is always assumed available when the Steam store
-plugin is in use. All launches go through the ``steam://rungameid/`` URL
-scheme, which is universal across all platforms.
+Detection-aware runner using app_finder for cross-platform Steam binary
+detection. Primary launch method is URL_SCHEME (steam:// via Qt desktop
+services). RuntimeManager handles fallback to binary execution when the
+URI handler is not registered.
+
+Supports:
+- Linux: system binary, Flatpak, Snap (via PATH)
+- Windows: registry, known install paths
+- macOS: .app bundle
 """
 
 import logging
@@ -25,9 +31,15 @@ logger = logging.getLogger(__name__)
 class SteamRunner(AbstractRunnerPlugin):
     """Runner plugin for Steam Client.
 
-    Steam uses a universal URL scheme for game launching. The Steam client
-    is always assumed to be available if the Steam store plugin is active.
+    Uses centralized app_finder for launcher detection. URL_SCHEME is the
+    primary launch method (portable, Valve's documented API). Binary
+    fallback is handled by RuntimeManager when the URI handler is broken.
     """
+
+    def __init__(self, config_dir: Path, cache_dir: Path, data_dir: Path):
+        super().__init__(config_dir, cache_dir, data_dir)
+        self._launcher_info: Optional[RunnerLauncherInfo] = None
+        self._detection_done = False
 
     @property
     def runner_name(self) -> str:
@@ -45,24 +57,75 @@ class SteamRunner(AbstractRunnerPlugin):
         return 300
 
     def detect_launcher(self) -> Optional[RunnerLauncherInfo]:
-        """Steam is always considered available.
+        """Detect Steam installation using centralized app_finder."""
+        if self._detection_done:
+            return self._launcher_info
 
-        The steam:// URL scheme is handled by the OS on all supported
-        platforms when Steam is installed.
-        """
-        return RunnerLauncherInfo(
-            runner_name="steam",
-            path=None,
-            install_type="system",
-            virtualized=False,
-            url_scheme="steam://",
+        self._detection_done = True
+
+        from luducat.plugins.sdk.app_finder import (
+            find_application,
+            find_url_handler,
         )
+
+        # Custom path takes priority
+        custom_path = self.get_setting("steam_path")
+        extra_dirs = []
+        if custom_path:
+            p = Path(custom_path).expanduser()
+            if p.exists():
+                extra_dirs.append(p if p.is_dir() else p.parent)
+
+        results = find_application(
+            ["steam"],
+            extra_search_dirs=extra_dirs or None,
+            flatpak_ids=["com.valvesoftware.Steam"],
+            include_url_handler=True,
+        )
+
+        if not results:
+            logger.info("Steam client not found")
+            return None
+
+        r = results[0]
+
+        url_handler = find_url_handler("steam")
+        has_url_handler = bool(url_handler)
+
+        self._launcher_info = RunnerLauncherInfo(
+            runner_name="steam",
+            path=r.path,
+            install_type=r.install_type,
+            virtualized=r.virtualized,
+            url_scheme="steam://" if has_url_handler else None,
+            flatpak_id=r.flatpak_id,
+            process_name="steam",
+            capabilities={
+                "url_handler_registered": has_url_handler,
+            },
+        )
+
+        logger.info(
+            "Steam detected: %s (%s), URL handler: %s",
+            r.install_type,
+            r.path or r.flatpak_id,
+            has_url_handler,
+        )
+        return self._launcher_info
 
     def build_launch_intent(
         self, store_name: str, app_id: str
     ) -> Optional[LaunchIntent]:
-        """Build steam:// URL scheme launch intent."""
+        """Build steam:// URL scheme launch intent.
+
+        Always returns URL_SCHEME — RuntimeManager handles fallback to
+        binary execution if the URI handler is not registered.
+        """
         if store_name != "steam":
+            return None
+
+        info = self.detect_launcher()
+        if not info:
             return None
 
         return LaunchIntent(
@@ -77,3 +140,8 @@ class SteamRunner(AbstractRunnerPlugin):
         if store_name != "steam":
             return None
         return f"steam://install/{app_id}"
+
+    def clear_cache(self) -> None:
+        """Force re-detection on next call."""
+        self._launcher_info = None
+        self._detection_done = False

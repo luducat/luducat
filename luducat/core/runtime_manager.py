@@ -37,6 +37,8 @@ Usage:
 """
 
 import logging
+import platform
+import subprocess
 from pathlib import Path
 from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
@@ -58,6 +60,36 @@ if TYPE_CHECKING:
     from luducat.plugins.base import AbstractRunnerPlugin
 
 logger = logging.getLogger(__name__)
+
+_PROCESS_CHECK_TIMEOUT = 3  # seconds for pgrep/tasklist
+
+
+def check_process_running(process_name: str) -> bool:
+    """Check if a process with the given name is running.
+
+    Cross-platform: pgrep on Linux/macOS, tasklist on Windows.
+    Returns False on any error (missing tools, timeout, etc.).
+    """
+    system = platform.system()
+    try:
+        if system in ("Linux", "Darwin"):
+            result = subprocess.run(
+                ["pgrep", "-x", process_name],
+                capture_output=True,
+                timeout=_PROCESS_CHECK_TIMEOUT,
+            )
+            return result.returncode == 0
+        elif system == "Windows":
+            result = subprocess.run(
+                ["tasklist", "/FI", f"IMAGENAME eq {process_name}.exe", "/NH"],
+                capture_output=True,
+                text=True,
+                timeout=_PROCESS_CHECK_TIMEOUT,
+            )
+            return process_name.lower() in result.stdout.lower()
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError) as e:
+        logger.debug("Process check for '%s' failed: %s", process_name, e)
+    return False
 
 
 class RuntimeManager:
@@ -381,11 +413,42 @@ class RuntimeManager:
             # Apply per-game overrides to intent
             self._apply_user_overrides_to_intent(intent, game_id)
 
+            # Pre-launch: check if the launcher is already running
+            launcher_info = runner.detect_launcher() if hasattr(runner, "detect_launcher") else None
+            process_name = getattr(launcher_info, "process_name", None) if launcher_info else None
+            launcher_was_running = None
+            if process_name:
+                launcher_was_running = check_process_running(process_name)
+
             logger.info(
                 "Launching %s/%s via runner %s (method: %s)",
                 store_name, app_id, runner_name, intent.method.value,
             )
             result = runner.execute_launch(intent)
+
+            # URL_SCHEME fallback: if openUrl() failed and the runner has
+            # a detected binary, retry via direct binary execution.
+            if (
+                not result.success
+                and intent.method == LaunchMethod.URL_SCHEME
+                and launcher_info
+            ):
+                fallback_intent = self._build_url_scheme_fallback(
+                    launcher_info, intent,
+                )
+                if fallback_intent:
+                    logger.info(
+                        "URL handler failed, falling back to binary: %s",
+                        fallback_intent.executable,
+                    )
+                    self._apply_user_overrides_to_intent(fallback_intent, game_id)
+                    result = runner.execute_launch(fallback_intent)
+                    result.url_handler_fallback = True
+
+            # Attach launcher info for post-launch alive check (UI side)
+            if result.success and process_name:
+                result.launcher_process_name = process_name
+                result.launcher_was_running = launcher_was_running
 
             # Multi-store fallback: if IPC launch failed (game not found in
             # remote library), try alternative store entries for the same game.
@@ -1251,6 +1314,50 @@ class RuntimeManager:
         user_env = per_game.get("environment", {})
         if user_env:
             config.environment.update(user_env)
+
+    @staticmethod
+    def _build_url_scheme_fallback(
+        launcher_info: RunnerLauncherInfo,
+        original_intent: LaunchIntent,
+    ) -> Optional[LaunchIntent]:
+        """Build an EXECUTABLE fallback intent from a failed URL_SCHEME.
+
+        When QDesktopServices.openUrl() fails (URI handler not registered),
+        this constructs a direct binary invocation using the runner's
+        detected binary or Flatpak ID.
+
+        Returns None if no binary path is available.
+        """
+        url = original_intent.url
+        if not url:
+            return None
+
+        # Flatpak: flatpak run <id> <url>
+        if (
+            launcher_info.install_type == "flatpak"
+            and launcher_info.flatpak_id
+        ):
+            return LaunchIntent(
+                method=LaunchMethod.EXECUTABLE,
+                runner_name=original_intent.runner_name,
+                store_name=original_intent.store_name,
+                app_id=original_intent.app_id,
+                executable=Path("/usr/bin/flatpak"),
+                arguments=["run", launcher_info.flatpak_id, url],
+            )
+
+        # Direct binary: <binary> <url>
+        if launcher_info.path:
+            return LaunchIntent(
+                method=LaunchMethod.EXECUTABLE,
+                runner_name=original_intent.runner_name,
+                store_name=original_intent.store_name,
+                app_id=original_intent.app_id,
+                executable=launcher_info.path,
+                arguments=[url],
+            )
+
+        return None
 
     def _apply_user_overrides_to_intent(
         self, intent: "LaunchIntent", game_id: str

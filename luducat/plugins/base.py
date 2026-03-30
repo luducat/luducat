@@ -318,6 +318,12 @@ class Game:
     # For borrowed games (family_shared=1), the SteamID of the owner
     family_shared_owner: Optional[str] = None
 
+    # Steam status flags
+    # 0 = normal, 1 = marked private on user's Steam profile
+    is_private_app: int = 0
+    # 0 = still listed, 1 = not in public Steam store catalog
+    is_delisted: int = 0
+
     # Additional metadata (store-specific, preserved as-is)
     extra_metadata: Dict[str, Any] = field(default_factory=dict)
 

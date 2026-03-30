@@ -634,6 +634,7 @@ class GogDatabase:
         """Create tables if they don't exist, then migrate new columns"""
         Base.metadata.create_all(self.engine)
         self._migrate_columns()
+        self._create_bundle_table()
 
     def _migrate_columns(self) -> None:
         """Add any missing columns to existing tables (ALTER TABLE)"""
@@ -813,3 +814,76 @@ class GogDatabase:
         )
 
         return {game.gogid: game.to_dict(include_description=False) for game in games}
+
+    # ── Bundle mapping (for delisted detection) ──────────────────────
+
+    def _create_bundle_table(self) -> None:
+        """Create gog_bundles mapping table if it doesn't exist."""
+        with self.engine.begin() as conn:
+            conn.execute(text(
+                "CREATE TABLE IF NOT EXISTS gog_bundles ("
+                "  game_id INTEGER NOT NULL,"
+                "  bundle_id INTEGER NOT NULL,"
+                "  PRIMARY KEY (game_id, bundle_id)"
+                ")"
+            ))
+            conn.execute(text(
+                "CREATE INDEX IF NOT EXISTS idx_bundles_game "
+                "ON gog_bundles(game_id)"
+            ))
+            conn.execute(text(
+                "CREATE INDEX IF NOT EXISTS idx_bundles_bundle "
+                "ON gog_bundles(bundle_id)"
+            ))
+
+    def rebuild_bundle_map(self) -> int:
+        """Rebuild gog_bundles from is_included_in data on all GogGame rows.
+
+        Returns:
+            Number of bundle mappings created.
+        """
+        with self.engine.begin() as conn:
+            conn.execute(text("DELETE FROM gog_bundles"))
+
+            games = self.session.query(
+                GogGame.gogid, GogGame._is_included_in
+            ).filter(
+                GogGame._is_included_in.isnot(None),
+                GogGame._is_included_in != "[]",
+                GogGame._is_included_in != "",
+            ).all()
+
+            count = 0
+            for gogid, included_raw in games:
+                try:
+                    bundle_ids = json.loads(included_raw) if included_raw else []
+                except (json.JSONDecodeError, TypeError):
+                    continue
+                for bid in bundle_ids:
+                    if isinstance(bid, int) and bid > 0:
+                        conn.execute(text(
+                            "INSERT OR IGNORE INTO gog_bundles (game_id, bundle_id) "
+                            "VALUES (:gid, :bid)"
+                        ), {"gid": gogid, "bid": bid})
+                        count += 1
+
+        logger.info("Rebuilt bundle map: %d mappings", count)
+        return count
+
+    def get_bundle_ids(self, game_id: int) -> List[int]:
+        """Get bundle IDs that contain this game."""
+        with self.engine.connect() as conn:
+            rows = conn.execute(
+                text("SELECT bundle_id FROM gog_bundles WHERE game_id = :gid"),
+                {"gid": game_id},
+            ).fetchall()
+        return [row[0] for row in rows]
+
+    def get_games_in_bundle(self, bundle_id: int) -> List[int]:
+        """Get game IDs contained in a bundle."""
+        with self.engine.connect() as conn:
+            rows = conn.execute(
+                text("SELECT game_id FROM gog_bundles WHERE bundle_id = :bid"),
+                {"bid": bundle_id},
+            ).fetchall()
+        return [row[0] for row in rows]

@@ -1,7 +1,7 @@
 # This file is part of luducat. License: GPL-3.0-or-later. Contact: luducat@trinity2k.net
 # list_view.py
 
-"""List view (detail panel) for luducat
+"""Detail view for luducat
 
 Shows comprehensive information about the selected game with tabbed interface:
 - About: Screenshots, metadata, description

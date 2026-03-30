@@ -97,6 +97,9 @@ class LaunchResult:
     error_message: Optional[str] = None
     process_id: Optional[int] = None
     launch_method: Optional[LaunchMethod] = None
+    url_handler_fallback: bool = False  # True when URL_SCHEME failed, binary used
+    launcher_process_name: Optional[str] = None  # for post-launch alive check
+    launcher_was_running: Optional[bool] = None  # pre-launch process state
 
 
 # =============================================================================
@@ -118,6 +121,7 @@ class RunnerLauncherInfo:
     url_scheme: Optional[str] = None
     flatpak_id: Optional[str] = None
     capabilities: Dict[str, Any] = field(default_factory=dict)
+    process_name: Optional[str] = None  # for post-launch alive check (e.g. "steam")
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -129,6 +133,7 @@ class RunnerLauncherInfo:
             "url_scheme": self.url_scheme,
             "flatpak_id": self.flatpak_id,
             "capabilities": self.capabilities,
+            "process_name": self.process_name,
         }
 
 

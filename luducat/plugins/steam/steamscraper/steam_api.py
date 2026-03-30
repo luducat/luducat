@@ -202,23 +202,50 @@ class SteamAPIClient:
         return app_data.get('data', {})
     
     def get_app_list(self) -> list:
-        """Get list of all Steam apps.
-        
+        """Get list of all Steam apps via IStoreService/GetAppList/v1/.
+
+        The old ISteamApps/GetAppList/v2/ endpoint is dead (404 since ~2026).
+        The replacement is paginated (max 50k per page) and requires an API key.
+
         Returns:
             List of dictionaries containing appid and name
-            
+
         Raises:
             SteamAPIError: If API request fails
         """
-        url = f"{STEAM_API_BASE}/ISteamApps/GetAppList/v2/"
-        
-        logger.info("Fetching complete Steam app list")
-        data = self._make_request(url)
-        
-        if 'applist' not in data or 'apps' not in data['applist']:
-            raise SteamAPIError("Invalid app list response")
-        
-        return data['applist']['apps']
+        url = f"{STEAM_API_BASE}/IStoreService/GetAppList/v1/"
+
+        logger.info("Fetching complete Steam app list (paginated)")
+        all_apps = []
+        last_appid = 0
+
+        while True:
+            params: dict = {
+                "key": self.api_key,
+                "max_results": 50000,
+            }
+            if last_appid:
+                params["last_appid"] = last_appid
+
+            data = self._make_request(url, params=params)
+            response = data.get("response", {})
+            apps = response.get("apps", [])
+
+            if not apps:
+                break
+
+            all_apps.extend(apps)
+            logger.debug("App list page: %d apps (total: %d)", len(apps), len(all_apps))
+
+            if not response.get("have_more_results"):
+                break
+            last_appid = response.get("last_appid", 0)
+
+        if not all_apps:
+            raise SteamAPIError("Empty app list response from IStoreService")
+
+        logger.info("Fetched %d apps from Steam catalog", len(all_apps))
+        return all_apps
     
     def search_app_by_name(self, name: str) -> Optional[int]:
         """Search for an app by name.
