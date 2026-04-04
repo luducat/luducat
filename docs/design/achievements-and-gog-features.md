@@ -298,12 +298,85 @@ Integration: import mget_lib directly (shared venv) or shell out to mget.py.
 5. Progress in UI (SyncWidget-style or status bar)
 6. Track in plugin DB: path, size, version, download date
 
+### Drop Target Window ("GOG Downloader Revival")
+
+Standalone floating window (or dockable panel) that accepts drag-and-dropped GOG
+download URLs from the browser. Spiritual successor to the old GOG Downloader
+standalone app that GOG killed when they pushed Galaxy.
+
+#### The original GOG Downloader (reference, v3.3.5.0)
+
+Reference screenshot: `~/bin/luducat/luducat-general-dev-notes/design/gogdownloader-picture.jpg`
+
+Small Windows-only standalone app. GOG removed it (404) to push Galaxy adoption.
+
+- Download queue with game cover thumbnails and per-download progress bars
+- Resume All / Pause All / per-item cancel
+- INSTALL button appeared on each completed download
+- Game update notifications badge ("41 NEW — 41 game updates")
+- Settings: concurrent connections (up to 6), download speed limit with
+  scheduled throttling (time range), custom save directory, auto-run
+  installer after download, start on Windows startup
+- Online/offline status with connection speed display
+- Simple, single-purpose, no bloat
+
+#### Our revival
+
+- User drags URL from GOG download page onto the drop target
+- Domain allowlist: only accept URLs from `gog.com` / `*.gog.com`
+- luducat resolves the URL to CDN download link via Products API
+- mget downloads with progress display
+- Works independently of the library view — don't need to own the game in luducat
+
+Two download modes in 1.0:
+1. **Library download** — browse catalogue, click Download, pick installer
+2. **Drop target** — drag URLs from browser, they just download
+
+#### Update notifications
+
+- On sync, compare installed installer versions against GOG's current version
+- Badge/notification when updates are available (like the original's "41 NEW")
+- Update dialog: checklist of available updates with game title, current vs new
+  version, installer size — user ticks which to download, hits "Queue Selected"
+- Queued updates feed into the same download queue as new downloads
+- Option to auto-check for updates on sync (Settings toggle)
+
+The drop target is the emotional hook for the r/gog audience. "Remember the GOG
+Downloader? We brought it back."
+
+#### First-Run Wizard: "GOG Downloader" shortcut route
+
+For users coming from r/gog who just want a downloader replacement, add a fast-track
+path in the first-run wizard. One choice on the wizard's opening page:
+
+- **"Set up as GOG Downloader"** — skips the full wizard, applies this preset:
+  - Only GOG store enabled (others can be enabled later)
+  - Default download directory configured (prompt once)
+  - Auto-check for game updates on sync enabled
+  - On startup: open the downloader window, start main window minimized
+
+The main window is always fully functional and accessible — it just starts minimized
+so the downloader window is front and center. The user can restore it anytime from
+the taskbar. "Start minimized" is a checkbox in Settings (General), not a hidden mode.
+
+This is a **preset, not a mode**. All settings remain individually changeable in
+Settings afterward. The user can enable Steam/Epic later, uncheck "start minimized",
+etc. No locked-down state, no special code paths — just sensible defaults for the
+downloader use case.
+
+The downloader window is a child of the main window (modeless QDialog, same as
+Collection Manager). Closing the main window closes the downloader. No independent
+process, no tray-only mode.
+
+**Design note:** Once users restore the main window and see their GOG games catalogued
+with covers, metadata, and filtering, they'll naturally explore the full experience.
+A subtle hint in the downloader window ("Browse your full library →") helps with
+discovery.
+
 ### Not in 1.0
 
 - No install automation (don't run the installer)
-- No update checking (version comparison)
 - No DLC download management
-- No download queue (one at a time)
 
 ## Wine / UMU Launch Polish
 

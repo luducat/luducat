@@ -153,6 +153,13 @@ class StripedProgressBar(QProgressBar):
         text = self.format()
         if not text:
             return
+        # Resolve Qt format placeholders (QProgressBar does this internally
+        # in its own paintEvent, but we bypass that with custom painting)
+        rng = self.maximum() - self.minimum()
+        pct = int(100 * (self.value() - self.minimum()) / rng) if rng > 0 else 0
+        text = text.replace("%p", str(pct)).replace(
+            "%v", str(self.value())
+        ).replace("%m", str(self.maximum()))
 
         pal = self.palette()
         painter.setFont(self.font())

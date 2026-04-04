@@ -15,6 +15,8 @@ from typing import Any, Callable, Dict, List, Optional
 
 from PySide6.QtCore import QThread, Signal, QObject
 
+from luducat.plugins.base import AuthenticationError
+
 logger = logging.getLogger(__name__)
 
 
@@ -212,6 +214,16 @@ class SyncWorker(QThread):
 
                 try:
                     loop.run_until_complete(self._execute_job(job))
+                except AuthenticationError as e:
+                    logger.warning(f"Auth failed ({job.description}): {e}")
+                    title = _("{store}: Authentication Failed").format(
+                        store=job.plugin_name
+                    )
+                    msg = _(
+                        "Could not fetch games — your login session has "
+                        "expired.\n\nPlease re-connect in Settings → Plugins."
+                    )
+                    self._sync_warnings.append((title, msg))
                 except Exception as e:
                     logger.error(f"Job failed ({job.description}): {e}")
                     self._stats.setdefault("errors", []).append(

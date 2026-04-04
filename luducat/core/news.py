@@ -18,6 +18,21 @@ from typing import Any, Dict, List, Optional
 # Each item has optional "section" prefix and required "text"
 NEWS_ENTRIES: List[Dict[str, Any]] = [
     {
+        "version": "0.7.1",
+        "date": "2026-04-04",
+        "items": [
+            {"section": "Download Covers", "text":
+             "Batch-download missing cover images from the Tools menu or "
+             "Settings. Shows progress, error details, and lets you cancel."},
+            {"section": "", "text":
+             "Fixed cover images that needed format conversion being "
+             "re-downloaded on every launch"},
+            {"section": "", "text":
+             "Store engine handles expired login sessions gracefully"},
+            {"section": "", "text": "Collection manager and grid view fixes"},
+        ],
+    },
+    {
         "version": "0.7.0",
         "date": "2026-03-30",
         "items": [
@@ -126,6 +141,16 @@ def get_news_html() -> str:
 #   "improved" — Enhancements to things that already existed
 #   "fixed"    — User-impacting bugfixes
 UPDATE_SUMMARIES: Dict[str, Dict[str, List[str]]] = {
+    "0.7.1": {
+        "new": [
+            "Batch cover downloader (Tools menu + Settings)",
+        ],
+        "fixed": [
+            "AVIF cover images re-downloaded every launch",
+            "Store engine auth expiry handling",
+            "Collection manager and grid view issues",
+        ],
+    },
     "0.7.0": {
         "new": [
             "Collections with import/export",

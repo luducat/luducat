@@ -425,6 +425,7 @@ class MainWindow(QMainWindow):
         self.toolbar.action_csv_export.triggered.connect(self._export_csv)
         self.toolbar.tag_manager_requested.connect(self._on_open_tag_manager)
         self.toolbar.dev_console_requested.connect(self._on_dev_console_requested)
+        self.toolbar.download_covers_requested.connect(self._on_download_covers)
 
         # Random game (dice button is on filter bar)
         self.filter_bar.random_game_requested.connect(self._on_random_game)
@@ -580,6 +581,11 @@ class MainWindow(QMainWindow):
             self._on_view_density_changed)
         self.content_area.screenshot_view.density_changed.connect(
             self._on_view_density_changed)
+
+        # Grid scroll rows
+        scroll_rows = self.config.get("ui.grid_scroll_rows", 0)
+        self.content_area.cover_view.set_scroll_rows(scroll_rows)
+        self.content_area.screenshot_view.set_scroll_rows(scroll_rows)
 
         # Image fade-in duration
         fade_ms = self.config.get("appearance.image_fade_duration", DEFAULT_IMAGE_FADE_MS)
@@ -3221,6 +3227,9 @@ class MainWindow(QMainWindow):
 
             # Connect restart request from backup restore
             dialog.restart_required.connect(self._on_restart_after_restore)
+
+            # Connect download covers request
+            dialog.download_covers_requested.connect(self._on_download_covers)
         finally:
             QApplication.restoreOverrideCursor()
 
@@ -3247,6 +3256,11 @@ class MainWindow(QMainWindow):
             # Apply cover scaling mode
             cover_scaling = self.config.get("appearance.cover_scaling", "none")
             self.content_area.cover_view.delegate.set_cover_scaling(cover_scaling)
+
+            # Apply grid scroll rows
+            scroll_rows = self.config.get("ui.grid_scroll_rows", 0)
+            self.content_area.cover_view.set_scroll_rows(scroll_rows)
+            self.content_area.screenshot_view.set_scroll_rows(scroll_rows)
 
             # Apply badge visibility to grid delegates
             show_modes = self.config.get("appearance.show_game_mode_badges", True)
@@ -3312,6 +3326,29 @@ class MainWindow(QMainWindow):
         self._dev_console.show()
         self._dev_console.raise_()
         self._dev_console.activateWindow()
+
+    def _on_download_covers(self) -> None:
+        """Open the Download Missing Covers dialog."""
+        QApplication.setOverrideCursor(Qt.CursorShape.BusyCursor)
+        try:
+            all_games = self.game_service.get_all_games()
+            games_with_covers = [
+                (g.title, g.cover_image)
+                for g in all_games
+                if g.cover_image and not g.cover_image.startswith("file://")
+            ]
+            if not games_with_covers:
+                from PySide6.QtWidgets import QMessageBox
+                QMessageBox.information(
+                    self, APP_NAME, _("No covers to download.")
+                )
+                return
+
+            from .dialogs.download_covers import DownloadCoversDialog
+            dialog = DownloadCoversDialog(games_with_covers, parent=self)
+        finally:
+            QApplication.restoreOverrideCursor()
+        dialog.exec()
 
     def _on_theme_delegate_config_changed(self) -> None:
         """Push per-theme delegate visual config to grid view delegates."""

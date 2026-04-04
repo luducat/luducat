@@ -107,6 +107,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "sort_mode": SORT_MODE_NAME,
         "sort_reverse": False,
         "favorites_first": False,
+        "grid_scroll_rows": 0,  # 0 = system default (page scroll)
     },
     "appearance": {
         "ui_zoom": 100,

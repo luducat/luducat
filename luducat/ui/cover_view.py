@@ -750,6 +750,8 @@ class CoverView(QWidget):
         self._request_queue: List[str] = []
         self._max_concurrent_workers = 4  # Limit parallel fetches
 
+        self._scroll_rows = 0  # 0 = system default
+
         self._setup_ui()
         self._connect_signals()
 
@@ -813,7 +815,7 @@ class CoverView(QWidget):
         self.list_view.viewport().installEventFilter(self)
 
     def eventFilter(self, obj, event) -> bool:
-        """Handle Ctrl+Scroll for grid density zoom."""
+        """Handle Ctrl+Scroll for grid density zoom and row-based scrolling."""
         if obj is self.list_view.viewport() and event.type() == event.Type.Wheel:
             if event.modifiers() & Qt.KeyboardModifier.ControlModifier:
                 delta = event.angleDelta().y()
@@ -822,6 +824,20 @@ class CoverView(QWidget):
                     new_density = self._cover_width + step
                     self.set_density(new_density)
                     self.density_changed.emit(self._cover_width)
+                return True
+            # Row-based scrolling (when configured)
+            if self._scroll_rows > 0:
+                delta = event.angleDelta().y()
+                if delta != 0:
+                    row_height = (
+                        int(self._cover_width * 1.5)
+                        + self.delegate.TITLE_HEIGHT
+                        + self.delegate.PADDING
+                    )
+                    direction = 1 if delta > 0 else -1
+                    pixels = row_height * self._scroll_rows * direction
+                    sb = self.list_view.verticalScrollBar()
+                    sb.setValue(sb.value() - pixels)
                 return True
         return super().eventFilter(obj, event)
 
@@ -983,6 +999,10 @@ class CoverView(QWidget):
     def get_density(self) -> int:
         """Get current grid density (cover width)"""
         return self._cover_width
+
+    def set_scroll_rows(self, rows: int) -> None:
+        """Set how many rows one scroll wheel tick covers (0 = system default)."""
+        self._scroll_rows = rows
 
     def select_game(self, game_id: str) -> None:
         """Highlight a game in the grid
