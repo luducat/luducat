@@ -201,6 +201,9 @@ class CollectionManagerDialog(QDialog):
         self._filter_summary.setWordWrap(True)
         self._filter_summary.setObjectName("hintLabel")
         self._filter_summary.setTextFormat(Qt.TextFormat.RichText)
+        self._filter_summary.setAlignment(
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop
+        )
         right_layout.addWidget(self._filter_summary)
 
         # Shuttle widget (static collections — the big content area)
@@ -208,8 +211,13 @@ class CollectionManagerDialog(QDialog):
         self._setup_shuttle()
         right_layout.addWidget(self._shuttle_widget, stretch=1)
 
-        # Bottom strip: Notes + color
+        # Spacer that absorbs space when shuttle is hidden (dynamic view)
+        self._dynamic_spacer = QWidget()
+        right_layout.addWidget(self._dynamic_spacer, stretch=1)
+
+        # Bottom strip: Notes + color + type
         bottom_strip = QHBoxLayout()
+        bottom_strip.setAlignment(Qt.AlignmentFlag.AlignBottom)
         self._edit_notes = QPlainTextEdit()
         self._edit_notes.setFixedHeight(40)
         self._edit_notes.setPlaceholderText(_("Notes"))
@@ -221,11 +229,11 @@ class CollectionManagerDialog(QDialog):
         )
         self._edit_color.setToolTip(_("Collection color"))
         self._edit_color.color_changed.connect(self._on_color_changed)
-        bottom_strip.addWidget(self._edit_color)
+        bottom_strip.addWidget(self._edit_color, alignment=Qt.AlignmentFlag.AlignVCenter)
 
         self._type_label = QLabel()
         self._type_label.setObjectName("hintLabel")
-        bottom_strip.addWidget(self._type_label)
+        bottom_strip.addWidget(self._type_label, alignment=Qt.AlignmentFlag.AlignBottom)
 
         right_layout.addLayout(bottom_strip)
 
@@ -443,6 +451,7 @@ class CollectionManagerDialog(QDialog):
         is_static = coll["type"] == "static"
         self._filter_summary.setVisible(not is_static)
         self._shuttle_widget.setVisible(is_static)
+        self._dynamic_spacer.setVisible(not is_static)
         self._btn_convert.setEnabled(not is_static)
 
         if is_static:
@@ -803,7 +812,7 @@ class CollectionManagerDialog(QDialog):
 
         safe_name = coll["name"].replace(" ", "_").lower()[:40]
         default_name = f"{safe_name}.luducat-collection"
-        path, _ = QFileDialog.getSaveFileName(
+        path, _filt = QFileDialog.getSaveFileName(
             self, _("Export Collection"), default_name,
             _("Luducat Collection (*.luducat-collection)")
         )
@@ -828,7 +837,7 @@ class CollectionManagerDialog(QDialog):
 
     def _import_collection(self) -> None:
         """Import collection from a .luducat-collection file."""
-        path, _ = QFileDialog.getOpenFileName(
+        path, _filt = QFileDialog.getOpenFileName(
             self, _("Import Collection"), "",
             _("Luducat Collection (*.luducat-collection);;JSON Files (*.json)")
         )

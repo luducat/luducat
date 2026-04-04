@@ -317,7 +317,19 @@ class GeneralSettingsTab(QWidget):
         self._populate_stores()
         view_grid.addWidget(self.cmb_default_store, 1, 3)
 
-        # Row 2: Hint spanning both columns
+        # Row 2: Grid scrolling
+        view_grid.addWidget(QLabel(_("Grid scrolling:")), 2, 0)
+        self.cmb_grid_scroll = QComboBox()
+        self.cmb_grid_scroll.setToolTip(
+            _("How many rows the mouse wheel scrolls in grid views")
+        )
+        self.cmb_grid_scroll.addItem(_("Default"), 0)
+        self.cmb_grid_scroll.addItem(_("1 row"), 1)
+        self.cmb_grid_scroll.addItem(_("2 rows"), 2)
+        self.cmb_grid_scroll.addItem(_("3 rows"), 3)
+        view_grid.addWidget(self.cmb_grid_scroll, 2, 1)
+
+        # Row 3: Hint spanning both columns
         store_note = QLabel(
             _("Default store is used for the Play button and context menu "
               "when a game is available in multiple stores.")
@@ -325,7 +337,7 @@ class GeneralSettingsTab(QWidget):
         store_note.setObjectName("hintLabel")
         store_note.setWordWrap(True)
         store_note.setMinimumHeight(36)
-        view_grid.addWidget(store_note, 2, 0, 1, 4)
+        view_grid.addWidget(store_note, 3, 0, 1, 4)
 
         # Give combo columns equal stretch
         view_grid.setColumnStretch(1, 1)
@@ -420,6 +432,11 @@ class GeneralSettingsTab(QWidget):
         if idx >= 0:
             self.cmb_default_store.setCurrentIndex(idx)
 
+        grid_scroll = self.config.get("ui.grid_scroll_rows", 0)
+        idx = self.cmb_grid_scroll.findData(grid_scroll)
+        if idx >= 0:
+            self.cmb_grid_scroll.setCurrentIndex(idx)
+
     def save_settings(self) -> None:
         self.config.set("sync.auto_sync_on_startup", self.chk_auto_sync.isChecked())
         self.config.set("app.check_for_updates", self.chk_check_updates.isChecked())
@@ -429,6 +446,7 @@ class GeneralSettingsTab(QWidget):
         self.config.set("ui.confirm_launch", self.chk_confirm_launch.isChecked())
         self.config.set("ui.recently_played_days", self.cmb_recent_days.currentData())
         self.config.set("ui.default_store", self.cmb_default_store.currentData())
+        self.config.set("ui.grid_scroll_rows", self.cmb_grid_scroll.currentData())
 
     def reset_to_defaults(self) -> None:
         """Reset general settings to defaults."""
@@ -451,6 +469,9 @@ class GeneralSettingsTab(QWidget):
         # Reset to first available store (populated from discovered plugins)
         if self.cmb_default_store.count() > 0:
             self.cmb_default_store.setCurrentIndex(0)
+        idx = self.cmb_grid_scroll.findData(0)
+        if idx >= 0:
+            self.cmb_grid_scroll.setCurrentIndex(idx)
 
     def _on_check_now(self) -> None:
         """Manual update check triggered by user."""
@@ -1402,6 +1423,8 @@ class PluginsSettingsTab(QWidget):
 class AdvancedSettingsTab(QWidget):
     """Advanced settings tab"""
 
+    download_covers_requested = Signal()
+
     def __init__(self, config: Config, parent: Optional[QWidget] = None):
         super().__init__(parent)
         self.config = config
@@ -1504,13 +1527,24 @@ class AdvancedSettingsTab(QWidget):
         )
         cache_layout.addWidget(self.chk_offline_mode)
 
+        btn_row = QHBoxLayout()
+        self.btn_download_covers = QPushButton(_("Download Missing Covers..."))
+        self.btn_download_covers.setToolTip(
+            _("Pre-download all cover images for faster browsing")
+        )
+        self.btn_download_covers.clicked.connect(
+            self.download_covers_requested.emit
+        )
+        btn_row.addWidget(self.btn_download_covers)
         self.btn_clear_cache = QPushButton(_("Clear Cache..."))
         self.btn_clear_cache.setToolTip(
             _("Delete all downloaded cover art and screenshots.\n"
               "They will be re-downloaded automatically when needed.")
         )
         self.btn_clear_cache.clicked.connect(self._clear_cache)
-        cache_layout.addWidget(self.btn_clear_cache)
+        btn_row.addWidget(self.btn_clear_cache)
+        btn_row.addStretch()
+        cache_layout.addLayout(btn_row)
 
         layout.addWidget(cache_group, 1)  # stretch factor 1 to fill space
 
@@ -4956,6 +4990,7 @@ class SettingsDialog(QDialog):
     tags_changed = Signal()  # Emitted when tags are modified
     restart_required = Signal()  # Emitted when app needs to restart (e.g., after restore)
     show_update_requested = Signal()  # Close settings and show update dialog
+    download_covers_requested = Signal()  # batch download missing covers
 
     def __init__(
         self,
@@ -5035,6 +5070,9 @@ class SettingsDialog(QDialog):
 
         # Advanced tab
         self.advanced_tab = AdvancedSettingsTab(self.config)
+        self.advanced_tab.download_covers_requested.connect(
+            self.download_covers_requested.emit
+        )
         self.tabs.addTab(self.advanced_tab, _("Advanced"))
 
         # Privacy tab (last)

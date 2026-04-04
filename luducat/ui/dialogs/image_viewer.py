@@ -422,12 +422,12 @@ class ImageViewerDialog(QDialog):
         event.accept()
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
-        """Left click = next image, right click = previous image."""
+        """Left click = previous image, right click = next image."""
         if event.button() == Qt.MouseButton.LeftButton:
-            self._go_next()
+            self._go_prev()
             event.accept()
         elif event.button() == Qt.MouseButton.RightButton:
-            self._go_prev()
+            self._go_next()
             event.accept()
         else:
             super().mousePressEvent(event)

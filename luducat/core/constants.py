@@ -14,7 +14,7 @@ if not hasattr(builtins, "ngettext"):
     builtins.ngettext = lambda singular, plural, n: singular if n == 1 else plural
 
 APP_NAME = "luducat"
-APP_VERSION = "0.7.0"
+APP_VERSION = "0.7.1"
 APP_ID = "com.luducat.luducat"  # Desktop file name / GNOME App ID
 APP_ICON_BASENAME = "app_icon"
 APP_DESCRIPTION = N_("Cross-platform game catalogue browser")

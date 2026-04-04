@@ -391,7 +391,7 @@ class CollectionService:
         if mode == "new" or existing is None:
             # Always create new
             if existing is not None and mode == "new":
-                name = name + " (imported)"
+                name = name + " (" + _("imported") + ")"
             coll = self.create_collection(
                 name=name,
                 collection_type=coll_type,

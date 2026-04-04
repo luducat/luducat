@@ -882,11 +882,98 @@ class ImageCache(QObject):
         Returns the path without loading into memory. Useful for
         full-resolution loading (e.g. image viewer) that bypasses
         the memory cache.
+
+        Handles AVIF→PNG conversion: if the URL points to an .avif
+        file that was previously converted to .png, returns the .png path.
         """
         if not url:
             return None
         cache_path = self._get_cache_path(url)
-        return cache_path if cache_path.exists() else None
+        if cache_path.exists():
+            return cache_path
+        # AVIF files are converted to PNG on download — check the converted path
+        if cache_path.suffix.lower() == '.avif':
+            png_path = cache_path.with_suffix('.png')
+            if png_path.exists():
+                return png_path
+        return None
+
+    def download_to_disk(self, url: str) -> Tuple[str, Optional[str]]:
+        """Download a single image to disk cache if not already cached.
+
+        Encapsulates rate limiting, session management, CDN headers,
+        404 negative cache, disk write circuit breaker, and AVIF→PNG
+        conversion.
+
+        Returns:
+            (status, error_message) where status is one of:
+            "downloaded", "cached", "not_found", "failed"
+        """
+        # Already on disk?
+        if self.get_disk_path(url):
+            return ("cached", None)
+
+        # Known 404?
+        with _not_found_lock:
+            if url in _not_found_urls:
+                return ("not_found", None)
+
+        # Per-domain rate limiting
+        _domain_throttle(url)
+
+        # Download
+        try:
+            headers = _build_request_headers(url)
+            with _get_session().get(url, timeout=15, headers=headers) as resp:
+                resp.raise_for_status()
+                content = resp.content
+
+            # Record in NetworkManager stats
+            try:
+                from ..core.network_manager import get_network_manager
+                parsed = urlparse(url)
+                get_network_manager().record_image_request(
+                    parsed.hostname or "", len(content)
+                )
+            except Exception:
+                pass
+
+            # Disk write circuit breaker
+            if _disk_write_disabled:
+                return ("failed", "Disk writes disabled")
+
+            cache_path = self._get_cache_path(url)
+            try:
+                cache_path.parent.mkdir(parents=True, exist_ok=True)
+                cache_path.write_bytes(content)
+            except OSError as e:
+                _set_disk_write_disabled(e)
+                return ("failed", str(e))
+
+            # AVIF→PNG conversion (Qt can't load AVIF natively)
+            if cache_path.suffix.lower() == '.avif':
+                try:
+                    from PIL import Image
+                    with Image.open(cache_path) as img:
+                        png_path = cache_path.with_suffix('.png')
+                        img.save(png_path, 'PNG')
+                    cache_path.unlink(missing_ok=True)
+                except Exception as conv_err:
+                    logger.debug("AVIF conversion failed for %s: %s", url, conv_err)
+
+            return ("downloaded", None)
+
+        except requests.HTTPError as e:
+            if e.response is not None and e.response.status_code == 404:
+                with _not_found_lock:
+                    _not_found_urls.add(url)
+                return ("not_found", None)
+            return ("failed", str(e))
+        except requests.RequestException as e:
+            return ("failed", str(e))
+        except Exception as e:
+            logger.exception("Cover download error for %s: %s", url, e)
+            return ("failed", str(e))
 
     def _get_cache_path(self, url: str) -> Path:
         """Get disk cache path for URL

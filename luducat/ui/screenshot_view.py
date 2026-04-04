@@ -724,6 +724,7 @@ class ScreenshotView(QWidget):
         self._active_workers: List[ScreenshotFetchWorker] = []
         self._request_queue: List[str] = []
         self._max_concurrent_workers = 2
+        self._scroll_rows = 0  # 0 = system default
 
         self._load_timer = QTimer()  # Debounce timer for lazy loading
         self._load_timer.setSingleShot(True)
@@ -793,7 +794,7 @@ class ScreenshotView(QWidget):
         self.list_view.viewport().installEventFilter(self)
 
     def eventFilter(self, obj, event) -> bool:
-        """Handle Ctrl+Scroll for grid density zoom."""
+        """Handle Ctrl+Scroll for grid density zoom and row-based scrolling."""
         if obj is self.list_view.viewport() and event.type() == event.Type.Wheel:
             if event.modifiers() & Qt.KeyboardModifier.ControlModifier:
                 delta = event.angleDelta().y()
@@ -802,6 +803,20 @@ class ScreenshotView(QWidget):
                     new_density = self._item_width + step
                     self.set_density(new_density)
                     self.density_changed.emit(self._item_width)
+                return True
+            # Row-based scrolling (when configured)
+            if self._scroll_rows > 0:
+                delta = event.angleDelta().y()
+                if delta != 0:
+                    row_height = (
+                        int(self._item_width * 9 // 16)
+                        + self.delegate.TITLE_HEIGHT
+                        + self.delegate.PADDING
+                    )
+                    direction = 1 if delta > 0 else -1
+                    pixels = row_height * self._scroll_rows * direction
+                    sb = self.list_view.verticalScrollBar()
+                    sb.setValue(sb.value() - pixels)
                 return True
         return super().eventFilter(obj, event)
 
@@ -1171,6 +1186,10 @@ class ScreenshotView(QWidget):
     def get_density(self) -> int:
         """Get current grid density (item width)"""
         return self._item_width
+
+    def set_scroll_rows(self, rows: int) -> None:
+        """Set how many rows one scroll wheel tick covers (0 = system default)."""
+        self._scroll_rows = rows
 
     def select_game(self, game_id: str) -> None:
         """Highlight a game in the grid

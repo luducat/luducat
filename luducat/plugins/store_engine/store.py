@@ -17,7 +17,8 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 from urllib.parse import quote, urlencode, urlparse, parse_qs
 
-from luducat.plugins.base import AbstractGameStore, Game
+from luducat.plugins.base import AbstractGameStore, AuthenticationError, Game
+from luducat.plugins.sdk.network import HTTPError
 from luducat.plugins.sdk.cookies import get_browser_cookie_manager
 
 from .engine import Ruleset, load_rulesets, extract_json_path, apply_field_spec, absolutize_html_urls
@@ -407,21 +408,41 @@ class VirtualStore(AbstractGameStore):
 
         logger.debug("[%s] library returned %d raw items", self.store_name, len(all_items))
 
-        # Store items in plugin DB
+        # Build app_ids list and check for changes before upserting
         app_ids = []
         skipped = 0
+        upsert_items = []
         for item in all_items:
             app_id = str(item.get("id", ""))
             title = item.get("title", "Unknown")
             if not app_id:
                 skipped += 1
                 continue
-            self._db.upsert_game(app_id, title, item)
             app_ids.append(app_id)
+            upsert_items.append((app_id, title, item))
+
+        # Hash the fetched data to detect changes since last sync
+        from luducat.core.json_compat import json
+        content_hash = hashlib.sha256(
+            json.dumps(
+                [(aid, t) for aid, t, _ in upsert_items],
+                sort_keys=True,
+            ).encode()
+        ).hexdigest()[:16]
+
+        prev_hash = self._db.get_meta("library_hash")
+        if prev_hash == content_hash and app_ids:
+            logger.info("[%s] library unchanged (%d games, hash %s), skipping upsert",
+                        self.store_name, len(app_ids), content_hash)
+        else:
+            for app_id, title, item in upsert_items:
+                self._db.upsert_game(app_id, title, item)
+            self._db.set_meta("library_hash", content_hash)
+            logger.info("[%s] %d games stored in plugin DB (hash %s)",
+                        self.store_name, len(app_ids), content_hash)
 
         if skipped:
             logger.debug("[%s] skipped %d items with no app_id", self.store_name, skipped)
-        logger.info("[%s] %d games stored in plugin DB", self.store_name, len(app_ids))
 
         if status_callback:
             status_callback(f"Found {len(app_ids)} games")
@@ -462,6 +483,13 @@ class VirtualStore(AbstractGameStore):
                 resp.raise_for_status()
                 html_text = resp.text
                 logger.debug("[%s] page %d: %d bytes", self.store_name, page, len(html_text))
+            except HTTPError as e:
+                if e.response is not None and e.response.status_code == 401:
+                    raise AuthenticationError(
+                        f"{self.store_name}: authentication failed (session expired)"
+                    ) from e
+                logger.error("Failed to fetch %s page %d: %s", self.store_name, page, e)
+                break
             except Exception as e:
                 logger.error("Failed to fetch %s page %d: %s", self.store_name, page, e)
                 break
@@ -564,6 +592,13 @@ class VirtualStore(AbstractGameStore):
                 resp = self.http.get(url, **kwargs)
                 resp.raise_for_status()
                 data = resp.json()
+            except HTTPError as e:
+                if e.response is not None and e.response.status_code == 401:
+                    raise AuthenticationError(
+                        f"{self.store_name}: authentication failed (token expired or invalid)"
+                    ) from e
+                logger.error("Failed to fetch %s page %d: %s", self.store_name, page, e)
+                break
             except Exception as e:
                 logger.error("Failed to fetch %s page %d: %s", self.store_name, page, e)
                 break

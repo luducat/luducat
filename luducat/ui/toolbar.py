@@ -69,6 +69,7 @@ class Toolbar(QWidget):
     backup_requested = Signal()  # open settings on Backup tab
     tag_manager_requested = Signal()  # open tag manager dialog
     dev_console_requested = Signal()  # open developer console
+    download_covers_requested = Signal()  # batch download missing covers
 
     def __init__(self, parent: Optional[QWidget] = None):
         super().__init__(parent)
@@ -239,6 +240,14 @@ class Toolbar(QWidget):
             _("Export the currently filtered game list as CSV")
         )
 
+        # Download Missing Covers
+        self.action_download_covers = menu.addAction(
+            _("Download Missing Covers...")
+        )
+        self.action_download_covers.setToolTip(
+            _("Pre-download all cover images for faster browsing")
+        )
+
         # Tag Manager
         self.action_tag_manager = menu.addAction(_("Tag Manager..."))
         self.action_tag_manager.setToolTip(
@@ -276,6 +285,9 @@ class Toolbar(QWidget):
         self.action_backup.triggered.connect(self.backup_requested.emit)
         self.action_tag_manager.triggered.connect(self.tag_manager_requested.emit)
         self.action_dev_console.triggered.connect(self.dev_console_requested.emit)
+        self.action_download_covers.triggered.connect(
+            self.download_covers_requested.emit
+        )
 
         # Settings
         self.btn_settings.clicked.connect(self.settings_requested.emit)
