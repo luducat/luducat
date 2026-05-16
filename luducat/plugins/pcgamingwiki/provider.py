@@ -25,7 +25,7 @@ from luducat.plugins.base import (
     MetadataSearchResult,
 )
 
-from .api import PcgwApi, PcgwApiError, ProgressCallback
+from .api import DEFAULT_RATE_LIMIT_DELAY, PcgwApi, PcgwApiError, ProgressCallback
 from .database import PcgwDatabase, PcgwGame, PcgwStoreMatch
 
 logger = logging.getLogger(__name__)
@@ -72,7 +72,10 @@ class PcgwProvider(AbstractMetadataProvider):
     def _get_api(self) -> PcgwApi:
         """Get or create API client"""
         if self._api is None:
-            rate_limit = self.get_setting("rate_limit_delay", 0.5)
+            rate_limit = max(
+                self.get_setting("rate_limit_delay", DEFAULT_RATE_LIMIT_DELAY),
+                DEFAULT_RATE_LIMIT_DELAY,
+            )
             self._api = PcgwApi(http_client=self.http, rate_limit_delay=rate_limit)
         return self._api
 

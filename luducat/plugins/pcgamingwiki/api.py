@@ -20,6 +20,7 @@ from luducat.plugins.sdk.network import (
     RequestException,
     Response,
 )
+from luducat.plugins.sdk.constants import USER_AGENT_GW
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +33,7 @@ PCGW_API_URL = "https://www.pcgamingwiki.com/w/api.php"
 PCGW_STATUS_URL = "https://status.pcgamingwiki.com"
 
 # Defaults
-DEFAULT_RATE_LIMIT_DELAY = 1.0  # seconds between requests
+DEFAULT_RATE_LIMIT_DELAY = 2.1  # seconds between requests (30 req/min limit)
 MAX_RESULTS_PER_QUERY = 500
 DEFAULT_BATCH_SIZE = 60  # Store IDs per batch query
 
@@ -128,6 +129,7 @@ class PcgwApi:
         self._http = http_client
         self._rate_limit_delay = rate_limit_delay
         self._last_request_time = 0.0
+        self._headers = {"User-Agent": USER_AGENT_GW}
 
         # Disable urllib3's internal retries — we handle retries in _cargo_query().
         # The shared session has Retry(total=3) which causes 4 connections × 15s
@@ -180,7 +182,9 @@ class PcgwApi:
         import re
 
         try:
-            response = self._http.get(PCGW_STATUS_URL, timeout=3)
+            response = self._http.get(
+                PCGW_STATUS_URL, headers=self._headers, timeout=3
+            )
             if response.status_code != 200:
                 return
 
@@ -272,7 +276,9 @@ class PcgwApi:
 
         # Try status page first (fast, separate infrastructure)
         try:
-            response = self._http.get(PCGW_STATUS_URL, timeout=3)
+            response = self._http.get(
+                PCGW_STATUS_URL, headers=self._headers, timeout=3
+            )
             if response.status_code == 200:
                 match = re.search(
                     r'class="system-status--description"[^>]*>\s*(.*?)\s*</div>',
@@ -305,6 +311,7 @@ class PcgwApi:
                     "fields": "Infobox_game._pageID=pageID",
                     "limit": "1",
                 },
+                headers=self._headers,
                 timeout=10,
             )
             if response.status_code != 200:
@@ -400,7 +407,8 @@ class PcgwApi:
         for attempt in range(attempts):
             try:
                 response = self._http.get(
-                    PCGW_API_URL, params=params, timeout=15
+                    PCGW_API_URL, params=params,
+                    headers=self._headers, timeout=15
                 )
 
                 # Confirmed DB outage → trip breaker immediately, don't retry
@@ -556,7 +564,7 @@ class PcgwApi:
 
         # Process in batches
         for batch_start in range(0, total, batch_size):
-            if self._cancelled:
+            if self._cancelled or self.breaker_open:
                 break
             batch = store_ids[batch_start:batch_start + batch_size]
 

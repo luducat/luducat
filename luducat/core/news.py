@@ -18,6 +18,14 @@ from typing import Any, Dict, List, Optional
 # Each item has optional "section" prefix and required "text"
 NEWS_ENTRIES: List[Dict[str, Any]] = [
     {
+        "version": "0.7.2",
+        "date": "2026-05-16",
+        "items": [
+            {"section": "", "text":
+             "Respect PCGamingWiki's new API rate limits and identification policy"},
+        ],
+    },
+    {
         "version": "0.7.1",
         "date": "2026-04-04",
         "items": [
@@ -141,6 +149,11 @@ def get_news_html() -> str:
 #   "improved" — Enhancements to things that already existed
 #   "fixed"    — User-impacting bugfixes
 UPDATE_SUMMARIES: Dict[str, Dict[str, List[str]]] = {
+    "0.7.2": {
+        "fixed": [
+            "PCGamingWiki API rate limit compliance",
+        ],
+    },
     "0.7.1": {
         "new": [
             "Batch cover downloader (Tools menu + Settings)",
