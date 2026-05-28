@@ -61,6 +61,11 @@ def get_cache_dir() -> Path:
     return Path(platformdirs.user_cache_dir(APP_NAME))
 
 
+def get_default_archive_path() -> Path:
+    """Default download destination: ~/Downloads/luducat (cross-platform)."""
+    return Path(platformdirs.user_downloads_dir()) / APP_NAME
+
+
 def apply_dir_overrides(config: "Config") -> None:
     """Set directory overrides from config. Called once during startup."""
     global _data_dir_override, _cache_dir_override
@@ -170,6 +175,16 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "auto_install_on_launch": False,  # Prompt to install if not installed
         "verify_before_launch": False,  # Verify checksums before launch
         "show_first_run_dialog": True,  # Show config dialog on first launch
+    },
+    "downloads": {
+        "archive_path": "",              # Empty = default (XDG data dir / archive)
+        "folder_organization": "store-slug",  # flat, store-slug, store-title
+        "max_concurrent": 3,             # Max parallel downloads
+        "max_connections_per_download": 4,  # Parallel range chunks per file
+        "chunk_threshold_mb": 50,        # Files below this use single stream
+        "bandwidth_limit_mbps": 0,       # 0 = unlimited
+        "preferred_os": ["windows"],
+        "preferred_languages": ["all"],
     },
     "runtime_manager": {
         "auto_detect_platforms": True,  # Auto-detect installed platforms

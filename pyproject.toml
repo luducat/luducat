@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "luducat"
-version = "0.7.2"
+version = "0.8.0"
 description = "Cross-platform game catalogue browser"
 readme = "README.md"
 license = {text = "GPL-3.0-or-later"}
@@ -105,4 +105,7 @@ filterwarnings = [
     "error::DeprecationWarning",
     "error::ResourceWarning",
     "ignore::pytest.PytestUnraisableExceptionWarning",
+]
+markers = [
+    "integration: live tests requiring network and credentials",
 ]

@@ -788,6 +788,10 @@ QLabel#steamDeckBadge[tier="unsupported"] { background-color: #8b0000; color: #f
     background-color: palette(highlight);
     color: palette(highlighted-text);
 }
+QPushButton#pinButton:checked {
+    background-color: palette(highlight);
+    color: palette(highlighted-text);
+}
 
 #imageViewerZoomLabel,
 #imageViewerCounterLabel {
@@ -1003,6 +1007,52 @@ QDialog#configEditor QPlainTextEdit {
     background-color: palette(base);
     color: palette(text);
     border: 1px solid palette(mid);
+}
+
+/* ========================================
+   DOWNLOAD WINDOW
+   ======================================== */
+#downloadWindow {
+    background-color: palette(window);
+}
+
+#downloadNotificationBanner {
+    background-color: palette(alternate-base);
+    border-bottom: 1px solid palette(mid);
+    min-height: 26px;
+}
+
+#newGamesPill {
+    background-color: #cc3333;
+    color: #ffffff;
+    border: 1px solid #aa2222;
+    border-radius: 2px;
+    padding: 1px 6px;
+}
+
+#updatesPill {
+    background-color: palette(button);
+    color: palette(button-text);
+    border: 1px solid palette(mid);
+    border-radius: 2px;
+    padding: 1px 6px;
+}
+
+#queueAllUpdatesBtn {
+    color: palette(highlight);
+    border: none;
+    background: transparent;
+    padding: 1px 4px;
+}
+
+#downloadStatusFooter {
+    background-color: palette(window);
+    border-top: 1px solid palette(mid);
+    min-height: 24px;
+}
+
+#downloadStatusDot {
+    color: palette(highlight);
 }
 """
 

@@ -23,8 +23,9 @@ from ...utils.image_cache import get_cover_cache
 logger = logging.getLogger(__name__)
 
 try:
-    from ...core.i18n import _, ngettext
-except ImportError:
+    _("")
+    ngettext("", "", 1)
+except NameError:
     def _(s): return s
     def ngettext(s, p, n): return s if n == 1 else p
 

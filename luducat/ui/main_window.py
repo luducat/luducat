@@ -213,6 +213,20 @@ class MainWindow(QMainWindow):
         # Developer console singleton (lazy-created)
         self._dev_console = None
 
+        # Download manager
+        from luducat.core.download_manager import init_download_manager
+        self._download_manager = init_download_manager(
+            self.database.engine, self.config
+        )
+        self._register_download_handlers()
+
+        # Download window
+        from luducat.ui.download_window import DownloadWindow
+        self._download_window = DownloadWindow(self.config)
+        self._download_window.settings_requested.connect(
+            self._on_settings_requested)
+        self._push_download_delegate_colors()
+
         self._setup_window()
         self._setup_ui()
         self._connect_signals()
@@ -426,6 +440,7 @@ class MainWindow(QMainWindow):
         self.toolbar.tag_manager_requested.connect(self._on_open_tag_manager)
         self.toolbar.dev_console_requested.connect(self._on_dev_console_requested)
         self.toolbar.download_covers_requested.connect(self._on_download_covers)
+        self.toolbar.downloader_requested.connect(self._toggle_download_window)
 
         # Random game (dice button is on filter bar)
         self.filter_bar.random_game_requested.connect(self._on_random_game)
@@ -1883,8 +1898,33 @@ class MainWindow(QMainWindow):
         # Re-exec the process for a clean restart
         os.execv(sys.executable, [sys.executable] + sys.argv)
 
+    def _toggle_download_window(self) -> None:
+        """Show or hide the download companion window."""
+        if self._download_window.isVisible():
+            self._download_window.hide()
+        else:
+            self._download_window.show()
+            self._download_window.raise_()
+            self._download_window.activateWindow()
+
+    def _register_download_handlers(self) -> None:
+        """Register store download handlers for all active store plugins."""
+        from luducat.core.download_handlers import register
+        from luducat.core.download_handlers.gog import GogDownloadHandler
+
+        gog = self.plugin_manager.get_plugin("gog")
+        if gog and getattr(gog, "enabled", True):
+            try:
+                handler = GogDownloadHandler(gog)
+                register(handler)
+                logger.debug("Registered GOG download handler")
+            except ValueError:
+                pass  # Already registered (e.g. reload)
+
     def closeEvent(self, event) -> None:
         """Handle window close"""
+        self.game_service._shutting_down = True
+
         # Stop memory logging timer
         self._memory_timer.stop()
 
@@ -1920,6 +1960,14 @@ class MainWindow(QMainWindow):
         # Clean up image caches and HTTP session
         from ..utils.image_cache import shutdown_all_caches
         shutdown_all_caches()
+
+        # Close download window
+        if hasattr(self, '_download_window'):
+            self._download_window.close()
+
+        # Shutdown download manager
+        from luducat.core.download_manager import reset_download_manager
+        reset_download_manager()
 
         # Clean up — persist plugin state BEFORE final config save so
         # runtime changes (hit counters, etc.) are included on disk
@@ -3368,8 +3416,24 @@ class MainWindow(QMainWindow):
         navbar_icon = self.theme_manager.get_navbar_icon_color()
         self.filter_bar.set_navbar_icon_color(navbar_icon)
 
+        # Push download colors
+        self._push_download_delegate_colors()
+
         # Cache score colors for dialogs opened on demand
         self._score_colors = self.theme_manager.get_score_colors()
+
+    def _push_download_delegate_colors(self) -> None:
+        if not hasattr(self, '_download_window'):
+            return
+        delegate = self._download_window._delegate
+        from luducat.core.plugin_manager import PluginManager
+        delegate.set_brand_colors(
+            dict(PluginManager._brand_colors),
+            dict(PluginManager._badge_labels),
+        )
+        if self.theme_manager:
+            delegate.set_download_colors(
+                self.theme_manager.get_download_colors())
 
     def _on_about_requested(self) -> None:
         """Handle about button click"""
@@ -4078,6 +4142,7 @@ class MainWindow(QMainWindow):
             lambda gid: self._on_view_screenshots_requested(gid, 0)
         )
         menu.open_store_page_requested.connect(self._on_open_store_page)
+        menu.download_requested.connect(self._on_download_requested)
         menu.force_rescan_requested.connect(self._on_force_rescan_requested)
         menu.switch_to_notes_requested.connect(self._on_switch_to_notes)
         menu.switch_to_properties_requested.connect(self._on_switch_to_properties)
@@ -4241,6 +4306,63 @@ class MainWindow(QMainWindow):
             url = self._get_store_url(store_name, app_id)
             if url:
                 open_url(url)
+
+    def _on_download_requested(self, game_id: str) -> None:
+        """Handle download request from context menu."""
+        from luducat.core.download_handlers import get_handler
+        from luducat.ui.workers.resolve_worker import ResolveWorker
+
+        game = self.game_service.get_game(game_id)
+        if not game:
+            return
+
+        store_app_ids = game.get("store_app_ids", {})
+        stores = game.get("stores", [])
+
+        handler = None
+        store_name = None
+        app_id = None
+        for st in stores:
+            h = get_handler(st)
+            if h and st in store_app_ids:
+                handler = h
+                store_name = st
+                app_id = store_app_ids[st]
+                break
+
+        if not handler or not app_id:
+            return
+
+        dw = self._download_window
+        if dw:
+            try:
+                from luducat.core.download_manager import get_download_manager
+                dm = get_download_manager()
+                group_id = dm.create_resolving_group(
+                    game.get("title", store_name), store_name)
+                dw._poll()
+            except Exception:
+                logger.exception("Failed to create download group")
+                return
+
+            QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+
+            worker = ResolveWorker(
+                store_name=store_name,
+                store_app_id=app_id,
+                parent=dw,
+            )
+            worker.group_id = group_id
+            worker.resolved.connect(dw._on_resolved)
+            worker.error.connect(dw._on_resolve_error)
+            worker.finished.connect(dw._on_resolve_done)
+            worker.finished.connect(worker.deleteLater)
+            dw._resolve_worker = worker
+            worker.start()
+
+            dw.show()
+            dw.raise_()
+            dw.activateWindow()
 
     def _on_force_rescan_requested(self, game_id: str) -> None:
         """Handle force rescan request from context menu."""

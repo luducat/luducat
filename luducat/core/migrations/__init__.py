@@ -176,6 +176,8 @@ def verify_required_tables(engine: Engine) -> None:
     MIGRATION_ONLY_TABLES = {
         "runtimes": (6, 7),
         "game_installations": (7, 8),
+        "downloads": (21, 22),
+        "archives": (21, 22),
     }
 
     inspector = inspect(engine)

@@ -850,6 +850,10 @@ QProgressBar::chunk {
     background-color: {{accent}};
     color: {{text_on_accent}};
 }
+QPushButton#pinButton:checked {
+    background-color: {{accent}};
+    color: {{text_on_accent}};
+}
 #imageViewerZoomLabel,
 #imageViewerCounterLabel {
     color: {{text_primary}};
@@ -1672,4 +1676,49 @@ QComboBox::item:hover {
 QComboBox::item:selected {
     background-color: {{selection}};
     color: {{text_on_accent}};
+}
+
+/* ── Download Window ─────────────────────────────────────────── */
+
+#downloadWindow {
+    background-color: {{bg_primary}};
+}
+
+#downloadNotificationBanner {
+    background-color: {{bg_secondary}};
+    border-bottom: 1px solid {{border}};
+    min-height: 26px;
+}
+
+#newGamesPill {
+    background-color: #cc3333;
+    color: #ffffff;
+    border: 1px solid #aa2222;
+    border-radius: 2px;
+    padding: 1px 6px;
+}
+
+#updatesPill {
+    background-color: {{bg_hover}};
+    color: {{text_primary}};
+    border: 1px solid {{border}};
+    border-radius: 2px;
+    padding: 1px 6px;
+}
+
+#queueAllUpdatesBtn {
+    color: {{accent}};
+    border: none;
+    background: transparent;
+    padding: 1px 4px;
+}
+
+#downloadStatusFooter {
+    background-color: {{bg_primary}};
+    border-top: 1px solid {{border}};
+    min-height: 24px;
+}
+
+#downloadStatusDot {
+    color: {{accent}};
 }

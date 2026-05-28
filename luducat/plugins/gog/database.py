@@ -668,6 +668,10 @@ class GogDatabase:
         """Get game by GOG ID"""
         return self.session.query(GogGame).filter(GogGame.gogid == gogid).first()
 
+    def get_game_by_slug(self, slug: str) -> Optional[GogGame]:
+        """Look up a game by its URL slug."""
+        return self.session.query(GogGame).filter(GogGame.slug == slug).first()
+
     def get_all_games(self, include_dlc: bool = False) -> List[GogGame]:
         """Get all games from catalog"""
         query = self.session.query(GogGame)

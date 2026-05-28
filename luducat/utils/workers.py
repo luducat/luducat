@@ -797,7 +797,6 @@ class SyncWorker(QThread):
             warning = getattr(plugin, "_family_sharing_warning", None)
             if not warning:
                 return
-            from luducat.core.i18n import _
             title = _("Steam Family Sharing")
             if warning == "vdf_fallback":
                 msg = _(

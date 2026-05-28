@@ -18,6 +18,26 @@ from typing import Any, Dict, List, Optional
 # Each item has optional "section" prefix and required "text"
 NEWS_ENTRIES: List[Dict[str, Any]] = [
     {
+        "version": "0.8.0",
+        "date": "2026-05-26",
+        "items": [
+            {"section": "Downloader", "text":
+             "GOG game downloader with installer picker, pause/resume, "
+             "chunked downloads, and integrity verification."},
+            {"section": "Downloader", "text":
+             "DLC installers and extras (soundtracks, manuals) shown "
+             "as separate sections in the download picker."},
+            {"section": "Downloader", "text":
+             "Language-aware auto-selection filters extras and language "
+             "packs by your preferred languages."},
+            {"section": "Downloader", "text":
+             "Download settings tab for archive path, folder organization, "
+             "and concurrency limits."},
+            {"section": "", "text":
+             "Updated translations for all languages"},
+        ],
+    },
+    {
         "version": "0.7.2",
         "date": "2026-05-16",
         "items": [
@@ -149,6 +169,14 @@ def get_news_html() -> str:
 #   "improved" — Enhancements to things that already existed
 #   "fixed"    — User-impacting bugfixes
 UPDATE_SUMMARIES: Dict[str, Dict[str, List[str]]] = {
+    "0.8.0": {
+        "new": [
+            "GOG game downloader with pause/resume and integrity checks",
+            "Installer picker with DLC and extras sections",
+            "Language-aware auto-selection for downloads",
+            "Download settings tab",
+        ],
+    },
     "0.7.2": {
         "fixed": [
             "PCGamingWiki API rate limit compliance",

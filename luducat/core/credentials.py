@@ -13,12 +13,15 @@ Plugins should use this manager for credential storage.
 from luducat.core.json_compat import json
 import logging
 import oschmod
+from concurrent.futures import ThreadPoolExecutor, TimeoutError
 from pathlib import Path
 from typing import Optional
 
 from .constants import APP_NAME
 
 logger = logging.getLogger(__name__)
+
+_KEYRING_TIMEOUT = 5
 
 # Try to import keyring, but provide fallback
 try:
@@ -88,6 +91,12 @@ class CredentialManager:
             Full service name (e.g., "luducat.steam")
         """
         return f"{self.service_prefix}.{plugin_name}"
+
+    def _keyring_call(self, func, *args):
+        """Run a keyring operation with a timeout to avoid D-Bus hangs."""
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            future = pool.submit(func, *args)
+            return future.result(timeout=_KEYRING_TIMEOUT)
 
     # ---- File-based storage methods ----
 
@@ -180,12 +189,13 @@ class CredentialManager:
         if self._use_keyring:
             service = self._get_service_name(plugin_name)
             try:
-                keyring.set_password(service, key, value)
+                self._keyring_call(keyring.set_password, service, key, value)
                 logger.debug(f"Stored credential in keyring: {service}/{key}")
                 return True
+            except TimeoutError:
+                logger.warning("Keyring timed out, using file fallback")
             except Exception as e:
                 logger.warning(f"Keyring failed, using file fallback: {e}")
-                # Fall through to file storage
 
         return self._file_store(plugin_name, key, value)
 
@@ -202,13 +212,14 @@ class CredentialManager:
         if self._use_keyring:
             service = self._get_service_name(plugin_name)
             try:
-                value = keyring.get_password(service, key)
+                value = self._keyring_call(keyring.get_password, service, key)
                 if value is not None:
                     return value
+            except TimeoutError:
+                logger.warning("Keyring timed out, checking file fallback")
             except Exception as e:
                 logger.warning(f"Keyring failed, checking file fallback: {e}")
 
-        # Try file storage (as fallback or primary)
         return self._file_get(plugin_name, key)
 
     def delete(self, plugin_name: str, key: str) -> bool:
@@ -226,10 +237,13 @@ class CredentialManager:
         if self._use_keyring:
             service = self._get_service_name(plugin_name)
             try:
-                keyring.delete_password(service, key)
+                self._keyring_call(keyring.delete_password, service, key)
                 logger.debug(f"Deleted credential from keyring: {service}/{key}")
             except PasswordDeleteError:
-                pass  # Credential didn't exist - that's fine
+                pass
+            except TimeoutError:
+                logger.warning("Keyring timed out during delete")
+                success = False
             except Exception as e:
                 logger.warning(f"Failed to delete from keyring: {e}")
                 success = False

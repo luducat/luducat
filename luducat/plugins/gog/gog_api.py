@@ -29,6 +29,20 @@ ACCOUNT_URL = "https://www.gog.com/account/getFilteredProducts"
 PRODUCTS_API_URL = "https://api.gog.com/products"
 _PRODUCTS_EXPAND = "downloads,expanded_dlcs,description,screenshots,videos,related_products,changelog"
 
+# GOG language names → ISO 639-1 codes
+_LANG_CODE_MAP = {
+    "english": "en", "french": "fr", "german": "de", "italian": "it",
+    "spanish": "es", "portuguese": "pt", "russian": "ru", "polish": "pl",
+    "dutch": "nl", "swedish": "sv", "hungarian": "hu", "czech": "cs",
+    "romanian": "ro", "turkish": "tr", "japanese": "ja", "chinese": "zh",
+    "korean": "ko", "danish": "da", "finnish": "fi", "norwegian": "no",
+    "arabic": "ar", "thai": "th", "ukrainian": "uk", "bulgarian": "bg",
+    "croatian": "hr", "serbian": "sr", "greek": "el", "hebrew": "he",
+    "vietnamese": "vi", "indonesian": "id", "catalan": "ca",
+    "brazilian portuguese": "pt-br", "português do brasil": "pt-br",
+    "español (latinoamérica)": "es-la",
+}
+
 
 class GogApiError(Exception):
     """Raised when GOG API request fails"""
@@ -320,17 +334,20 @@ class GogApiClient:
             raise GogApiError(f"Network error: {e}") from e
 
     def _parse_game_details(self, data: Dict[str, Any]) -> Dict[str, Any]:
-        """Parse GOG's gameDetails response into normalized structure
+        """Parse GOG's gameDetails response into normalized structure.
 
-        GOG's response structure varies slightly, this normalizes it.
+        GOG's ``embed.gog.com/account/gameDetails/{id}.json`` returns
+        downloads grouped by *language*, each containing a dict keyed by
+        platform (windows/linux/mac)::
 
-        Args:
-            data: Raw API response
+            "downloads": [
+                ["English", {"windows": [{manualUrl, name, version, size}, ...], ...}],
+                ["polski",  {"windows": [...], "mac": [...]}],
+            ]
 
-        Returns:
-            Normalized dict with downloads organized by platform
+        Extras use the same ``manualUrl`` field for the download path.
         """
-        result = {
+        result: Dict[str, Any] = {
             "title": data.get("title", "Unknown"),
             "slug": data.get("slug", ""),
             "gogid": data.get("id"),
@@ -343,60 +360,120 @@ class GogApiClient:
             "extras": [],
         }
 
-        # Parse downloads section
-        # GOG returns downloads as a list with nested structures
+        # --- downloads: [[language, {platform: [files]}], ...] ---
         downloads = data.get("downloads", [])
+        seen_ids: set = set()
+        platform_map = {"windows": "windows", "linux": "linux", "mac": "mac"}
 
-        for platform_group in downloads:
-            # Each group has a platform name and list of files
-            platform = platform_group.get("platform", "").lower()
-            if platform == "windows":
-                platform_key = "windows"
-            elif platform == "linux":
-                platform_key = "linux"
-            elif platform in ("mac", "osx"):
-                platform_key = "mac"
-            else:
+        for lang_group in downloads:
+            if not isinstance(lang_group, (list, tuple)) or len(lang_group) < 2:
                 continue
+            lang_name, platforms = lang_group[0], lang_group[1]
+            if not isinstance(platforms, dict):
+                continue
+            lang_code = _LANG_CODE_MAP.get(lang_name.lower(), lang_name.lower()[:2])
 
-            # Files for this platform
-            files = platform_group.get("files", [])
-            for file_info in files:
-                installer = {
-                    "id": file_info.get("id"),
-                    "name": file_info.get("name", "Installer"),
-                    "platform": platform_key,
-                    "version": file_info.get("version"),
-                    "size": file_info.get("size"),
-                    "downlink": file_info.get("downlink"),
-                }
-                result["downloads"][platform_key].append(installer)
+            for platform_key, files in platforms.items():
+                mapped = platform_map.get(platform_key)
+                if not mapped or not isinstance(files, list):
+                    continue
+                for f in files:
+                    if not isinstance(f, dict):
+                        continue
+                    dl_url = f.get("manualUrl", "")
+                    file_id = dl_url.rsplit("/", 1)[-1] if dl_url else ""
+                    dedup_key = (mapped, lang_code, dl_url)
+                    if dedup_key in seen_ids:
+                        continue
+                    seen_ids.add(dedup_key)
 
-        # Parse patches (some games have these)
-        patches = data.get("patches", [])
-        for patch in patches:
-            patch_info = {
-                "id": patch.get("id"),
-                "name": patch.get("name", "Patch"),
-                "version": patch.get("version"),
-                "size": patch.get("size"),
-                "downlink": patch.get("downlink"),
-            }
-            result["downloads"]["patches"].append(patch_info)
+                    result["downloads"][mapped].append({
+                        "id": file_id,
+                        "name": f.get("name", "Installer"),
+                        "platform": mapped,
+                        "version": f.get("version"),
+                        "size": f.get("size"),
+                        "downlink": dl_url,
+                        "language": lang_code,
+                    })
 
-        # Parse extras (soundtracks, manuals, artbooks, etc.)
-        extras = data.get("extras", [])
-        for extra in extras:
-            extra_info = {
-                "id": extra.get("id"),
-                "name": extra.get("name", "Extra"),
-                "type": extra.get("type", "unknown"),
-                "size": extra.get("size"),
-                "downlink": extra.get("manualUrl") or extra.get("downlink"),
-            }
-            result["extras"].append(extra_info)
+        # --- extras: [{manualUrl, name, type, size}, ...] ---
+        self._parse_extras(data.get("extras", []), result["extras"])
+
+        # --- dlcs: [{title, downloads, extras, ...}, ...] ---
+        for dlc in data.get("dlcs", []):
+            if not isinstance(dlc, dict):
+                continue
+            dlc_title = dlc.get("title", "DLC")
+
+            # DLC installers
+            dlc_downloads = dlc.get("downloads", [])
+            for lang_group in dlc_downloads:
+                if not isinstance(lang_group, (list, tuple)) or len(lang_group) < 2:
+                    continue
+                lang_name, platforms = lang_group[0], lang_group[1]
+                if not isinstance(platforms, dict):
+                    continue
+                lang_code = _LANG_CODE_MAP.get(
+                    lang_name.lower(), lang_name.lower()[:2],
+                )
+
+                for platform_key, files in platforms.items():
+                    mapped = platform_map.get(platform_key)
+                    if not mapped or not isinstance(files, list):
+                        continue
+                    for f in files:
+                        if not isinstance(f, dict):
+                            continue
+                        dl_url = f.get("manualUrl", "")
+                        file_id = dl_url.rsplit("/", 1)[-1] if dl_url else ""
+                        dedup_key = (mapped, lang_code, dl_url)
+                        if dedup_key in seen_ids:
+                            continue
+                        seen_ids.add(dedup_key)
+
+                        name = f.get("name", "")
+                        if not name or name == "DLC":
+                            name = dlc_title
+                        result["downloads"][mapped].append({
+                            "id": file_id,
+                            "name": name,
+                            "platform": mapped,
+                            "version": f.get("version"),
+                            "size": f.get("size"),
+                            "downlink": dl_url,
+                            "language": lang_code,
+                            "dlc_title": dlc_title,
+                        })
+
+            # DLC extras — prefix name with DLC title for clarity
+            dlc_extras = dlc.get("extras", [])
+            self._parse_extras(dlc_extras, result["extras"], dlc_title=dlc_title)
 
         return result
+
+    @staticmethod
+    def _parse_extras(
+        raw_extras: list,
+        target: list[dict],
+        dlc_title: Optional[str] = None,
+    ) -> None:
+        """Parse extras from a gameDetails response into the target list."""
+        for extra in raw_extras:
+            if not isinstance(extra, dict):
+                continue
+            dl_url = extra.get("manualUrl", "")
+            file_id = dl_url.rsplit("/", 1)[-1] if dl_url else ""
+            name = extra.get("name", "Extra")
+            if dlc_title:
+                name = f"{dlc_title} - {name}"
+            target.append({
+                "id": file_id,
+                "name": name,
+                "type": extra.get("type", "unknown"),
+                "size": extra.get("size"),
+                "downlink": dl_url,
+            })
 
     async def get_product_metadata(self, gogid: int) -> Optional[Dict[str, Any]]:
         """Fetch full product metadata from GOG's public products API.

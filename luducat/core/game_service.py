@@ -163,6 +163,7 @@ class GameService:
         # Cache for UI data (GameEntry objects with __slots__ for memory efficiency)
         self._games_cache: Dict[str, GameEntry] = {}
         self._cache_valid = False
+        self._shutting_down = False
 
         # Cached per-store game counts (invalidated on cache rebuild)
         self._store_counts_cache: Optional[Dict[str, int]] = None
@@ -332,6 +333,9 @@ class GameService:
         if self._cache_valid:
             return list(self._games_cache.values())
 
+        if self._shutting_down:
+            return list(self._games_cache.values())
+
         self._refresh_cache(progress_callback)
         return list(self._games_cache.values())
 
@@ -344,7 +348,7 @@ class GameService:
         Returns:
             GameEntry or None
         """
-        if not self._cache_valid:
+        if not self._cache_valid and not self._shutting_down:
             self._refresh_cache()
 
         return self._games_cache.get(game_id)

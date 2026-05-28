@@ -70,6 +70,7 @@ class Toolbar(QWidget):
     tag_manager_requested = Signal()  # open tag manager dialog
     dev_console_requested = Signal()  # open developer console
     download_covers_requested = Signal()  # batch download missing covers
+    downloader_requested = Signal()  # open download companion window
 
     def __init__(self, parent: Optional[QWidget] = None):
         super().__init__(parent)
@@ -240,6 +241,14 @@ class Toolbar(QWidget):
             _("Export the currently filtered game list as CSV")
         )
 
+        # Downloader
+        self.action_downloader = menu.addAction(_("Downloader"))
+        self.action_downloader.setToolTip(
+            _("Open the download companion window")
+        )
+
+        menu.addSeparator()
+
         # Download Missing Covers
         self.action_download_covers = menu.addAction(
             _("Download Missing Covers...")
@@ -288,6 +297,7 @@ class Toolbar(QWidget):
         self.action_download_covers.triggered.connect(
             self.download_covers_requested.emit
         )
+        self.action_downloader.triggered.connect(self.downloader_requested.emit)
 
         # Settings
         self.btn_settings.clicked.connect(self.settings_requested.emit)

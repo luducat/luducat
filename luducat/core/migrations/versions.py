@@ -42,7 +42,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 # Current schema version (increment when adding new migrations)
-CURRENT_SCHEMA_VERSION = 21
+CURRENT_SCHEMA_VERSION = 27
 
 # Mapping from Alembic revision IDs to internal version numbers
 ALEMBIC_REVISION_MAP = {
@@ -942,6 +942,258 @@ def migrate_020_to_021(conn: "Connection") -> None:
     conn.commit()
 
 
+def migrate_021_to_022(conn: "Connection") -> None:
+    """Re-create downloads and archives tables for Luducat Downloader.
+
+    These tables were originally created pre-release, then removed in migrations
+    4->5 and 5->6 (no-op stubs). Now brought back for the download manager and
+    archive manifest.
+    """
+    logger.info("Migration 21->22: Creating downloads and archives tables")
+
+    tables = {
+        r[0] for r in conn.execute(
+            text("SELECT name FROM sqlite_master WHERE type='table'")
+        ).fetchall()
+    }
+
+    if "downloads" not in tables:
+        conn.execute(text("""
+            CREATE TABLE downloads (
+                id VARCHAR(36) PRIMARY KEY,
+                url TEXT NOT NULL,
+                destination_path TEXT NOT NULL,
+                temp_path TEXT NOT NULL,
+                status VARCHAR(20) NOT NULL DEFAULT 'PENDING',
+                bytes_downloaded BIGINT NOT NULL DEFAULT 0,
+                bytes_total BIGINT,
+                checksum_expected VARCHAR(100),
+                priority INTEGER NOT NULL DEFAULT 0,
+                retry_count INTEGER NOT NULL DEFAULT 0,
+                last_error TEXT,
+                last_error_at DATETIME,
+                remote_timestamp DATETIME,
+                headers_json JSON,
+                cookies_json JSON,
+                metadata_json JSON,
+                callback_id VARCHAR(100),
+                resume_enabled BOOLEAN NOT NULL DEFAULT 1,
+                created_at DATETIME NOT NULL,
+                updated_at DATETIME NOT NULL
+            )
+        """))
+        conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS ix_downloads_status ON downloads (status)"
+        ))
+        logger.info("Migration 21->22: Created downloads table")
+
+    if "archives" not in tables:
+        conn.execute(text("""
+            CREATE TABLE archives (
+                id VARCHAR(36) PRIMARY KEY,
+                archive_type VARCHAR(20) NOT NULL,
+                store_name VARCHAR(50),
+                store_app_id VARCHAR(100),
+                filename VARCHAR(500) NOT NULL,
+                relative_path TEXT NOT NULL,
+                size_bytes BIGINT NOT NULL,
+                checksum_sha256 VARCHAR(64) NOT NULL,
+                version VARCHAR(50),
+                original_download_url TEXT,
+                remote_timestamp DATETIME,
+                downloaded_at DATETIME NOT NULL,
+                verified_at DATETIME,
+                metadata_json JSON
+            )
+        """))
+        conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS ix_archives_store "
+            "ON archives (store_name, store_app_id)"
+        ))
+        logger.info("Migration 21->22: Created archives table")
+
+    conn.commit()
+
+
+def migrate_022_to_023(conn: "Connection") -> None:
+    """Add download_groups table and group_id/filename columns to downloads.
+
+    Supports game-level download grouping for the Luducat Downloader (L2).
+    """
+    logger.info("Migration 22->23: Adding download_groups table and downloads columns")
+
+    tables = {
+        r[0] for r in conn.execute(
+            text("SELECT name FROM sqlite_master WHERE type='table'")
+        ).fetchall()
+    }
+
+    if "download_groups" not in tables:
+        conn.execute(text("""
+            CREATE TABLE download_groups (
+                id VARCHAR(36) PRIMARY KEY,
+                game_title TEXT NOT NULL,
+                store_name VARCHAR(50) NOT NULL,
+                store_app_id VARCHAR(100),
+                icon_path TEXT,
+                status VARCHAR(20) NOT NULL DEFAULT 'PENDING',
+                total_bytes BIGINT,
+                downloaded_bytes BIGINT NOT NULL DEFAULT 0,
+                file_count INTEGER NOT NULL DEFAULT 0,
+                files_completed INTEGER NOT NULL DEFAULT 0,
+                created_at DATETIME NOT NULL,
+                updated_at DATETIME NOT NULL
+            )
+        """))
+        conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS ix_download_groups_status "
+            "ON download_groups (status)"
+        ))
+        logger.info("Migration 22->23: Created download_groups table")
+
+    # Add group_id and filename columns to downloads if missing
+    existing_cols = {
+        row[1] for row in conn.execute(text("PRAGMA table_info(downloads)")).fetchall()
+    }
+
+    if "group_id" not in existing_cols:
+        conn.execute(text(
+            "ALTER TABLE downloads ADD COLUMN group_id VARCHAR(36)"
+        ))
+        logger.info("Migration 22->23: Added group_id column to downloads")
+
+    if "filename" not in existing_cols:
+        conn.execute(text(
+            "ALTER TABLE downloads ADD COLUMN filename TEXT NOT NULL DEFAULT ''"
+        ))
+        logger.info("Migration 22->23: Added filename column to downloads")
+
+    conn.commit()
+
+
+def migrate_023_to_024(conn: "Connection") -> None:
+    """Add priority column to download_groups for queue ordering."""
+    logger.info("Migration 23->24: Adding priority column to download_groups")
+
+    tables = {
+        r[0] for r in conn.execute(
+            text("SELECT name FROM sqlite_master WHERE type='table'")
+        ).fetchall()
+    }
+
+    if "download_groups" not in tables:
+        conn.commit()
+        return
+
+    cols = conn.execute(
+        text("PRAGMA table_info(download_groups)")).fetchall()
+    col_names = {c[1] for c in cols}
+
+    if "priority" not in col_names:
+        conn.execute(text(
+            "ALTER TABLE download_groups "
+            "ADD COLUMN priority INTEGER NOT NULL DEFAULT 0"
+        ))
+
+        # Backfill: assign ascending priority based on existing created_at order
+        rows = conn.execute(text(
+            "SELECT id FROM download_groups ORDER BY created_at ASC"
+        )).fetchall()
+        for i, row in enumerate(rows):
+            conn.execute(text(
+                "UPDATE download_groups SET priority = :p WHERE id = :id"
+            ), {"p": i, "id": row[0]})
+
+        logger.info("Migration 23->24: Added priority column, "
+                     "backfilled %d groups", len(rows))
+
+    conn.commit()
+
+
+def migrate_024_to_025(conn: "Connection") -> None:
+    """Add verified column to download_groups for post-download integrity status."""
+    logger.info("Migration 24->25: Adding verified column to download_groups")
+
+    tables = {
+        r[0] for r in conn.execute(
+            text("SELECT name FROM sqlite_master WHERE type='table'")
+        ).fetchall()
+    }
+
+    if "download_groups" not in tables:
+        conn.commit()
+        return
+
+    cols = {
+        c[1] for c in conn.execute(
+            text("PRAGMA table_info(download_groups)")).fetchall()
+    }
+
+    if "verified" not in cols:
+        conn.execute(text(
+            "ALTER TABLE download_groups ADD COLUMN verified TEXT"
+        ))
+        logger.info("Migration 24->25: Added verified column")
+
+    conn.commit()
+
+
+def migrate_025_to_026(conn: "Connection") -> None:
+    """Add chunks_json column to downloads for per-chunk resume state."""
+    logger.info("Migration 25->26: Adding chunks_json column to downloads")
+
+    tables = {
+        r[0] for r in conn.execute(
+            text("SELECT name FROM sqlite_master WHERE type='table'")
+        ).fetchall()
+    }
+
+    if "downloads" not in tables:
+        conn.commit()
+        return
+
+    cols = {
+        c[1] for c in conn.execute(
+            text("PRAGMA table_info(downloads)")).fetchall()
+    }
+
+    if "chunks_json" not in cols:
+        conn.execute(text(
+            "ALTER TABLE downloads ADD COLUMN chunks_json TEXT"
+        ))
+        logger.info("Migration 25->26: Added chunks_json column")
+
+    conn.commit()
+
+
+def migrate_026_to_027(conn: "Connection") -> None:
+    """Add last_error column to download_groups for resolve/download error messages."""
+    logger.info("Migration 26->27: Adding last_error column to download_groups")
+
+    tables = {
+        r[0] for r in conn.execute(
+            text("SELECT name FROM sqlite_master WHERE type='table'")
+        ).fetchall()
+    }
+
+    if "download_groups" not in tables:
+        conn.commit()
+        return
+
+    cols = {
+        c[1] for c in conn.execute(
+            text("PRAGMA table_info(download_groups)")).fetchall()
+    }
+
+    if "last_error" not in cols:
+        conn.execute(text(
+            "ALTER TABLE download_groups ADD COLUMN last_error TEXT"
+        ))
+        logger.info("Migration 26->27: Added last_error column")
+
+    conn.commit()
+
+
 # Migration registry: list of (from_version, to_version, migration_function)
 MIGRATIONS = [
     (0, 1, migrate_000_to_001),
@@ -965,4 +1217,10 @@ MIGRATIONS = [
     (18, 19, migrate_018_to_019),
     (19, 20, migrate_019_to_020),
     (20, 21, migrate_020_to_021),
+    (21, 22, migrate_021_to_022),
+    (22, 23, migrate_022_to_023),
+    (23, 24, migrate_023_to_024),
+    (24, 25, migrate_024_to_025),
+    (25, 26, migrate_025_to_026),
+    (26, 27, migrate_026_to_027),
 ]

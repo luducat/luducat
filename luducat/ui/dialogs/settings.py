@@ -9,6 +9,7 @@ Tabbed dialog containing:
 - Metadata: Per-field metadata priority editor
 - Tags: Tag sync settings
 - Launching: Centralized launcher/emulator binary config and default store runners
+- Downloads: Download directory, folder organization, concurrency, bandwidth
 - Plugins: Enable/disable, configure plugins
 - Backup: Backup/restore
 - Advanced: Paths, cache
@@ -23,6 +24,7 @@ from PySide6.QtCore import Qt, Signal, Slot, QMetaObject, QUrl, Q_ARG
 from PySide6.QtWidgets import (
     QApplication,
     QDialog,
+    QDoubleSpinBox,
     QVBoxLayout,
     QHBoxLayout,
     QTabWidget,
@@ -4983,6 +4985,276 @@ class LaunchingSettingsTab(QWidget):
             combo.setCurrentIndex(0)
 
 
+class DownloadsSettingsTab(QWidget):
+    """Downloads tab — download directory, folder organization, concurrency, bandwidth."""
+
+    def __init__(self, config: Config, parent: Optional[QWidget] = None):
+        super().__init__(parent)
+        self.config = config
+        self._default_archive_path = self._resolve_default_path()
+        self._setup_ui()
+        self._load_settings()
+
+    @staticmethod
+    def _resolve_default_path() -> str:
+        from ...core.config import get_default_archive_path
+        return str(get_default_archive_path())
+
+    def _setup_ui(self) -> None:
+        outer = QVBoxLayout(self)
+        outer.setSpacing(12)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+
+        content = QWidget()
+        layout = QVBoxLayout(content)
+        layout.setSpacing(16)
+        layout.setContentsMargins(0, 0, 8, 0)
+
+        group = QGroupBox(_("Downloads"))
+        form = QFormLayout(group)
+        form.setSpacing(10)
+
+        # Row 1: Download folder
+        path_row = QHBoxLayout()
+        self.path_edit = QLineEdit()
+        self.path_edit.setReadOnly(True)
+        path_row.addWidget(self.path_edit, 1)
+
+        self.btn_browse = QPushButton(_("Browse…"))
+        self.btn_browse.clicked.connect(self._browse_folder)
+        path_row.addWidget(self.btn_browse)
+
+        self.btn_reset_path = QPushButton(_("Reset"))
+        self.btn_reset_path.setToolTip(
+            _("Reset to default download folder"))
+        self.btn_reset_path.clicked.connect(self._reset_path)
+        path_row.addWidget(self.btn_reset_path)
+
+        path_container = QWidget()
+        path_layout = QVBoxLayout(path_container)
+        path_layout.setContentsMargins(0, 0, 0, 0)
+        path_layout.setSpacing(2)
+        path_layout.addLayout(path_row)
+        path_hint = QLabel(_("Where downloaded installers and extras are stored"))
+        path_hint.setObjectName("hintLabel")
+        path_layout.addWidget(path_hint)
+
+        form.addRow(_("Download folder:"), path_container)
+
+        # Row 2: Folder layout
+        org_container = QWidget()
+        org_layout = QVBoxLayout(org_container)
+        org_layout.setContentsMargins(0, 0, 0, 0)
+        org_layout.setSpacing(4)
+
+        self.combo_organization = QComboBox()
+        self.combo_organization.addItem(_("By store (compact)"), "store-slug")
+        self.combo_organization.addItem(_("By store (readable)"), "store-title")
+        self.combo_organization.addItem(_("Flat"), "flat")
+        self.combo_organization.currentIndexChanged.connect(
+            self._update_folder_preview)
+        org_layout.addWidget(self.combo_organization)
+
+        self.lbl_folder_preview = QLabel()
+        self.lbl_folder_preview.setObjectName("hintLabel")
+        org_layout.addWidget(self.lbl_folder_preview)
+
+        form.addRow(_("Folder layout:"), org_container)
+
+        # Separator
+        sep = QFrame()
+        sep.setFrameShape(QFrame.Shape.HLine)
+        sep.setFrameShadow(QFrame.Shadow.Sunken)
+        form.addRow(sep)
+
+        # Row 3: Simultaneous downloads
+        self.spin_concurrent = QSpinBox()
+        self.spin_concurrent.setRange(1, 6)
+        self.spin_concurrent.setSuffix(" " + _("games at once"))
+        form.addRow(_("Simultaneous downloads:"), self.spin_concurrent)
+
+        # Row 4: Bandwidth limit
+        self.spin_bandwidth = QDoubleSpinBox()
+        self.spin_bandwidth.setRange(0, 1000)
+        self.spin_bandwidth.setDecimals(1)
+        self.spin_bandwidth.setSuffix(" MB/s")
+        self.spin_bandwidth.setSpecialValueText(_("Unlimited"))
+        form.addRow(_("Bandwidth limit:"), self.spin_bandwidth)
+
+        layout.addWidget(group)
+
+        # -- Installer Preferences group --
+        pref_group = QGroupBox(_("Installer Preferences"))
+        pref_layout = QHBoxLayout(pref_group)
+        pref_layout.setSpacing(16)
+
+        # OS checkboxes
+        os_box = QVBoxLayout()
+        os_label = QLabel(_("Operating System"))
+        os_label.setObjectName("hintLabel")
+        os_box.addWidget(os_label)
+
+        self._cb_windows = QCheckBox(_("Windows"))
+        self._cb_linux = QCheckBox(_("Linux"))
+        self._cb_macos = QCheckBox(_("macOS"))
+        os_box.addWidget(self._cb_windows)
+        os_box.addWidget(self._cb_linux)
+        os_box.addWidget(self._cb_macos)
+
+        for cb in (self._cb_windows, self._cb_linux, self._cb_macos):
+            cb.toggled.connect(self._guard_os_selection)
+
+        self._btn_reset_os = QPushButton(_("Reset"))
+        self._btn_reset_os.setToolTip(
+            _("Reset to Windows only"))
+        self._btn_reset_os.clicked.connect(self._reset_os)
+        os_box.addWidget(self._btn_reset_os)
+        os_box.addStretch()
+        pref_layout.addLayout(os_box)
+
+        # Language input
+        lang_box = QVBoxLayout()
+        lang_label = QLabel(_("Languages"))
+        lang_label.setObjectName("hintLabel")
+        lang_box.addWidget(lang_label)
+
+        lang_input_row = QHBoxLayout()
+        self._lang_input = QLineEdit()
+        self._lang_input.setPlaceholderText("all")
+        self._lang_input.setToolTip(
+            _("Language codes: en, fr, de, it, es, ru, pl, pt, zh, ja, ko.\n"
+              "\"all\" for any language. Comma-separated for multiple."))
+        lang_input_row.addWidget(self._lang_input, 1)
+        self._btn_reset_lang = QPushButton(_("Reset"))
+        self._btn_reset_lang.setToolTip(_("Reset to all languages"))
+        self._btn_reset_lang.clicked.connect(self._reset_lang)
+        lang_input_row.addWidget(self._btn_reset_lang)
+        lang_box.addLayout(lang_input_row)
+
+        lang_hint = QLabel(
+            _("Language codes: en, fr, de, it, es, ru, pl.\n"
+              "\"all\" for any language."))
+        lang_hint.setObjectName("hintLabel")
+        lang_box.addWidget(lang_hint)
+        lang_box.addStretch()
+        pref_layout.addLayout(lang_box)
+
+        layout.addWidget(pref_group)
+        layout.addStretch()
+        scroll.setWidget(content)
+        outer.addWidget(scroll)
+
+    def _guard_os_selection(self) -> None:
+        checked = [cb for cb in (self._cb_windows, self._cb_linux, self._cb_macos)
+                   if cb.isChecked()]
+        if not checked:
+            sender = self.sender()
+            if sender:
+                sender.setChecked(True)
+
+    def _reset_os(self) -> None:
+        self._cb_windows.setChecked(True)
+        self._cb_linux.setChecked(False)
+        self._cb_macos.setChecked(False)
+
+    def _reset_lang(self) -> None:
+        self._lang_input.setText("all")
+
+    def _load_settings(self) -> None:
+        archive_path = self.config.get("downloads.archive_path", "")
+        self.path_edit.setText(
+            archive_path if archive_path else self._default_archive_path
+        )
+
+        org = self.config.get("downloads.folder_organization", "store-slug")
+        idx = self.combo_organization.findData(org)
+        if idx >= 0:
+            self.combo_organization.setCurrentIndex(idx)
+
+        self.spin_concurrent.setValue(
+            self.config.get("downloads.max_concurrent", 3))
+        self.spin_bandwidth.setValue(
+            self.config.get("downloads.bandwidth_limit_mbps", 0))
+
+        preferred_os = self.config.get("downloads.preferred_os", ["windows"])
+        self._cb_windows.setChecked("windows" in preferred_os)
+        self._cb_linux.setChecked("linux" in preferred_os)
+        self._cb_macos.setChecked("macos" in preferred_os)
+
+        preferred_langs = self.config.get("downloads.preferred_languages", ["all"])
+        self._lang_input.setText(", ".join(preferred_langs))
+
+        self._update_folder_preview()
+
+    def save_settings(self) -> None:
+        current_path = self.path_edit.text()
+        if current_path == self._default_archive_path:
+            self.config.set("downloads.archive_path", "")
+        else:
+            self.config.set("downloads.archive_path", current_path)
+
+        self.config.set("downloads.folder_organization",
+                        self.combo_organization.currentData())
+        self.config.set("downloads.max_concurrent",
+                        self.spin_concurrent.value())
+        self.config.set("downloads.bandwidth_limit_mbps",
+                        self.spin_bandwidth.value())
+
+        os_list = []
+        if self._cb_windows.isChecked():
+            os_list.append("windows")
+        if self._cb_linux.isChecked():
+            os_list.append("linux")
+        if self._cb_macos.isChecked():
+            os_list.append("macos")
+        self.config.set("downloads.preferred_os", os_list or ["windows"])
+
+        raw_langs = self._lang_input.text().strip()
+        if not raw_langs or raw_langs.lower() == "all":
+            lang_list = ["all"]
+        else:
+            lang_list = list(dict.fromkeys(
+                code.strip().lower() for code in raw_langs.split(",")
+                if code.strip()
+            ))
+        self.config.set("downloads.preferred_languages", lang_list or ["all"])
+
+    def reset_to_defaults(self) -> None:
+        self.path_edit.setText(self._default_archive_path)
+        idx = self.combo_organization.findData("store-slug")
+        if idx >= 0:
+            self.combo_organization.setCurrentIndex(idx)
+        self.spin_concurrent.setValue(3)
+        self.spin_bandwidth.setValue(0)
+        self._reset_os()
+        self._reset_lang()
+        self._update_folder_preview()
+
+    def _browse_folder(self) -> None:
+        current = self.path_edit.text()
+        folder = QFileDialog.getExistingDirectory(
+            self, _("Select Download Folder"), current)
+        if folder:
+            self.path_edit.setText(folder)
+
+    def _reset_path(self) -> None:
+        self.path_edit.setText(self._default_archive_path)
+
+    def _update_folder_preview(self) -> None:
+        org = self.combo_organization.currentData()
+        if org == "store-slug":
+            preview = "archive/gog/baldurs-gate-3/setup_baldurs_gate_3.exe"
+        elif org == "store-title":
+            preview = "archive/gog/Baldur’s Gate 3/setup_baldurs_gate_3.exe"
+        else:
+            preview = "archive/setup_baldurs_gate_3.exe"
+        self.lbl_folder_preview.setText(preview)
+
+
 class SettingsDialog(QDialog):
     """Main settings dialog with tabs"""
 
@@ -5056,6 +5328,10 @@ class SettingsDialog(QDialog):
         self.launching_tab = LaunchingSettingsTab(self.config, self.plugin_manager)
         self.tabs.addTab(self.launching_tab, _("Launching"))
 
+        # Downloads tab
+        self.downloads_tab = DownloadsSettingsTab(self.config)
+        self.tabs.addTab(self.downloads_tab, _("Downloads"))
+
         # Plugins tab
         self.plugins_tab = PluginsSettingsTab(
             self.config, self.plugin_manager, game_service=self.game_service
@@ -5128,6 +5404,7 @@ class SettingsDialog(QDialog):
         self.privacy_tab.save_settings()
         self.tags_tab.save_settings()
         self.launching_tab.save_settings()
+        self.downloads_tab.save_settings()
         self.metadata_tab.save_settings()
         self.plugins_tab.save_settings()
         self.advanced_tab.save_settings()
@@ -5180,6 +5457,7 @@ class SettingsDialog(QDialog):
         self.privacy_tab.reset_to_defaults()
         self.tags_tab.reset_to_defaults()
         self.launching_tab.reset_to_defaults()
+        self.downloads_tab.reset_to_defaults()
         self.metadata_tab.reset_to_defaults()
         # Plugins tab has no defaults to reset
         self.advanced_tab.reset_to_defaults()

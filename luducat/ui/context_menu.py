@@ -49,6 +49,7 @@ class GameContextMenu(QMenu):
     show_details_requested = Signal(str)                   # game_id
     collection_toggled = Signal(int, str, bool)           # collection_id, game_id, add (True) or remove (False)
     cover_author_score_requested = Signal(str, str, int)  # game_id, author_name, score_delta
+    download_requested = Signal(str)                     # game_id
 
     def build(
         self,
@@ -140,6 +141,21 @@ class GameContextMenu(QMenu):
         store_action.triggered.connect(
             lambda checked, gid=game_id: self.open_store_page_requested.emit(gid)
         )
+
+        # 14. Download
+        has_dl_handler = False
+        if stores:
+            from luducat.core.download_handlers import get_handler
+            for st in stores:
+                if get_handler(st):
+                    has_dl_handler = True
+                    break
+        if has_dl_handler:
+            dl_action = self.addAction(_("Download..."))
+            dl_action.triggered.connect(
+                lambda checked, gid=game_id: self.download_requested.emit(gid)
+            )
+
         self.addSeparator()
 
         # 15. Force Rescan

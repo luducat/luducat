@@ -2577,14 +2577,16 @@ class ListView(QWidget):
         Args:
             stores: List of store names
         """
-        # Disconnect any existing connections
-        try:
-            self.store_btn.clicked.disconnect()
-        except RuntimeError:
-            pass
+        if getattr(self, '_store_btn_connected', False):
+            try:
+                self.store_btn.clicked.disconnect()
+            except RuntimeError:
+                pass
 
         # Clear existing menu
         self.store_btn.setMenu(None)
+
+        self._store_btn_connected = False
 
         if not stores:
             self.store_btn.setText(_("Store"))
@@ -2626,6 +2628,7 @@ class ListView(QWidget):
             self.store_btn.clicked.connect(
                 lambda checked, s=primary_store: self._on_store_clicked(s)
             )
+            self._store_btn_connected = True
         else:
             # Multiple stores - button with dropdown
             dname = PluginManager.get_store_display_name(primary_store)
@@ -2639,6 +2642,7 @@ class ListView(QWidget):
             self.store_btn.clicked.connect(
                 lambda checked, s=primary_store: self._on_store_clicked(s)
             )
+            self._store_btn_connected = True
 
             # Dropdown menu with all stores (priority sorted)
             menu = QMenu(self.store_btn)
