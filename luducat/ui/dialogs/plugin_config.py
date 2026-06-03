@@ -1959,9 +1959,24 @@ class PluginConfigDialog(QDialog):
         elif isinstance(callback, str):
             # Dialog method (starts with '_') or plugin method
             if hasattr(self, callback):
-                btn.clicked.connect(
-                    lambda checked, name=callback: getattr(self, name)()
-                )
+                if action.group == "auth":
+                    def _make_str_auth_wrapper(method_name):
+                        def _wrapped():
+                            getattr(self, method_name)()
+                            self._update_connection_status()
+                            plugin = self._get_plugin_instance()
+                            if plugin and hasattr(plugin, 'is_authenticated'):
+                                self.connection_status_changed.emit(
+                                    self.plugin_name, plugin.is_authenticated()
+                                )
+                        return _wrapped
+                    btn.clicked.connect(
+                        lambda checked, w=_make_str_auth_wrapper(callback): w()
+                    )
+                else:
+                    btn.clicked.connect(
+                        lambda checked, name=callback: getattr(self, name)()
+                    )
             else:
                 # Plugin method — resolve at click time
                 def _make_plugin_callback(method_name):

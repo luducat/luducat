@@ -134,8 +134,13 @@ def _build_request_headers(url: str) -> dict:
         }
     elif "pcgamingwiki.com" in hostname:
         headers = {
-            "Referer": "https://www.pcgamingwiki.com/",
             "User-Agent": USER_AGENT,
+            "Referer": "https://www.pcgamingwiki.com/",
+            "Accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+            "Accept-Language": "en",
+            "Sec-Fetch-Dest": "image",
+            "Sec-Fetch-Mode": "no-cors",
+            "Sec-Fetch-Site": "cross-site",
         }
 
     return headers

@@ -18,6 +18,16 @@ from typing import Any, Dict, List, Optional
 # Each item has optional "section" prefix and required "text"
 NEWS_ENTRIES: List[Dict[str, Any]] = [
     {
+        "version": "0.8.1",
+        "date": "2026-06-02",
+        "items": [
+            {"section": "", "text":
+             "Fixed browser cookie handling for Firefox profiles using WAL mode"},
+            {"section": "", "text":
+             "Plugin settings now reflect login status changes immediately"},
+        ],
+    },
+    {
         "version": "0.8.0",
         "date": "2026-05-26",
         "items": [
@@ -169,6 +179,12 @@ def get_news_html() -> str:
 #   "improved" — Enhancements to things that already existed
 #   "fixed"    — User-impacting bugfixes
 UPDATE_SUMMARIES: Dict[str, Dict[str, List[str]]] = {
+    "0.8.1": {
+        "fixed": [
+            "Firefox cookie auth for WAL-mode profiles",
+            "Plugin status refresh after login/logout",
+        ],
+    },
     "0.8.0": {
         "new": [
             "GOG game downloader with pause/resume and integrity checks",

@@ -10,6 +10,7 @@ Uses browser_cookie3 to read cookies from all supported browsers.
 """
 
 import logging
+import platform
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 
@@ -215,11 +216,13 @@ class BrowserLoginDialog(QDialog):
             self.accept()
         else:
             from luducat.utils.style_helpers import set_status_property
-            self.status_label.setText(
-                _("Could not find {name} login.\n"
-                  "Make sure you're logged in on {name},\n"
-                  "then try again.").format(name=self.config.name)
-            )
+            msg = _("Could not find {name} login.\n"
+                    "Make sure you're logged in on {name},\n"
+                    "then try again.").format(name=self.config.name)
+            if platform.system() == "Windows":
+                msg += "\n" + _("If this keeps failing, close your browser "
+                                "completely, then click 'Check Login'.")
+            self.status_label.setText(msg)
             set_status_property(self.status_label, "error")
 
     def _on_cancel(self) -> None:

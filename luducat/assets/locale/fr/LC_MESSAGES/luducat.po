@@ -7,15 +7,15 @@ msgid ""
 msgstr ""
 "Project-Id-Version: luducat VERSION\n"
 "Report-Msgid-Bugs-To: luducat@trinity2k.net\n"
-"POT-Creation-Date: 2026-05-25 13:17+0200\n"
+"POT-Creation-Date: 2026-05-31 21:15+0200\n"
 "PO-Revision-Date: 2026-02-20 18:45+0100\n"
 "Last-Translator: luducat <luducat@trinity2k.net>\n"
-"Language-Team: fr <LL@li.org>\n"
 "Language: fr\n"
+"Language-Team: fr <LL@li.org>\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=utf-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"Plural-Forms: nplurals=2; plural=(n > 1);\n"
 "Generated-By: Babel 2.17.0\n"
 
 #: luducat/main.py:457
@@ -34,11 +34,11 @@ msgstr "Voulez-vous créer une sauvegarde maintenant ?"
 msgid "Don't ask again (run backups silently)"
 msgstr "Ne plus demander (sauvegardes silencieuses)"
 
-#: luducat/main.py:481 luducat/ui/main_window.py:3782
+#: luducat/main.py:481 luducat/ui/main_window.py:3784
 msgid "Creating backup..."
 msgstr "Création de la sauvegarde..."
 
-#: luducat/main.py:482 luducat/ui/main_window.py:3783
+#: luducat/main.py:482 luducat/ui/main_window.py:3785
 msgid "Backup in Progress"
 msgstr "Sauvegarde en cours"
 
@@ -58,7 +58,7 @@ msgstr ""
 "{path}"
 
 #: luducat/main.py:509 luducat/ui/dialogs/plugin_config.py:304
-#: luducat/ui/main_window.py:3799
+#: luducat/ui/main_window.py:3801
 msgid "Backup Failed"
 msgstr "Échec de la sauvegarde"
 
@@ -81,17 +81,21 @@ msgstr "{app} -- Permissions des répertoires"
 #: luducat/main.py:539
 #, python-brace-format
 msgid ""
-"{app}'s configuration, databases, and caches were accessible to other users on this system:\n"
+"{app}'s configuration, databases, and caches were accessible to other "
+"users on this system:\n"
 "\n"
 "{dirs}\n"
 "\n"
-"Permissions have been secured so that only your login account and {app} itself have access."
+"Permissions have been secured so that only your login account and {app} "
+"itself have access."
 msgstr ""
-"La configuration, les bases de données et les caches de {app} étaient accessibles aux autres utilisateurs de ce système :\n"
+"La configuration, les bases de données et les caches de {app} étaient "
+"accessibles aux autres utilisateurs de ce système :\n"
 "\n"
 "{dirs}\n"
 "\n"
-"Les permissions ont été sécurisées pour que seul votre compte utilisateur et {app} aient accès."
+"Les permissions ont été sécurisées pour que seul votre compte utilisateur"
+" et {app} aient accès."
 
 #: luducat/main.py:560
 msgid "Data directory"
@@ -274,52 +278,52 @@ msgstr "DECK"
 msgid "DECK N/A"
 msgstr "DECK N/A"
 
-#: luducat/core/game_service.py:428 luducat/core/game_service.py:452
-#: luducat/ui/main_window.py:2124
+#: luducat/core/game_service.py:432 luducat/core/game_service.py:457
+#: luducat/ui/main_window.py:2126
 msgid "Loading games..."
 msgstr "Chargement des jeux..."
 
-#: luducat/core/game_service.py:428
+#: luducat/core/game_service.py:432
 msgid "Querying database..."
 msgstr "Interrogation de la base de données..."
 
-#: luducat/core/game_service.py:453
+#: luducat/core/game_service.py:458
 #, python-format
 msgid "Found %d games"
 msgstr "%d jeux trouvés"
 
-#: luducat/core/game_service.py:497
+#: luducat/core/game_service.py:502
 msgid "No configured stores (using cached data)"
 msgstr "Aucun store configuré (données en cache utilisées)"
 
-#: luducat/core/game_service.py:503
+#: luducat/core/game_service.py:508
 #, python-format
 msgid "Fetching metadata (%d games, %d stores)..."
 msgstr "Récupération des métadonnées (%d jeux, %d boutiques)…"
 
-#: luducat/core/game_service.py:543
+#: luducat/core/game_service.py:548
 msgid "Loading enrichment data..."
 msgstr "Chargement des données d'enrichissement..."
 
-#: luducat/core/game_service.py:606
+#: luducat/core/game_service.py:611
 #, python-format
 msgid "Loading %s data..."
 msgstr "Chargement des données %s..."
 
-#: luducat/core/game_service.py:620
+#: luducat/core/game_service.py:625
 msgid "Loading game modes..."
 msgstr "Chargement des modes de jeu..."
 
-#: luducat/core/game_service.py:648
+#: luducat/core/game_service.py:653
 msgid "Building game list..."
 msgstr "Construction de la liste de jeux..."
 
-#: luducat/core/game_service.py:666
+#: luducat/core/game_service.py:671
 #, python-format
 msgid "Processing games (%d/%d)..."
 msgstr "Traitement des jeux (%d/%d)..."
 
-#: luducat/core/game_service.py:757
+#: luducat/core/game_service.py:762
 msgid "Building search index..."
 msgstr "Construction de l'index de recherche..."
 
@@ -701,8 +705,8 @@ msgstr "Langues avec doublage vocal complet."
 msgid "Store features like cloud saves, achievements, overlay."
 msgstr ""
 "Fonctions du magasin comme les sauvegardes cloud, succès, "
-"overlay.Fonctionnalités de la boutique comme les sauvegardes cloud, succès, "
-"overlay."
+"overlay.Fonctionnalités de la boutique comme les sauvegardes cloud, "
+"succès, overlay."
 
 #: luducat/core/metadata_resolver.py:275
 msgid "Whether this is a game, DLC, demo, or mod."
@@ -1025,7 +1029,8 @@ msgid ""
 "User data (favorites, tags) for multi-store games is preserved."
 msgstr ""
 "Supprimer toutes les entrées Epic et vider la base du catalogue.\n"
-"Les données utilisateur (favoris, tags) des jeux multi-boutiques sont conservées."
+"Les données utilisateur (favoris, tags) des jeux multi-boutiques sont "
+"conservées."
 
 #: luducat/plugins/epic/config_dialog.py:214
 #: luducat/plugins/epic/config_dialog.py:236
@@ -1062,8 +1067,7 @@ msgstr "Non connecté — cliquer sur Actualiser pour s'authentifier"
 #: luducat/ui/dialogs/plugin_config.py:3458
 #: luducat/ui/dialogs/plugin_config.py:3502
 #: luducat/ui/dialogs/plugin_config.py:3518
-#: luducat/ui/dialogs/plugin_config.py:3643
-#: luducat/ui/dialogs/settings.py:3607
+#: luducat/ui/dialogs/plugin_config.py:3643 luducat/ui/dialogs/settings.py:3607
 msgid "Error"
 msgstr "Erreur"
 
@@ -1084,8 +1088,7 @@ msgstr "Pour connecter votre compte Epic Games :"
 
 #: luducat/plugins/epic/config_dialog.py:255
 msgid "Click 'Open Login Page' to open Epic Games login"
-msgstr ""
-"Cliquez sur 'Ouvrir la page de connexion' pour ouvrir la page Epic Games"
+msgstr "Cliquez sur 'Ouvrir la page de connexion' pour ouvrir la page Epic Games"
 
 #: luducat/plugins/epic/config_dialog.py:256
 #: luducat/ui/dialogs/setup_wizard.py:1016
@@ -1161,11 +1164,11 @@ msgstr "Confirmer la déconnexion"
 
 #: luducat/plugins/epic/config_dialog.py:326
 msgid ""
-"Are you sure you want to logout from Epic Games?<br><br>You will need to re-"
-"authenticate to sync your library."
+"Are you sure you want to logout from Epic Games?<br><br>You will need to "
+"re-authenticate to sync your library."
 msgstr ""
-"Voulez-vous vraiment vous déconnecter d'Epic Games ?<br><br>Vous devrez vous"
-" réauthentifier pour synchroniser votre bibliothèque."
+"Voulez-vous vraiment vous déconnecter d'Epic Games ?<br><br>Vous devrez "
+"vous réauthentifier pour synchroniser votre bibliothèque."
 
 #: luducat/plugins/epic/config_dialog.py:335
 msgid "Logging out..."
@@ -1186,7 +1189,7 @@ msgid "Connected as {account}"
 msgstr "Connecté en tant que {account}"
 
 #: luducat/plugins/epic/store.py:144 luducat/plugins/epic/store.py:148
-#: luducat/plugins/gog/store.py:269 luducat/plugins/steam/store.py:267
+#: luducat/plugins/gog/store.py:265 luducat/plugins/steam/store.py:267
 #: luducat/plugins/store_engine/store.py:1229
 #: luducat/plugins/store_engine/store.py:1237
 #: luducat/plugins/store_engine/store.py:1245
@@ -1199,17 +1202,17 @@ msgstr "Connecté en tant que {account}"
 msgid "Not connected"
 msgstr "Non connecté"
 
-#: luducat/plugins/gog/store.py:263
+#: luducat/plugins/gog/store.py:259
 #, python-brace-format
 msgid "Connected ({browser})"
 msgstr "Connecté ({browser})"
 
-#: luducat/plugins/gog/store.py:267 luducat/plugins/steam/store.py:304
+#: luducat/plugins/gog/store.py:263 luducat/plugins/steam/store.py:304
 #: luducat/plugins/store_engine/store.py:1236
 #: luducat/plugins/store_engine/store.py:1244
-#: luducat/ui/dialogs/plugin_config.py:1355
-#: luducat/ui/dialogs/settings.py:4521 luducat/ui/dialogs/settings.py:4650
-#: luducat/ui/dialogs/settings.py:4892 luducat/ui/dialogs/setup_wizard.py:998
+#: luducat/ui/dialogs/plugin_config.py:1355 luducat/ui/dialogs/settings.py:4521
+#: luducat/ui/dialogs/settings.py:4650 luducat/ui/dialogs/settings.py:4892
+#: luducat/ui/dialogs/setup_wizard.py:998
 #: luducat/ui/dialogs/setup_wizard.py:1206
 msgid "Connected"
 msgstr "Connecté"
@@ -1233,8 +1236,8 @@ msgstr "Lancer des jeux Windows sous Linux avec Wine/Proton"
 
 #: luducat/plugins/platforms/wine/config_dialog.py:143
 msgid ""
-"No Wine or Proton installation detected. Install Wine or Proton to launch "
-"Windows games."
+"No Wine or Proton installation detected. Install Wine or Proton to launch"
+" Windows games."
 msgstr ""
 "Aucune installation de Wine ou Proton détectée. Installez Wine ou Proton "
 "pour lancer des jeux Windows."
@@ -1255,8 +1258,8 @@ msgstr "Réinitialiser aux valeurs globales"
 
 #: luducat/plugins/platforms/wine/config_dialog.py:176
 #: luducat/ui/dialogs/plugin_config.py:904 luducat/ui/dialogs/settings.py:5285
-#: luducat/ui/download_window.py:321 luducat/ui/list_view.py:1623
-#: luducat/ui/toolbar.py:176
+#: luducat/ui/download_window.py:322 luducat/ui/list_view.py:1623
+#: luducat/ui/toolbar.py:177
 msgid "Settings"
 msgstr "Paramètres"
 
@@ -1292,8 +1295,8 @@ msgstr "Réinitialiser les paramètres Wine"
 msgid "Clear all per-game Wine overrides and use global defaults?"
 msgstr ""
 "Effacer toutes les substitutions Wine par jeu et utiliser les paramètres "
-"globaux ?Effacer toutes les options Wine spécifiques au jeu et utiliser les "
-"valeurs globales ?"
+"globaux ?Effacer toutes les options Wine spécifiques au jeu et utiliser "
+"les valeurs globales ?"
 
 #: luducat/plugins/protondb/provider.py:352
 #: luducat/plugins/protondb/provider.py:415
@@ -1376,7 +1379,8 @@ msgid ""
 "\n"
 "Is Playnite running on that machine with the bridge plugin enabled?"
 msgstr ""
-"Impossible de se connecter au bridge Playnite sur {host}:{port} ({reason}).\n"
+"Impossible de se connecter au bridge Playnite sur {host}:{port} "
+"({reason}).\n"
 "\n"
 "Playnite est-il lancé sur cette machine avec le plugin bridge activé ?"
 
@@ -1500,7 +1504,7 @@ msgstr "Toute modification efface les images SteamGridDB en cache"
 #: luducat/plugins/steamgriddb/ui/author_dialog.py:710
 #: luducat/ui/dialogs/csv_export.py:281
 #: luducat/ui/dialogs/developer_console.py:232
-#: luducat/ui/dialogs/installer_picker.py:345
+#: luducat/ui/dialogs/installer_picker.py:416
 #: luducat/ui/dialogs/plugin_config.py:285 luducat/ui/dialogs/settings.py:5031
 #: luducat/ui/dialogs/settings.py:5111 luducat/ui/dialogs/settings.py:5132
 #: luducat/ui/list_view.py:1946 luducat/ui/list_view.py:2097
@@ -1551,8 +1555,8 @@ msgstr "Réinitialiser toutes les colonnes"
 msgid "No SteamGridDB stats available — authors need Steam IDs to fetch stats"
 msgstr ""
 "Pas de statistiques SteamGridDB disponibles — les auteurs ont besoin des "
-"Steam IDsAucune statistique SteamGridDB disponible — les auteurs ont besoin "
-"d'identifiants Steam pour récupérer les statistiques"
+"Steam IDsAucune statistique SteamGridDB disponible — les auteurs ont "
+"besoin d'identifiants Steam pour récupérer les statistiques"
 
 #: luducat/plugins/steamgriddb/ui/author_dialog.py:541
 msgid "all"
@@ -1681,8 +1685,8 @@ msgstr "Importer les scores d'auteurs"
 #: luducat/plugins/steamgriddb/ui/author_dialog.py:867
 #, python-brace-format
 msgid ""
-"File: {count} entries ({preferred} preferred, {neutral} neutral, {blocked} "
-"blocked)"
+"File: {count} entries ({preferred} preferred, {neutral} neutral, "
+"{blocked} blocked)"
 msgstr ""
 "Fichier : {count} entrées ({preferred} préférées, {neutral} neutres, "
 "{blocked} bloquées)"
@@ -1926,9 +1930,9 @@ msgstr "Classification du contenu"
 #: luducat/ui/context_menu.py:389
 msgid "Use automatic detection from store ratings and metadata"
 msgstr ""
-"Utiliser la détection automatique à partir des classements et métadonnées "
-"des magasinsUtiliser la détection automatique à partir des classifications "
-"et métadonnées"
+"Utiliser la détection automatique à partir des classements et métadonnées"
+" des magasinsUtiliser la détection automatique à partir des "
+"classifications et métadonnées"
 
 #: luducat/ui/context_menu.py:390
 msgid "Always hide (NSFW)"
@@ -1991,151 +1995,150 @@ msgstr "DÉMO"
 msgid "FREE"
 msgstr "GRATIS"
 
-#: luducat/ui/download_window.py:90
+#: luducat/ui/download_window.py:91
 msgid "Queue all updates"
 msgstr "Mettre tout à jour"
 
-#: luducat/ui/download_window.py:100
+#: luducat/ui/download_window.py:101
 #, python-brace-format
 msgid "{n} NEW"
 msgstr "{n} NOUVEAU"
 
-#: luducat/ui/download_window.py:107
+#: luducat/ui/download_window.py:108
 #, python-brace-format
 msgid "{n} game updates"
 msgstr "{n} mises à jour"
 
-#: luducat/ui/download_window.py:154
+#: luducat/ui/download_window.py:155
 #, python-brace-format
 msgid "{n} total"
 msgstr "{n} au total"
 
-#: luducat/ui/download_window.py:156
+#: luducat/ui/download_window.py:157
 #, python-brace-format
 msgid "{n} finished"
 msgstr "{n} terminé"
 
-#: luducat/ui/download_window.py:158
+#: luducat/ui/download_window.py:159
 #, python-brace-format
 msgid "{n} downloading"
 msgstr "{n} en cours"
 
-#: luducat/ui/download_window.py:160
+#: luducat/ui/download_window.py:161
 #, python-brace-format
 msgid "{n} paused"
 msgstr "{n} en pause"
 
-#: luducat/ui/download_window.py:162
+#: luducat/ui/download_window.py:163
 #, python-brace-format
 msgid "{n} queued"
 msgstr "{n} en attente"
 
-#: luducat/ui/download_window.py:164
+#: luducat/ui/download_window.py:165
 #, python-brace-format
 msgid "{n} failed"
 msgstr "{n} échoué"
 
-#: luducat/ui/download_window.py:166
+#: luducat/ui/download_window.py:167
 #, python-brace-format
 msgid "{n} cancelled"
 msgstr "{n} annulé(s)"
 
-#: luducat/ui/download_window.py:201
+#: luducat/ui/download_window.py:202
 msgid "Drop to add"
 msgstr "Déposer pour ajouter"
 
-#: luducat/ui/download_window.py:235
+#: luducat/ui/download_window.py:236
 #, python-brace-format
 msgid "{app} Downloader"
 msgstr "Téléchargeur {app}"
 
-#: luducat/ui/download_window.py:272
+#: luducat/ui/download_window.py:273
 msgid "Move selected up in queue"
 msgstr "Déplacer la sélection vers le haut"
 
-#: luducat/ui/download_window.py:281
+#: luducat/ui/download_window.py:282
 msgid "Move selected down in queue"
 msgstr "Déplacer la sélection vers le bas"
 
-#: luducat/ui/download_window.py:290
+#: luducat/ui/download_window.py:291
 msgid "Start selected (Shift: all pending)"
 msgstr "Démarrer la sélection (Maj: tous en attente)"
 
-#: luducat/ui/download_window.py:299
+#: luducat/ui/download_window.py:300
 msgid "Pause selected (Shift: pause all)"
 msgstr "Suspendre la sélection (Maj: tout suspendre)"
 
-#: luducat/ui/download_window.py:308
+#: luducat/ui/download_window.py:309
 msgid "Cancel selected (Shift: cancel all)"
 msgstr "Annuler la sélection (Maj: tout annuler)"
 
 #: luducat/ui/dialogs/developer_console.py:183
-#: luducat/ui/download_window.py:313 luducat/ui/filter_bar.py:924
+#: luducat/ui/download_window.py:314 luducat/ui/filter_bar.py:924
 #: luducat/ui/filter_bar.py:1180 luducat/ui/list_view.py:2082
 msgid "Clear"
 msgstr "Effacer"
 
-#: luducat/ui/download_window.py:315
+#: luducat/ui/download_window.py:316
 msgid "Clear finished downloads (Shift: cancel and remove all)"
-msgstr ""
-"Supprimer les téléchargements terminés (Shift : tout annuler et supprimer)"
+msgstr "Supprimer les téléchargements terminés (Shift : tout annuler et supprimer)"
 
-#: luducat/ui/download_window.py:323
+#: luducat/ui/download_window.py:324
 msgid "Open download settings"
 msgstr "Ouvrir les paramètres de téléchargement"
 
-#: luducat/ui/download_window.py:330
+#: luducat/ui/download_window.py:331
 msgid "Pin window on top of other windows"
 msgstr "Épingler la fenêtre au premier plan"
 
-#: luducat/ui/download_window.py:364
+#: luducat/ui/download_window.py:365
 msgid "No downloads — drag links here or paste a URL below"
-msgstr ""
-"Aucun téléchargement — glissez des liens ici ou collez une URL ci-dessous"
+msgstr "Aucun téléchargement — glissez des liens ici ou collez une URL ci-dessous"
 
-#: luducat/ui/download_window.py:375 luducat/ui/download_window.py:603
+#: luducat/ui/download_window.py:376 luducat/ui/download_window.py:606
 msgid "Paste URL here..."
 msgstr "Coller l'URL ici..."
 
-#: luducat/ui/download_window.py:379
+#: luducat/ui/download_window.py:380
 msgid "Add"
 msgstr "Ajouter"
 
-#: luducat/ui/download_window.py:380
+#: luducat/ui/download_window.py:381
 msgid "Add URL to download queue"
 msgstr "Ajouter l'URL à la file de téléchargement"
 
-#: luducat/ui/download_window.py:567
+#: luducat/ui/download_window.py:568
 msgid "Unsupported URL"
 msgstr "URL non prise en charge"
 
-#: luducat/ui/download_window.py:568
+#: luducat/ui/download_window.py:569
 #, python-brace-format
 msgid ""
 "This URL is not supported by any download handler:\n"
 "\n"
 "{url}"
 msgstr ""
-"Cette URL n'est prise en charge par aucun gestionnaire de téléchargement :\n"
+"Cette URL n'est prise en charge par aucun gestionnaire de téléchargement "
+":\n"
 "\n"
 "{url}"
 
-#: luducat/ui/download_window.py:580 luducat/ui/download_window.py:619
-#: luducat/ui/download_window.py:635 luducat/ui/download_window.py:670
+#: luducat/ui/download_window.py:581 luducat/ui/download_window.py:622
+#: luducat/ui/download_window.py:638 luducat/ui/download_window.py:673
 msgid "Download Error"
 msgstr "Erreur de téléchargement"
 
-#: luducat/ui/download_window.py:588
+#: luducat/ui/download_window.py:589
 #, python-brace-format
 msgid "Resolving {url}..."
 msgstr "Résolution de {url}..."
 
-#: luducat/ui/download_window.py:824 luducat/ui/sync_progress_bar.py:177
+#: luducat/ui/download_window.py:827 luducat/ui/sync_progress_bar.py:177
 #: luducat/ui/sync_widget.py:533
 msgid "Resume"
 msgstr "Reprendre"
 
-#: luducat/ui/download_window.py:826 luducat/ui/sync_progress_bar.py:91
+#: luducat/ui/download_window.py:829 luducat/ui/sync_progress_bar.py:91
 #: luducat/ui/sync_progress_bar.py:172 luducat/ui/sync_widget.py:240
 #: luducat/ui/sync_widget.py:298 luducat/ui/sync_widget.py:528
 msgid "Pause"
@@ -2145,26 +2148,26 @@ msgstr "Pause"
 #: luducat/ui/dialogs/csv_export.py:637
 #: luducat/ui/dialogs/download_covers.py:228
 #: luducat/ui/dialogs/gogdb_import.py:233
-#: luducat/ui/dialogs/installer_picker.py:362
-#: luducat/ui/dialogs/oauth_dialog.py:167
+#: luducat/ui/dialogs/installer_picker.py:433
+#: luducat/ui/dialogs/oauth_dialog.py:168
 #: luducat/ui/dialogs/plugin_config.py:2813
 #: luducat/ui/dialogs/plugin_config.py:2828
 #: luducat/ui/dialogs/plugin_config.py:3019
 #: luducat/ui/dialogs/plugin_config.py:3041
 #: luducat/ui/dialogs/plugin_config.py:3135
-#: luducat/ui/dialogs/plugin_config.py:3157
-#: luducat/ui/dialogs/settings.py:1829 luducat/ui/dialogs/sync_dialog.py:436
+#: luducat/ui/dialogs/plugin_config.py:3157 luducat/ui/dialogs/settings.py:1829
+#: luducat/ui/dialogs/sync_dialog.py:436
 #: luducat/ui/dialogs/tag_manager_dialog.py:709
-#: luducat/ui/download_window.py:828 luducat/ui/sync_progress_bar.py:98
+#: luducat/ui/download_window.py:831 luducat/ui/sync_progress_bar.py:98
 #: luducat/ui/sync_widget.py:266 luducat/ui/sync_widget.py:303
 msgid "Cancel"
 msgstr "Annuler"
 
-#: luducat/ui/download_window.py:831
+#: luducat/ui/download_window.py:834
 msgid "Open folder"
 msgstr "Ouvrir le dossier"
 
-#: luducat/ui/download_window.py:836
+#: luducat/ui/download_window.py:839
 msgid "Remove"
 msgstr "Supprimer"
 
@@ -2187,7 +2190,7 @@ msgid "Filter games by store, tag, genre, and more"
 msgstr "Filtrer les jeux par boutique, tag, genre et plus"
 
 #: luducat/ui/dialogs/developer_console.py:40
-#: luducat/ui/dialogs/installer_picker.py:314 luducat/ui/filter_bar.py:302
+#: luducat/ui/dialogs/installer_picker.py:390 luducat/ui/filter_bar.py:302
 msgid "All"
 msgstr "Tous"
 
@@ -2232,10 +2235,9 @@ msgstr "Choisir un jeu au hasard"
 msgid "All Games"
 msgstr "Tous les jeux"
 
-#: luducat/ui/dialogs/save_collection.py:153
-#: luducat/ui/dialogs/settings.py:299 luducat/ui/filter_bar.py:369
-#: luducat/ui/filter_bar.py:689 luducat/ui/filter_bar.py:1425
-#: luducat/ui/filter_bar.py:1608
+#: luducat/ui/dialogs/save_collection.py:153 luducat/ui/dialogs/settings.py:299
+#: luducat/ui/filter_bar.py:369 luducat/ui/filter_bar.py:689
+#: luducat/ui/filter_bar.py:1425 luducat/ui/filter_bar.py:1608
 msgid "Recently Played"
 msgstr "Joués récemment"
 
@@ -2933,8 +2935,8 @@ msgid ""
 "DOSBox configuration for this game. Per-game configs override global "
 "settings."
 msgstr ""
-"Configuration DOSBox pour ce jeu. Les configurations par jeu prévalent sur "
-"les paramètres globaux."
+"Configuration DOSBox pour ce jeu. Les configurations par jeu prévalent "
+"sur les paramètres globaux."
 
 #: luducat/ui/list_view.py:2260
 msgid "ScummVM configuration for this game."
@@ -2949,11 +2951,14 @@ msgstr "Configuration DOSBox : {}"
 msgid ""
 "ScummVM games are configured through ScummVM's built-in options menu.\n"
 "\n"
-"Use the ScummVM launcher to adjust graphics, audio, and game-specific settings."
+"Use the ScummVM launcher to adjust graphics, audio, and game-specific "
+"settings."
 msgstr ""
-"Les jeux ScummVM sont configurés via le menu d'options intégré de ScummVM.\n"
+"Les jeux ScummVM sont configurés via le menu d'options intégré de "
+"ScummVM.\n"
 "\n"
-"Utilisez le lanceur ScummVM pour ajuster les paramètres graphiques, audio et spécifiques au jeu."
+"Utilisez le lanceur ScummVM pour ajuster les paramètres graphiques, audio"
+" et spécifiques au jeu."
 
 #: luducat/ui/list_view.py:2326
 #, python-brace-format
@@ -3145,8 +3150,7 @@ msgstr "Impossible de lancer"
 #: luducat/ui/main_window.py:843
 #, python-brace-format
 msgid "No store app ID available for this game on {store_name}."
-msgstr ""
-"Aucun identifiant d'application disponible pour ce jeu sur {store_name}."
+msgstr "Aucun identifiant d'application disponible pour ce jeu sur {store_name}."
 
 #: luducat/ui/main_window.py:1011
 msgid "Launch failed"
@@ -3200,19 +3204,24 @@ msgstr ""
 #: luducat/ui/main_window.py:1219
 #, python-brace-format
 msgid ""
-"The {scheme}:// protocol handler is not registered on your system. This can happen after switching how the application is installed (e.g. Flatpak to system package).\n"
+"The {scheme}:// protocol handler is not registered on your system. This "
+"can happen after switching how the application is installed (e.g. Flatpak"
+" to system package).\n"
 "\n"
 "The game was launched using the binary directly as a workaround.{fix_hint}"
 msgstr ""
-"Le gestionnaire de protocole {scheme}:// n'est pas enregistré sur votre système. Cela peut arriver après un changement de mode d'installation (p. ex. Flatpak vers paquet système).\n"
+"Le gestionnaire de protocole {scheme}:// n'est pas enregistré sur votre "
+"système. Cela peut arriver après un changement de mode d'installation (p."
+" ex. Flatpak vers paquet système).\n"
 "\n"
-"Le jeu a été lancé directement via l'exécutable comme solution de contournement.{fix_hint}"
+"Le jeu a été lancé directement via l'exécutable comme solution de "
+"contournement.{fix_hint}"
 
 #: luducat/ui/main_window.py:1229
 msgid "URI Handler Not Registered"
 msgstr "Gestionnaire de protocole URI non enregistré"
 
-#: luducat/ui/main_window.py:1234 luducat/ui/main_window.py:2793
+#: luducat/ui/main_window.py:1234 luducat/ui/main_window.py:2795
 msgid "Don't show this again"
 msgstr "Ne plus afficher"
 
@@ -3301,26 +3310,28 @@ msgstr "Écriture du cache désactivée"
 msgid ""
 "Image cache can no longer write to disk ({reason}).\n"
 "\n"
-"Covers and screenshots will still load from the network but won't be saved locally."
+"Covers and screenshots will still load from the network but won't be "
+"saved locally."
 msgstr ""
 "Le cache d'images ne peut plus écrire sur le disque ({reason}).\n"
 "\n"
-"Les couvertures et captures d'écran seront toujours chargées depuis le réseau, mais ne seront pas sauvegardées localement."
+"Les couvertures et captures d'écran seront toujours chargées depuis le "
+"réseau, mais ne seront pas sauvegardées localement."
 
-#: luducat/ui/main_window.py:1933 luducat/ui/sync_widget.py:518
+#: luducat/ui/main_window.py:1935 luducat/ui/sync_widget.py:518
 msgid "Shutting down..."
 msgstr "Fermeture..."
 
 #: luducat/ui/dialogs/settings.py:102 luducat/ui/dialogs/settings.py:1821
-#: luducat/ui/dialogs/settings.py:2704 luducat/ui/main_window.py:2124
+#: luducat/ui/dialogs/settings.py:2704 luducat/ui/main_window.py:2126
 msgid "Preparing..."
 msgstr "Préparation..."
 
-#: luducat/ui/main_window.py:2289
+#: luducat/ui/main_window.py:2291
 msgid "Error Loading Games"
 msgstr "Erreur de chargement des jeux"
 
-#: luducat/ui/main_window.py:2290
+#: luducat/ui/main_window.py:2292
 #, python-brace-format
 msgid ""
 "Failed to load games from database:\n"
@@ -3329,11 +3340,11 @@ msgstr ""
 "Échec du chargement des jeux depuis la base de données :\n"
 "{error}"
 
-#: luducat/ui/main_window.py:2750
+#: luducat/ui/main_window.py:2752
 msgid "Switch to Offline Mode"
 msgstr "Passer en mode hors ligne"
 
-#: luducat/ui/main_window.py:2751
+#: luducat/ui/main_window.py:2753
 msgid ""
 "Switch to offline mode?\n"
 "\n"
@@ -3343,11 +3354,11 @@ msgstr ""
 "\n"
 "La synchronisation et le téléchargement d'images seront suspendus."
 
-#: luducat/ui/main_window.py:2762
+#: luducat/ui/main_window.py:2764
 msgid "Switch to Online Mode"
 msgstr "Passer en mode en ligne"
 
-#: luducat/ui/main_window.py:2763
+#: luducat/ui/main_window.py:2765
 msgid ""
 "Switch to online mode?\n"
 "\n"
@@ -3358,20 +3369,19 @@ msgstr ""
 "Ceci activera la synchronisation et le téléchargement d'images."
 
 #: luducat/ui/dialogs/settings.py:485 luducat/ui/dialogs/settings.py:531
-#: luducat/ui/main_window.py:2789
+#: luducat/ui/main_window.py:2791
 msgid "Offline Mode"
 msgstr "Mode hors ligne"
 
-#: luducat/ui/main_window.py:2790
+#: luducat/ui/main_window.py:2792
 msgid "Luducat is in offline mode. Switch to online mode to sync."
-msgstr ""
-"Luducat est en mode hors ligne. Passez en mode en ligne pour synchroniser."
+msgstr "Luducat est en mode hors ligne. Passez en mode en ligne pour synchroniser."
 
-#: luducat/ui/main_window.py:2850
+#: luducat/ui/main_window.py:2852
 msgid "Full Resync"
 msgstr "Resynchronisation complète"
 
-#: luducat/ui/main_window.py:2851
+#: luducat/ui/main_window.py:2853
 msgid ""
 "This will re-download metadata for ALL games.\n"
 "\n"
@@ -3387,50 +3397,55 @@ msgstr ""
 "\n"
 "Continuer ?"
 
-#: luducat/ui/main_window.py:2879 luducat/ui/main_window.py:3145
-#: luducat/ui/main_window.py:3202
+#: luducat/ui/main_window.py:2881 luducat/ui/main_window.py:3147
+#: luducat/ui/main_window.py:3204
 msgid "Sync In Progress"
 msgstr "Synchronisation en cours"
 
-#: luducat/ui/main_window.py:2880 luducat/ui/main_window.py:3146
-#: luducat/ui/main_window.py:3203
+#: luducat/ui/main_window.py:2882 luducat/ui/main_window.py:3148
+#: luducat/ui/main_window.py:3205
 msgid "A sync operation is already in progress."
 msgstr "Une synchronisation est déjà en cours."
 
-#: luducat/ui/dialogs/plugin_config.py:2628
-#: luducat/ui/dialogs/settings.py:3748 luducat/ui/main_window.py:2888
+#: luducat/ui/dialogs/plugin_config.py:2628 luducat/ui/dialogs/settings.py:3748
+#: luducat/ui/main_window.py:2890
 msgid "Local Data Access"
 msgstr "Accès aux données locales"
 
-#: luducat/ui/dialogs/plugin_config.py:2629 luducat/ui/main_window.py:2889
+#: luducat/ui/dialogs/plugin_config.py:2629 luducat/ui/main_window.py:2891
 #, python-brace-format
 msgid ""
-"{app_name} can read browser cookies for store authentication and import tags, favorites, playtime, and install status from local game launchers (Steam, GOG Galaxy, Heroic).\n"
+"{app_name} can read browser cookies for store authentication and import "
+"tags, favorites, playtime, and install status from local game launchers "
+"(Steam, GOG Galaxy, Heroic).\n"
 "\n"
 "All data stays on your machine.\n"
 "\n"
 "Allow access to local data?"
 msgstr ""
-"{app_name} peut lire les cookies de navigateur pour l'authentification des magasins et importer les tags, favoris, temps de jeu et statut d'installation depuis les lanceurs de jeux locaux (Steam, GOG Galaxy, Heroic).\n"
+"{app_name} peut lire les cookies de navigateur pour l'authentification "
+"des magasins et importer les tags, favoris, temps de jeu et statut "
+"d'installation depuis les lanceurs de jeux locaux (Steam, GOG Galaxy, "
+"Heroic).\n"
 "\n"
 "Toutes les données restent sur votre machine.\n"
 "\n"
 "Autoriser l'accès aux données locales ?"
 
-#: luducat/ui/dialogs/plugin_config.py:2927 luducat/ui/main_window.py:3001
+#: luducat/ui/dialogs/plugin_config.py:2927 luducat/ui/main_window.py:3003
 msgid "Sync cancelled"
 msgstr "Synchronisation annulée"
 
-#: luducat/ui/main_window.py:3079
+#: luducat/ui/main_window.py:3081
 #, python-brace-format
 msgid "{count} games"
 msgstr "{count} jeux"
 
-#: luducat/ui/dialogs/plugin_config.py:2945 luducat/ui/main_window.py:3085
+#: luducat/ui/dialogs/plugin_config.py:2945 luducat/ui/main_window.py:3087
 msgid "Sync Error"
 msgstr "Erreur de synchronisation"
 
-#: luducat/ui/main_window.py:3085
+#: luducat/ui/main_window.py:3087
 #, python-brace-format
 msgid ""
 "Sync failed:\n"
@@ -3439,43 +3454,45 @@ msgstr ""
 "Échec de la synchronisation :\n"
 "{error}"
 
-#: luducat/ui/main_window.py:3157
+#: luducat/ui/main_window.py:3159
 #, python-brace-format
 msgid "{name}: nothing to enrich"
 msgstr "{name} : rien à enrichir"
 
-#: luducat/ui/dialogs/csv_export.py:477 luducat/ui/main_window.py:3347
+#: luducat/ui/dialogs/csv_export.py:477 luducat/ui/main_window.py:3349
 msgid "No games to export."
 msgstr "Aucun jeu à exporter."
 
-#: luducat/ui/main_window.py:3359
+#: luducat/ui/main_window.py:3361
 #, python-brace-format
 msgid "Exported {count} games to CSV"
 msgstr "{count} jeux exportés en CSV"
 
-#: luducat/ui/main_window.py:3389
+#: luducat/ui/main_window.py:3391
 msgid "No covers to download."
 msgstr "Aucune pochette à télécharger."
 
-#: luducat/ui/main_window.py:3610
+#: luducat/ui/main_window.py:3612
 msgid "Initial Library Sync"
 msgstr "Synchronisation initiale de la bibliothèque"
 
-#: luducat/ui/main_window.py:3611
+#: luducat/ui/main_window.py:3613
 msgid ""
 "Would you like to sync your game libraries now?\n"
 "\n"
-"This may take a while for the initial sync, especially with large libraries."
+"This may take a while for the initial sync, especially with large "
+"libraries."
 msgstr ""
 "Voulez-vous synchroniser vos bibliothèques de jeux maintenant ?\n"
 "\n"
-"La synchronisation initiale peut prendre un moment, surtout avec de grandes bibliothèques."
+"La synchronisation initiale peut prendre un moment, surtout avec de "
+"grandes bibliothèques."
 
-#: luducat/ui/main_window.py:3624
+#: luducat/ui/main_window.py:3626
 msgid "Setup Required"
 msgstr "Configuration requise"
 
-#: luducat/ui/main_window.py:3626
+#: luducat/ui/main_window.py:3628
 #, python-brace-format
 msgid ""
 "{app_name} requires at least one game store to be configured.\n"
@@ -3486,7 +3503,7 @@ msgstr ""
 "\n"
 "L'assistant de configuration réapparaîtra au prochain démarrage."
 
-#: luducat/ui/main_window.py:3800
+#: luducat/ui/main_window.py:3802
 #, python-brace-format
 msgid ""
 "Failed to create backup:\n"
@@ -3501,15 +3518,15 @@ msgstr ""
 "\n"
 "Vous pouvez tout de même poursuivre le téléchargement."
 
-#: luducat/ui/dialogs/game_settings.py:469 luducat/ui/main_window.py:4366
+#: luducat/ui/dialogs/game_settings.py:469 luducat/ui/main_window.py:4370
 msgid "this game"
 msgstr "ce jeu"
 
-#: luducat/ui/main_window.py:4370
+#: luducat/ui/main_window.py:4374
 msgid "Force Rescan"
 msgstr "Forcer le re-scan"
 
-#: luducat/ui/main_window.py:4371
+#: luducat/ui/main_window.py:4375
 #, python-brace-format
 msgid ""
 "Re-scan metadata for \"{title}\" from all sources?\n"
@@ -3518,7 +3535,8 @@ msgid ""
 msgstr ""
 "Re-scanner les métadonnées de \"{title}\" depuis toutes les sources ?\n"
 "\n"
-"Ceci effacera les correspondances en cache et récupérera de nouvelles données."
+"Ceci effacera les correspondances en cache et récupérera de nouvelles "
+"données."
 
 #: luducat/ui/screenshot_view.py:455
 msgid "No Screenshot"
@@ -3565,10 +3583,9 @@ msgid "Starting sync..."
 msgstr "Démarrage de la synchronisation..."
 
 #: luducat/ui/dialogs/download_covers.py:287
-#: luducat/ui/dialogs/gogdb_import.py:293
-#: luducat/ui/dialogs/sync_dialog.py:577 luducat/ui/sync_progress_bar.py:184
-#: luducat/ui/sync_progress_bar.py:185 luducat/ui/sync_widget.py:543
-#: luducat/ui/sync_widget.py:544
+#: luducat/ui/dialogs/gogdb_import.py:293 luducat/ui/dialogs/sync_dialog.py:577
+#: luducat/ui/sync_progress_bar.py:184 luducat/ui/sync_progress_bar.py:185
+#: luducat/ui/sync_widget.py:543 luducat/ui/sync_widget.py:544
 msgid "Cancelling..."
 msgstr "Annulation..."
 
@@ -3725,80 +3742,88 @@ msgstr "Récupérer les mises à jour des boutiques"
 msgid "Tools"
 msgstr "Outils"
 
-#: luducat/ui/toolbar.py:183
+#: luducat/ui/toolbar.py:172
+msgid "Backup, export, and other tools"
+msgstr "Sauvegarde, exportation et autres outils"
+
+#: luducat/ui/toolbar.py:179
+msgid "Open application settings"
+msgstr "Ouvrir les paramètres"
+
+#: luducat/ui/toolbar.py:185
 #, python-brace-format
 msgid "About {app_name}"
 msgstr "À propos de {app_name}"
 
-#: luducat/ui/toolbar.py:206
+#: luducat/ui/toolbar.py:208
 msgid "Sync All"
 msgstr "Tout synchroniser"
 
-#: luducat/ui/toolbar.py:221
+#: luducat/ui/toolbar.py:223
 msgid "Full Resync..."
 msgstr "Resynchronisation complète..."
 
-#: luducat/ui/toolbar.py:223
+#: luducat/ui/toolbar.py:225
 msgid "Re-download metadata for ALL games"
 msgstr "Re-télécharger les métadonnées pour TOUS les jeux"
 
-#: luducat/ui/toolbar.py:233
+#: luducat/ui/toolbar.py:235
 msgid "Backup && Restore..."
 msgstr "Sauvegarde && restauration..."
 
-#: luducat/ui/toolbar.py:234
+#: luducat/ui/toolbar.py:236
 msgid "Open backup and restore settings"
 msgstr "Ouvrir les paramètres de sauvegarde et restauration"
 
-#: luducat/ui/toolbar.py:238
+#: luducat/ui/toolbar.py:240
 msgid "Export your games as CSV..."
 msgstr "Exporter vos jeux en CSV..."
 
-#: luducat/ui/toolbar.py:241
+#: luducat/ui/toolbar.py:243
 msgid "Export the currently filtered game list as CSV"
 msgstr "Exporter la liste de jeux filtrée au format CSV"
 
-#: luducat/ui/toolbar.py:245
+#: luducat/ui/toolbar.py:247
 msgid "Downloader"
 msgstr "Téléchargeur"
 
-#: luducat/ui/toolbar.py:247
+#: luducat/ui/toolbar.py:249
 msgid "Open the download companion window"
 msgstr "Ouvrir la fenêtre de téléchargement"
 
-#: luducat/ui/dialogs/settings.py:1533 luducat/ui/toolbar.py:254
+#: luducat/ui/dialogs/settings.py:1533 luducat/ui/toolbar.py:256
 msgid "Download Missing Covers..."
 msgstr "Télécharger les pochettes manquantes..."
 
-#: luducat/ui/dialogs/settings.py:1535 luducat/ui/toolbar.py:257
+#: luducat/ui/dialogs/settings.py:1535 luducat/ui/toolbar.py:259
 msgid "Pre-download all cover images for faster browsing"
 msgstr "Pré-télécharger toutes les pochettes pour une navigation plus rapide"
 
-#: luducat/ui/toolbar.py:261
+#: luducat/ui/toolbar.py:263
 msgid "Tag Manager..."
 msgstr "Gestionnaire de tags..."
 
-#: luducat/ui/toolbar.py:263
+#: luducat/ui/toolbar.py:265
 msgid "Manage tags: create, edit, delete, merge, and import/export"
 msgstr "Créer, modifier, supprimer, fusionner et importer/exporter des tags"
 
-#: luducat/ui/toolbar.py:269
+#: luducat/ui/toolbar.py:271
 msgid "Developer Console..."
 msgstr "Console de développement..."
 
-#: luducat/ui/toolbar.py:271
+#: luducat/ui/toolbar.py:273
 msgid "Open the developer console with logs and diagnostics"
 msgstr "Ouvrir la console de développement avec les journaux et diagnostics"
 
-#: luducat/ui/toolbar.py:275
+#: luducat/ui/toolbar.py:277
 msgid "Setup Wizard..."
 msgstr "Assistant de configuration..."
 
-#: luducat/ui/toolbar.py:276
+#: luducat/ui/toolbar.py:278
 msgid "Re-run the initial setup wizard"
 msgstr "Relancer l'assistant de configuration"
 
-#: luducat/ui/toolbar.py:419
+#: luducat/ui/toolbar.py:421
 #, python-brace-format
 msgid "Run {name} sync"
 msgstr "Exécuter la synchronisation {name}"
@@ -3824,8 +3849,7 @@ msgstr "Développement"
 msgid "Homepage"
 msgstr "Page d'accueil"
 
-#: luducat/ui/dialogs/about.py:112
-#: luducat/ui/dialogs/collection_manager.py:248
+#: luducat/ui/dialogs/about.py:112 luducat/ui/dialogs/collection_manager.py:248
 #: luducat/ui/dialogs/csv_export.py:543 luducat/ui/dialogs/csv_export.py:623
 #: luducat/ui/dialogs/download_covers.py:176
 #: luducat/ui/dialogs/download_covers.py:270
@@ -3859,46 +3883,48 @@ msgstr "par {author}"
 msgid ""
 "{name} is a game catalogue browser that brings your Steam, GOG, and Epic "
 "libraries together in one place. Everything stays on your machine — no "
-"cloud, no accounts, no telemetry. After the first sync, it works entirely "
-"offline."
+"cloud, no accounts, no telemetry. After the first sync, it works entirely"
+" offline."
 msgstr ""
 "{name} est un navigateur de catalogue de jeux qui rassemble vos "
-"bibliothèques Steam, GOG et Epic en un seul endroit. Tout reste sur votre "
-"machine — pas de cloud, pas de comptes, pas de télémétrie. Après la première"
-" synchronisation, tout fonctionne entièrement hors ligne."
+"bibliothèques Steam, GOG et Epic en un seul endroit. Tout reste sur votre"
+" machine — pas de cloud, pas de comptes, pas de télémétrie. Après la "
+"première synchronisation, tout fonctionne entièrement hors ligne."
 
 #: luducat/ui/dialogs/about.py:238
 #, python-brace-format
 msgid ""
-"Browse your collection with pretty covers, or a screenshot mosaic. Open any "
-"game to see its full description, rich metadata, everything {name} knows "
-"about it. Pick a theme, adjust the zoom, and make it yours."
+"Browse your collection with pretty covers, or a screenshot mosaic. Open "
+"any game to see its full description, rich metadata, everything {name} "
+"knows about it. Pick a theme, adjust the zoom, and make it yours."
 msgstr ""
 "Parcourez votre collection avec de jolies pochettes ou une mosaïque de "
-"captures d’écran. Ouvrez n’importe quel jeu pour sa description complète, "
-"ses métadonnées détaillées, tout ce que {name} sait à son sujet. Choisissez "
-"un thème, ajustez le zoom et personnalisez l’ensemble."
+"captures d’écran. Ouvrez n’importe quel jeu pour sa description complète,"
+" ses métadonnées détaillées, tout ce que {name} sait à son sujet. "
+"Choisissez un thème, ajustez le zoom et personnalisez l’ensemble."
 
 #: luducat/ui/dialogs/about.py:245
 #, python-brace-format
 msgid ""
-"Metadata arrives automatically — cover art, genres, ratings, compatibility "
-"info, game modes — so you spend time browsing, not cataloguing. When you "
-"find something to play, {name} hands it off to the right launcher."
+"Metadata arrives automatically — cover art, genres, ratings, "
+"compatibility info, game modes — so you spend time browsing, not "
+"cataloguing. When you find something to play, {name} hands it off to the "
+"right launcher."
 msgstr ""
 "Les métadonnées arrivent automatiquement — pochettes, genres, notes, "
-"compatibilité, modes de jeu — pour que vous passiez votre temps à parcourir,"
-" pas à cataloguer. Quand vous trouvez quelque chose à jouer, {name} passe le"
-" relais au bon lanceur."
+"compatibilité, modes de jeu — pour que vous passiez votre temps à "
+"parcourir, pas à cataloguer. Quand vous trouvez quelque chose à jouer, "
+"{name} passe le relais au bon lanceur."
 
 #: luducat/ui/dialogs/about.py:252
 #, python-brace-format
 msgid ""
-"Built for anyone who looked at their library one day and thought \"I own how"
-" many games?\" — tens, hundreds, thousands? {name} handles that with ease."
+"Built for anyone who looked at their library one day and thought \"I own "
+"how many games?\" — tens, hundreds, thousands? {name} handles that with "
+"ease."
 msgstr ""
-"Conçu pour tous ceux qui ont regardé leur bibliothèque un jour et se sont "
-"dit « je possède combien de jeux ? » — des dizaines, des centaines, des "
+"Conçu pour tous ceux qui ont regardé leur bibliothèque un jour et se sont"
+" dit « je possède combien de jeux ? » — des dizaines, des centaines, des "
 "milliers ? {name} gère tout ça sans effort."
 
 #: luducat/ui/dialogs/about.py:274
@@ -3924,19 +3950,20 @@ msgid ""
 "href='https://github.com/derrod/legendary'>Legendary</a> (<a "
 "href='https://www.gnu.org/licenses/gpl-3.0.html'>GPLv3+</a>). Uses "
 "components licensed under <a "
-"href='https://www.gnu.org/licenses/lgpl-3.0.html'>LGPL v3</a> (Qt/PySide6, "
-"browser_cookie3) and <a "
-"href='https://www.apache.org/licenses/LICENSE-2.0'>Apache 2.0</a> (requests,"
-" aiohttp, orjson). See Credits tab for full attribution."
+"href='https://www.gnu.org/licenses/lgpl-3.0.html'>LGPL v3</a> "
+"(Qt/PySide6, browser_cookie3) and <a "
+"href='https://www.apache.org/licenses/LICENSE-2.0'>Apache 2.0</a> "
+"(requests, aiohttp, orjson). See Credits tab for full attribution."
 msgstr ""
 "Contient du code adapté de <a "
 "href='https://github.com/derrod/legendary'>Legendary</a> (<a "
-"href='https://www.gnu.org/licenses/gpl-3.0.html'>GPLv3+</a>). Utilise des "
-"composants sous licence <a "
-"href='https://www.gnu.org/licenses/lgpl-3.0.html'>LGPL v3</a> (Qt/PySide6, "
-"browser_cookie3) et <a "
-"href='https://www.apache.org/licenses/LICENSE-2.0'>Apache 2.0</a> (requests,"
-" aiohttp, orjson). Voir l'onglet Crédits pour l'attribution complète."
+"href='https://www.gnu.org/licenses/gpl-3.0.html'>GPLv3+</a>). Utilise des"
+" composants sous licence <a "
+"href='https://www.gnu.org/licenses/lgpl-3.0.html'>LGPL v3</a> "
+"(Qt/PySide6, browser_cookie3) et <a "
+"href='https://www.apache.org/licenses/LICENSE-2.0'>Apache 2.0</a> "
+"(requests, aiohttp, orjson). Voir l'onglet Crédits pour l'attribution "
+"complète."
 
 #: luducat/ui/dialogs/about.py:374
 msgid "Data Sources"
@@ -3962,8 +3989,8 @@ msgstr "Base de données de métadonnées de jeux par Twitch/Amazon."
 msgid "Community game artwork: covers, heroes, logos, icons."
 msgstr ""
 "Illustrations communautaires : couvertures, bannières, logos, "
-"icônes.Illustrations de jeux communautaires : couvertures, bannières, logos,"
-" icônes."
+"icônes.Illustrations de jeux communautaires : couvertures, bannières, "
+"logos, icônes."
 
 #: luducat/ui/dialogs/about.py:409
 msgid "Linux and Steam Deck compatibility reports."
@@ -3979,11 +4006,11 @@ msgstr "Code adapté (GPLv3)"
 
 #: luducat/ui/dialogs/about.py:424
 msgid ""
-"Epic Games API client and OAuth session management adapted from Legendary by"
-" derrod. Used in the Epic store plugin."
+"Epic Games API client and OAuth session management adapted from Legendary"
+" by derrod. Used in the Epic store plugin."
 msgstr ""
-"Client API Epic Games et gestion de session OAuth adaptés de Legendary par "
-"derrod. Utilisé dans le plugin Epic."
+"Client API Epic Games et gestion de session OAuth adaptés de Legendary "
+"par derrod. Utilisé dans le plugin Epic."
 
 #: luducat/ui/dialogs/about.py:431
 msgid "Core Frameworks (LGPL)"
@@ -4110,25 +4137,26 @@ msgid ""
 "This disclosure is provided in the interest of transparency about modern "
 "software development practices."
 msgstr ""
-"Cette divulgation est fournie dans un souci de transparence concernant les "
-"pratiques modernes de développement logiciel."
+"Cette divulgation est fournie dans un souci de transparence concernant "
+"les pratiques modernes de développement logiciel."
 
 #: luducat/ui/dialogs/about.py:577
 msgid ""
 "This project was architected, planned, debugged, tested, reviewed and "
 "designed by humans with tool-assisted code generation."
 msgstr ""
-"Ce projet a été conçu, planifié, débogué, testé, révisé et dessiné par des "
-"humains avec génération de code assistée par outils."
+"Ce projet a été conçu, planifié, débogué, testé, révisé et dessiné par "
+"des humains avec génération de code assistée par outils."
 
 #: luducat/ui/dialogs/about.py:579
 msgid ""
 "All code contributions were manually reviewed, debugged and approved, as "
-"well as building and collecting necessary information for application use."
+"well as building and collecting necessary information for application "
+"use."
 msgstr ""
-"Toutes les contributions de code ont été manuellement révisées, déboguées et"
-" approuvées, y compris la construction et la collecte des informations "
-"nécessaires à l'utilisation de l'application."
+"Toutes les contributions de code ont été manuellement révisées, déboguées"
+" et approuvées, y compris la construction et la collecte des informations"
+" nécessaires à l'utilisation de l'application."
 
 #: luducat/ui/dialogs/about.py:627
 #, python-brace-format
@@ -4140,7 +4168,6 @@ msgid "Collection Manager"
 msgstr "Gestionnaire de collections"
 
 #: luducat/ui/dialogs/collection_manager.py:133
-#: luducat/ui/dialogs/installer_picker.py:325
 #: luducat/ui/dialogs/tag_manager_dialog.py:224
 #: luducat/ui/dialogs/tag_manager_dialog.py:476
 msgid "Games"
@@ -4295,11 +4322,13 @@ msgstr "Convertir en collection statique"
 
 #: luducat/ui/dialogs/collection_manager.py:786
 msgid ""
-"This will snapshot the current results as a fixed game list and discard the filter query. This cannot be undone.\n"
+"This will snapshot the current results as a fixed game list and discard "
+"the filter query. This cannot be undone.\n"
 "\n"
 "Continue?"
 msgstr ""
-"Cela enregistrera les résultats actuels comme liste de jeux fixe et supprimera la requête de filtre. Cette action est irréversible.\n"
+"Cela enregistrera les résultats actuels comme liste de jeux fixe et "
+"supprimera la requête de filtre. Cette action est irréversible.\n"
 "\n"
 "Continuer ?"
 
@@ -4521,8 +4550,8 @@ msgstr "Colonnes séparées"
 
 #: luducat/ui/dialogs/csv_export.py:247
 msgid ""
-"Split multi-value fields (like Developers) into separate columns instead of "
-"semicolon-separated"
+"Split multi-value fields (like Developers) into separate columns instead "
+"of semicolon-separated"
 msgstr ""
 "Répartir les champs à valeurs multiples (comme Développeurs) dans des "
 "colonnes séparées au lieu de les séparer par des points-virgules"
@@ -4533,8 +4562,8 @@ msgstr "Exporter les jeux retirés par boutique (sans dédoublonnage)"
 
 #: luducat/ui/dialogs/csv_export.py:273
 msgid ""
-"Override current selection and export all delisted games as raw per-store "
-"entries — one row per store, not deduplicated"
+"Override current selection and export all delisted games as raw per-store"
+" entries — one row per store, not deduplicated"
 msgstr ""
 "Remplacer la sélection actuelle et exporter tous les jeux retirés comme "
 "entrées brutes par boutique — une ligne par boutique, sans dédoublonnage"
@@ -4572,7 +4601,7 @@ msgid "No splittable fields are selected."
 msgstr "Aucun champ divisible n'est sélectionné."
 
 #: luducat/ui/dialogs/csv_export.py:394
-#: luducat/ui/dialogs/installer_picker.py:359
+#: luducat/ui/dialogs/installer_picker.py:430
 #: luducat/ui/dialogs/tag_manager_dialog.py:708
 msgid "OK"
 msgstr "OK"
@@ -4604,8 +4633,8 @@ msgstr "accès refusé"
 msgid "Estimated export size is {est} MB but only {free} MB free. Continue?"
 msgstr ""
 "Taille estimée de l'export : {est} Mo mais seulement {free} Mo libres. "
-"Continuer ?La taille d'exportation estimée est de {est} Mo mais seulement "
-"{free} Mo disponibles. Continuer ?"
+"Continuer ?La taille d'exportation estimée est de {est} Mo mais seulement"
+" {free} Mo disponibles. Continuer ?"
 
 #: luducat/ui/dialogs/csv_export.py:526 luducat/ui/dialogs/csv_export.py:608
 #, python-brace-format
@@ -4760,8 +4789,7 @@ msgstr "Impossible de télécharger les pochettes hors ligne."
 
 #: luducat/ui/dialogs/download_covers.py:256
 #, python-brace-format
-msgid ""
-"Done. {downloaded} downloaded, {skipped} already cached, {failed} failed."
+msgid "Done. {downloaded} downloaded, {skipped} already cached, {failed} failed."
 msgstr ""
 "Terminé. {downloaded} téléchargées, {skipped} déjà en cache, {failed} "
 "échouées."
@@ -4769,8 +4797,7 @@ msgstr ""
 #: luducat/ui/dialogs/download_covers.py:276
 #, python-brace-format
 msgid "Downloaded: {downloaded}  |  Cached: {skipped}  |  Failed: {failed}"
-msgstr ""
-"Téléchargées: {downloaded}  |  En cache: {skipped}  |  Échouées: {failed}"
+msgstr "Téléchargées: {downloaded}  |  En cache: {skipped}  |  Échouées: {failed}"
 
 #: luducat/ui/dialogs/exe_selection_dialog.py:46
 msgid "Select Game Executable"
@@ -4816,11 +4843,11 @@ msgstr "Plates-formes compatibles"
 
 #: luducat/ui/dialogs/game_settings.py:164
 msgid ""
-"Additional command-line arguments passed when launching. These are appended "
-"after any platform-specific arguments."
+"Additional command-line arguments passed when launching. These are "
+"appended after any platform-specific arguments."
 msgstr ""
-"Arguments supplémentaires en ligne de commande transmis au lancement. Ils "
-"sont ajoutés après les arguments spécifiques à la plateforme."
+"Arguments supplémentaires en ligne de commande transmis au lancement. Ils"
+" sont ajoutés après les arguments spécifiques à la plateforme."
 
 #: luducat/ui/dialogs/game_settings.py:172
 msgid "e.g., -windowed -skipintro"
@@ -4831,8 +4858,8 @@ msgid ""
 "Set custom environment variables for this game. One per line, format: "
 "NAME=value"
 msgstr ""
-"Définir des variables d'environnement personnalisées pour ce jeu. Une par "
-"ligne, format : NOM=valeur"
+"Définir des variables d'environnement personnalisées pour ce jeu. Une par"
+" ligne, format : NOM=valeur"
 
 #: luducat/ui/dialogs/game_settings.py:205
 msgid "Installation Status"
@@ -4944,14 +4971,14 @@ msgstr "Vérification"
 
 #: luducat/ui/dialogs/game_settings.py:450
 msgid "File verification will be implemented in a future update."
-msgstr ""
-"La vérification des fichiers sera implémentée dans une future mise à jour."
+msgstr "La vérification des fichiers sera implémentée dans une future mise à jour."
 
 #: luducat/ui/dialogs/game_settings.py:461
 msgid "Installation repair will be implemented in a future update."
 msgstr ""
-"La réparation d'installation sera implémentée dans une future mise à jour.La"
-" réparation de l'installation sera implémentée dans une future mise à jour."
+"La réparation d'installation sera implémentée dans une future mise à "
+"jour.La réparation de l'installation sera implémentée dans une future "
+"mise à jour."
 
 #: luducat/ui/dialogs/game_settings.py:472
 msgid "Confirm Uninstall"
@@ -4992,19 +5019,21 @@ msgstr ""
 "Mettre à jour les données de jeux GOG depuis deux sources :\n"
 "\n"
 "Phase 1 — Export GOGdb : Télécharge la base de données GOGdb.org\n"
-"et complète les métadonnées manquantes (développeurs, genres, séries, etc.).\n"
+"et complète les métadonnées manquantes (développeurs, genres, séries, "
+"etc.).\n"
 "\n"
 "Phase 2 — Analyse du catalogue : Interroge l'API du catalogue GOG pour\n"
-"les jaquettes verticales, les classifications de contenu, les prix et les captures d'écran.\n"
-"Ces données remplacent les anciennes valeurs par les plus récentes de GOG.\n"
+"les jaquettes verticales, les classifications de contenu, les prix et les"
+" captures d'écran.\n"
+"Ces données remplacent les anciennes valeurs par les plus récentes de "
+"GOG.\n"
 "\n"
 "Les deux phases nécessitent une connexion internet."
 
 #: luducat/ui/dialogs/gogdb_import.py:184
 #, python-brace-format
 msgid "Current catalog: {game_count} games ({total_count} total with DLC)"
-msgstr ""
-"Catalogue actuel : {game_count} jeux ({total_count} au total avec les DLC)"
+msgstr "Catalogue actuel : {game_count} jeux ({total_count} au total avec les DLC)"
 
 #: luducat/ui/dialogs/gogdb_import.py:195
 msgid "Phase 1: GOGdb Dump"
@@ -5202,68 +5231,76 @@ msgstr "{current} / {total}"
 msgid "0 / 0"
 msgstr "0 / 0"
 
-#: luducat/ui/dialogs/installer_picker.py:255
+#: luducat/ui/dialogs/installer_picker.py:319
 #, python-brace-format
 msgid "Download - {title}"
 msgstr "Téléchargement - {title}"
 
-#: luducat/ui/dialogs/installer_picker.py:305
+#: luducat/ui/dialogs/installer_picker.py:331
+msgid "Installers"
+msgstr ""
+
+#: luducat/ui/dialogs/installer_picker.py:332
+msgid "DLC"
+msgstr ""
+
+#: luducat/ui/dialogs/installer_picker.py:333
+msgid "Patches"
+msgstr "Correctifs"
+
+#: luducat/ui/dialogs/installer_picker.py:334
+msgid "Extras"
+msgstr "Extras"
+
+#: luducat/ui/dialogs/installer_picker.py:381
 #: luducat/ui/dialogs/settings.py:5101
 msgid "Windows"
 msgstr "Windows"
 
-#: luducat/ui/dialogs/installer_picker.py:305
+#: luducat/ui/dialogs/installer_picker.py:381
 #: luducat/ui/dialogs/settings.py:5102
 msgid "Linux"
 msgstr "Linux"
 
-#: luducat/ui/dialogs/installer_picker.py:305
+#: luducat/ui/dialogs/installer_picker.py:381
 #: luducat/ui/dialogs/settings.py:5103
 msgid "macOS"
 msgstr "macOS"
 
-#: luducat/ui/dialogs/installer_picker.py:316
+#: luducat/ui/dialogs/installer_picker.py:392
 msgid "None"
 msgstr "Aucun"
 
-#: luducat/ui/dialogs/installer_picker.py:326
-msgid "Patches"
-msgstr "Correctifs"
-
-#: luducat/ui/dialogs/installer_picker.py:327
-msgid "Extras"
-msgstr "Extras"
-
-#: luducat/ui/dialogs/installer_picker.py:346
+#: luducat/ui/dialogs/installer_picker.py:417
 msgid "Restore default selection from preferences"
 msgstr "Restaurer la sélection par défaut depuis les préférences"
 
-#: luducat/ui/dialogs/installer_picker.py:354
+#: luducat/ui/dialogs/installer_picker.py:425
 msgid "Click to check disk space and show download directory"
 msgstr "Cliquer pour vérifier l'espace disque et afficher le répertoire"
 
-#: luducat/ui/dialogs/installer_picker.py:386
+#: luducat/ui/dialogs/installer_picker.py:457
 #, python-brace-format
 msgid "No installers found for {os}. Showing all available."
 msgstr ""
-"Aucun installateur trouvé pour {os}. Tous les installateurs disponibles sont"
-" affichés."
+"Aucun installateur trouvé pour {os}. Tous les installateurs disponibles "
+"sont affichés."
 
-#: luducat/ui/dialogs/installer_picker.py:425
+#: luducat/ui/dialogs/installer_picker.py:496
 #, python-brace-format
 msgid "Size: {size}"
 msgstr "Taille : {size}"
 
-#: luducat/ui/dialogs/installer_picker.py:458
+#: luducat/ui/dialogs/installer_picker.py:529
 msgid "No download directory configured."
 msgstr "Aucun répertoire de téléchargement configuré."
 
-#: luducat/ui/dialogs/installer_picker.py:464
+#: luducat/ui/dialogs/installer_picker.py:535
 #, python-brace-format
 msgid "Download directory does not exist: {path}"
 msgstr "Le répertoire de téléchargement n'existe pas : {path}"
 
-#: luducat/ui/dialogs/installer_picker.py:477
+#: luducat/ui/dialogs/installer_picker.py:548
 #, python-brace-format
 msgid "{path} - {free} free"
 msgstr "{path} - {free} libre"
@@ -5277,8 +5314,7 @@ msgid "This is only a preview, not the full game view."
 msgstr "Ceci est un aperçu uniquement, pas la vue complète du jeu."
 
 #: luducat/ui/dialogs/metadata_preview.py:106
-msgid ""
-"This preview shows how your current priority settings resolve metadata."
+msgid "This preview shows how your current priority settings resolve metadata."
 msgstr ""
 "Cet aperçu montre comment vos paramètres de priorité résolvent les "
 "métadonnées.Cet aperçu montre comment vos paramètres de priorité actuels "
@@ -5312,46 +5348,47 @@ msgstr "Disponible dans :"
 msgid "from"
 msgstr "de"
 
-#: luducat/ui/dialogs/oauth_dialog.py:117
+#: luducat/ui/dialogs/oauth_dialog.py:118
 #, python-brace-format
 msgid "Login to {name}"
 msgstr "Connexion à {name}"
 
-#: luducat/ui/dialogs/oauth_dialog.py:131
+#: luducat/ui/dialogs/oauth_dialog.py:132
 #, python-brace-format
 msgid "<h3>Login to {name}</h3>"
 msgstr "<h3>Connexion à {name}</h3>"
 
-#: luducat/ui/dialogs/oauth_dialog.py:136
+#: luducat/ui/dialogs/oauth_dialog.py:137
 #, python-brace-format
 msgid ""
 "<b>Step 1:</b> Click 'Open {name}' and log in with your "
 "browser.<br><br><b>Step 2:</b> After logging in, click 'Check Login' to "
 "import your session."
 msgstr ""
-"<b>Étape 1 :</b> Cliquez sur 'Ouvrir {name}' et connectez-vous avec votre "
-"navigateur.<br><br><b>Étape 2 :</b> Après vous être connecté, cliquez sur "
-"'Vérifier la connexion' pour importer votre session."
+"<b>Étape 1 :</b> Cliquez sur 'Ouvrir {name}' et connectez-vous avec votre"
+" navigateur.<br><br><b>Étape 2 :</b> Après vous être connecté, cliquez "
+"sur 'Vérifier la connexion' pour importer votre session."
 
-#: luducat/ui/dialogs/oauth_dialog.py:145
+#: luducat/ui/dialogs/oauth_dialog.py:146
 #, python-brace-format
 msgid "Open {name}"
 msgstr "Ouvrir {name}"
 
-#: luducat/ui/dialogs/oauth_dialog.py:161
+#: luducat/ui/dialogs/oauth_dialog.py:162
 msgid "Check Login"
 msgstr "Vérifier la connexion"
 
-#: luducat/ui/dialogs/oauth_dialog.py:181
+#: luducat/ui/dialogs/oauth_dialog.py:182
 #, python-brace-format
 msgid ""
 "Found existing {name} login in {browser}.\n"
 "Click 'Check Login' to use it, or log in again if needed."
 msgstr ""
 "Connexion {name} existante trouvée dans {browser}.\n"
-"Cliquez sur 'Vérifier la connexion' pour l'utiliser, ou reconnectez-vous si nécessaire."
+"Cliquez sur 'Vérifier la connexion' pour l'utiliser, ou reconnectez-vous "
+"si nécessaire."
 
-#: luducat/ui/dialogs/oauth_dialog.py:193
+#: luducat/ui/dialogs/oauth_dialog.py:194
 #, python-brace-format
 msgid ""
 "Browser opened. Please log in to {name},\n"
@@ -5360,7 +5397,7 @@ msgstr ""
 "Navigateur ouvert. Veuillez vous connecter à {name},\n"
 "puis cliquez sur 'Vérifier la connexion'."
 
-#: luducat/ui/dialogs/oauth_dialog.py:210
+#: luducat/ui/dialogs/oauth_dialog.py:211
 #, python-brace-format
 msgid "Login successful! (from {browser})"
 msgstr "Connexion réussie ! (depuis {browser})"
@@ -5376,7 +5413,15 @@ msgstr ""
 "Assurez-vous d'être connecté sur {name},\n"
 "puis réessayez."
 
-#: luducat/ui/dialogs/oauth_dialog.py:228
+#: luducat/ui/dialogs/oauth_dialog.py:223
+msgid ""
+"If this keeps failing, close your browser completely, then click 'Check "
+"Login'."
+msgstr ""
+"Si le problème persiste, fermez complètement votre navigateur, puis "
+"cliquez sur « Vérifier la connexion »."
+
+#: luducat/ui/dialogs/oauth_dialog.py:231
 #: luducat/ui/dialogs/plugin_config.py:3454
 msgid "Login cancelled"
 msgstr "Connexion annulée"
@@ -5410,11 +5455,11 @@ msgstr "Réinitialiser les données {}"
 #: luducat/ui/dialogs/plugin_config.py:242
 #, python-brace-format
 msgid ""
-"This will remove {count} {name} game entries and clear the {name} catalog "
-"database."
+"This will remove {count} {name} game entries and clear the {name} catalog"
+" database."
 msgstr ""
-"Cela supprimera {count} entrées de jeux {name} et videra la base de données "
-"du catalogue {name}."
+"Cela supprimera {count} entrées de jeux {name} et videra la base de "
+"données du catalogue {name}."
 
 #: luducat/ui/dialogs/plugin_config.py:248
 #, python-brace-format
@@ -5422,17 +5467,16 @@ msgid ""
 "{count} game(s) exist only in {name} and will be removed if they have no "
 "user data."
 msgstr ""
-"{count} jeu(x) n'existent que dans {name} et seront supprimés s'ils n'ont "
-"pas de données utilisateur."
+"{count} jeu(x) n'existent que dans {name} et seront supprimés s'ils n'ont"
+" pas de données utilisateur."
 
 #: luducat/ui/dialogs/plugin_config.py:255
 #, python-brace-format
-msgid ""
-"{count} game(s) also in other stores will keep their other store entries."
+msgid "{count} game(s) also in other stores will keep their other store entries."
 msgstr ""
 "{count} jeu(x) aussi dans d'autres magasins conserveront leurs autres "
-"entrées.{count} jeu(x) également dans d'autres boutiques conserveront leurs "
-"autres entrées."
+"entrées.{count} jeu(x) également dans d'autres boutiques conserveront "
+"leurs autres entrées."
 
 #: luducat/ui/dialogs/plugin_config.py:259
 #, python-brace-format
@@ -5602,9 +5646,8 @@ msgstr "Tester"
 msgid "Unpair"
 msgstr "Désapparier"
 
-#: luducat/ui/dialogs/plugin_config.py:1349
-#: luducat/ui/dialogs/settings.py:4525 luducat/ui/dialogs/settings.py:4652
-#: luducat/ui/dialogs/settings.py:4898
+#: luducat/ui/dialogs/plugin_config.py:1349 luducat/ui/dialogs/settings.py:4525
+#: luducat/ui/dialogs/settings.py:4652 luducat/ui/dialogs/settings.py:4898
 msgid "Not configured"
 msgstr "Non configuré"
 
@@ -5627,17 +5670,23 @@ msgstr "Bridge déjà apparié"
 
 #: luducat/ui/dialogs/plugin_config.py:1418
 msgid ""
-"The Playnite bridge is already paired with a different client (e.g. a previous luducat session or test run).\n"
+"The Playnite bridge is already paired with a different client (e.g. a "
+"previous luducat session or test run).\n"
 "\n"
-"This luducat instance has no local credentials for that pairing, so it cannot connect.\n"
+"This luducat instance has no local credentials for that pairing, so it "
+"cannot connect.\n"
 "\n"
-"To fix this, open Playnite and unpair or reset the bridge plugin there, then try pairing again from here."
+"To fix this, open Playnite and unpair or reset the bridge plugin there, "
+"then try pairing again from here."
 msgstr ""
-"Le bridge Playnite est déjà associé à un autre client (par ex. une session luducat précédente ou un test).\n"
+"Le bridge Playnite est déjà associé à un autre client (par ex. une "
+"session luducat précédente ou un test).\n"
 "\n"
-"Cette instance de luducat n’a pas les identifiants locaux pour cette association et ne peut pas se connecter.\n"
+"Cette instance de luducat n’a pas les identifiants locaux pour cette "
+"association et ne peut pas se connecter.\n"
 "\n"
-"Ouvrez Playnite et dissociez ou réinitialisez le plugin bridge, puis réessayez l’association depuis ici."
+"Ouvrez Playnite et dissociez ou réinitialisez le plugin bridge, puis "
+"réessayez l’association depuis ici."
 
 #: luducat/ui/dialogs/plugin_config.py:1467
 msgid "Testing..."
@@ -5655,11 +5704,13 @@ msgstr "Connecté au bridge Playnite."
 msgid ""
 "The bridge is reachable but not paired with this client.\n"
 "\n"
-"Unpair in Playnite first if a previous pairing exists, then pair again from here."
+"Unpair in Playnite first if a previous pairing exists, then pair again "
+"from here."
 msgstr ""
 "Le bridge est joignable mais n’est pas associé à ce client.\n"
 "\n"
-"Dissociez d’abord dans Playnite si une association précédente existe, puis associez à nouveau depuis ici."
+"Dissociez d’abord dans Playnite si une association précédente existe, "
+"puis associez à nouveau depuis ici."
 
 #: luducat/ui/dialogs/plugin_config.py:1493
 #, python-brace-format
@@ -5693,13 +5744,15 @@ msgstr "Réinitialiser les paramètres du bridge"
 
 #: luducat/ui/dialogs/plugin_config.py:1518
 msgid ""
-"This will reset all connection settings to their defaults and disconnect the current pairing.\n"
+"This will reset all connection settings to their defaults and disconnect "
+"the current pairing.\n"
 "\n"
 "You will need to pair again after resetting.\n"
 "\n"
 "Continue?"
 msgstr ""
-"Cela réinitialisera tous les paramètres de connexion à leurs valeurs par défaut et déconnectera l’association actuelle.\n"
+"Cela réinitialisera tous les paramètres de connexion à leurs valeurs par "
+"défaut et déconnectera l’association actuelle.\n"
 "\n"
 "Vous devrez vous associer à nouveau après la réinitialisation.\n"
 "\n"
@@ -5737,8 +5790,8 @@ msgstr "Epic Launcher"
 msgid "Author scores updated. Covers will re-resolve on next access."
 msgstr ""
 "Scores des auteurs mis à jour. Les couvertures seront recalculées au "
-"prochain accès.Scores d'auteurs mis à jour. Les couvertures seront résolues "
-"au prochain accès."
+"prochain accès.Scores d'auteurs mis à jour. Les couvertures seront "
+"résolues au prochain accès."
 
 #: luducat/ui/dialogs/plugin_config.py:2382
 #, python-brace-format
@@ -5853,12 +5906,11 @@ msgstr ""
 
 #: luducat/ui/dialogs/plugin_config.py:2932
 #, python-brace-format
-msgid ""
-"IGDB sync complete: {success} new matches found, {failed} still unmatched"
+msgid "IGDB sync complete: {success} new matches found, {failed} still unmatched"
 msgstr ""
 "Synchronisation IGDB terminée : {success} nouvelles correspondances, "
-"{failed} encore sans correspondanceSynchronisation IGDB terminée : {success}"
-" nouvelles correspondances, {failed} encore sans correspondance"
+"{failed} encore sans correspondanceSynchronisation IGDB terminée : "
+"{success} nouvelles correspondances, {failed} encore sans correspondance"
 
 #: luducat/ui/dialogs/plugin_config.py:2945
 #, python-brace-format
@@ -5909,11 +5961,11 @@ msgstr "Synchronisation PCGamingWiki annulée"
 #: luducat/ui/dialogs/plugin_config.py:3088
 #, python-brace-format
 msgid ""
-"PCGamingWiki sync complete: {success} matches ({failed} unmatched of {total}"
-" total)"
+"PCGamingWiki sync complete: {success} matches ({failed} unmatched of "
+"{total} total)"
 msgstr ""
-"Synchronisation PCGamingWiki terminée : {success} correspondances ({failed} "
-"sans correspondance sur {total} au total)"
+"Synchronisation PCGamingWiki terminée : {success} correspondances "
+"({failed} sans correspondance sur {total} au total)"
 
 #: luducat/ui/dialogs/plugin_config.py:3106
 msgid "ProtonDB plugin not loaded"
@@ -6045,13 +6097,17 @@ msgstr "<b>Les paramètres de filtre d'images ont été modifiés.</b>"
 #: luducat/ui/dialogs/plugin_config.py:3671
 #, python-brace-format
 msgid ""
-"There are {count} cached SteamGridDB assets that were fetched with the previous filter settings.\n"
+"There are {count} cached SteamGridDB assets that were fetched with the "
+"previous filter settings.\n"
 "\n"
-"Purging the cache ensures images match your new preferences. They will re-download automatically on next access."
+"Purging the cache ensures images match your new preferences. They will "
+"re-download automatically on next access."
 msgstr ""
-"Il y a {count} assets SteamGridDB en cache qui ont été téléchargés avec les anciens paramètres de filtre.\n"
+"Il y a {count} assets SteamGridDB en cache qui ont été téléchargés avec "
+"les anciens paramètres de filtre.\n"
 "\n"
-"Vider le cache garantit que les images correspondent à vos nouvelles préférences. Elles seront retéléchargées automatiquement."
+"Vider le cache garantit que les images correspondent à vos nouvelles "
+"préférences. Elles seront retéléchargées automatiquement."
 
 #: luducat/ui/dialogs/plugin_config.py:3684
 msgid "Purge Cache"
@@ -6093,7 +6149,8 @@ msgid ""
 "Unchecked or disabled sources are skipped."
 msgstr ""
 "Glissez pour réordonner les sources, ou utilisez les boutons à droite.\n"
-"Les sources cochées sont utilisées par ordre de priorité (haut = plus élevée).\n"
+"Les sources cochées sont utilisées par ordre de priorité (haut = plus "
+"élevée).\n"
 "Les sources décochées ou désactivées sont ignorées."
 
 #: luducat/ui/dialogs/priority_editor.py:153
@@ -6153,7 +6210,8 @@ msgid ""
 msgstr ""
 "Le plugin '{plugin_name}' n'est pas activé.\n"
 "\n"
-"Activez-le dans Paramètres > Plugins pour l'utiliser comme source de métadonnées."
+"Activez-le dans Paramètres > Plugins pour l'utiliser comme source de "
+"métadonnées."
 
 #: luducat/ui/dialogs/priority_editor.py:258
 msgid "Plugin Not Authenticated"
@@ -6164,11 +6222,13 @@ msgstr "Plugin non authentifié"
 msgid ""
 "The '{plugin_name}' plugin requires authentication.\n"
 "\n"
-"Configure credentials in Settings > Plugins to use it as a metadata source."
+"Configure credentials in Settings > Plugins to use it as a metadata "
+"source."
 msgstr ""
 "Le plugin '{plugin_name}' nécessite une authentification.\n"
 "\n"
-"Configurez les identifiants dans Paramètres > Plugins pour l'utiliser comme source de métadonnées."
+"Configurez les identifiants dans Paramètres > Plugins pour l'utiliser "
+"comme source de métadonnées."
 
 #: luducat/ui/dialogs/priority_editor.py:348
 msgid "Invalid Configuration"
@@ -6255,8 +6315,8 @@ msgstr "Synchronisation automatique au démarrage"
 msgid "Automatically check all your stores for new games when luducat starts"
 msgstr ""
 "Vérifier automatiquement tous vos magasins pour de nouveaux jeux au "
-"démarrageVérifier automatiquement toutes vos boutiques pour de nouveaux jeux"
-" au démarrage de luducat"
+"démarrageVérifier automatiquement toutes vos boutiques pour de nouveaux "
+"jeux au démarrage de luducat"
 
 #: luducat/ui/dialogs/settings.py:246 luducat/ui/dialogs/setup_wizard.py:1448
 #: luducat/ui/dialogs/setup_wizard.py:1475
@@ -6268,7 +6328,8 @@ msgid ""
 "Check for new luducat versions on startup and after each sync.\n"
 "Makes a brief, anonymous connection to the update server."
 msgstr ""
-"Vérifier les nouvelles versions de luducat au démarrage et après chaque synchronisation.\n"
+"Vérifier les nouvelles versions de luducat au démarrage et après chaque "
+"synchronisation.\n"
 "Établit une connexion brève et anonyme au serveur de mise à jour."
 
 #: luducat/ui/dialogs/settings.py:254 luducat/ui/dialogs/settings.py:526
@@ -6277,8 +6338,7 @@ msgstr "Vérifier les mises à jour..."
 
 #: luducat/ui/dialogs/settings.py:256
 msgid "Check whether a newer version of luducat is available right now"
-msgstr ""
-"Vérifier maintenant si une version plus récente de luducat est disponible"
+msgstr "Vérifier maintenant si une version plus récente de luducat est disponible"
 
 #: luducat/ui/dialogs/settings.py:264 luducat/ui/dialogs/setup_wizard.py:179
 #: luducat/ui/dialogs/setup_wizard.py:249
@@ -6387,8 +6447,8 @@ msgstr "3 lignes"
 
 #: luducat/ui/dialogs/settings.py:336
 msgid ""
-"Default store is used for the Play button and context menu when a game is "
-"available in multiple stores."
+"Default store is used for the Play button and context menu when a game is"
+" available in multiple stores."
 msgstr ""
 "La boutique par défaut est utilisée pour le bouton Jouer et le menu "
 "contextuel quand un jeu est disponible dans plusieurs boutiques."
@@ -6405,8 +6465,8 @@ msgstr "Confirmer avant de lancer les jeux"
 msgid "Ask for confirmation before opening a game in its store launcher"
 msgstr ""
 "Demander confirmation avant d'ouvrir un jeu dans son lanceur de "
-"magasinDemander une confirmation avant d'ouvrir un jeu dans le lanceur de sa"
-" boutique"
+"magasinDemander une confirmation avant d'ouvrir un jeu dans le lanceur de"
+" sa boutique"
 
 #: luducat/ui/dialogs/settings.py:486
 msgid ""
@@ -6416,7 +6476,8 @@ msgid ""
 msgstr ""
 "Impossible de vérifier les mises à jour en mode hors ligne.\n"
 "\n"
-"Passez en mode en ligne via l'indicateur de la barre d'état, puis réessayez."
+"Passez en mode en ligne via l'indicateur de la barre d'état, puis "
+"réessayez."
 
 #: luducat/ui/dialogs/settings.py:498
 msgid "Checking…"
@@ -6430,7 +6491,8 @@ msgid ""
 msgstr ""
 "Le réseau est devenu indisponible pendant la vérification.\n"
 "\n"
-"Passez en mode en ligne via l'indicateur de la barre d'état, puis réessayez."
+"Passez en mode en ligne via l'indicateur de la barre d'état, puis "
+"réessayez."
 
 #: luducat/ui/dialogs/settings.py:557
 msgid "Up to Date"
@@ -6463,10 +6525,12 @@ msgstr "Thème"
 #: luducat/ui/dialogs/settings.py:607
 msgid ""
 "Choose the look and feel of the application.\n"
-"You can add custom themes by placing .luducat-theme files in the themes folder."
+"You can add custom themes by placing .luducat-theme files in the themes "
+"folder."
 msgstr ""
 "Choisissez l'apparence de l'application.\n"
-"Vous pouvez ajouter des thèmes personnalisés en plaçant des fichiers .luducat-theme dans le dossier des thèmes."
+"Vous pouvez ajouter des thèmes personnalisés en plaçant des fichiers "
+".luducat-theme dans le dossier des thèmes."
 
 #: luducat/ui/dialogs/settings.py:611
 msgid "Theme:"
@@ -6477,8 +6541,8 @@ msgstr "Thème :"
 msgid "Custom themes: Place .luducat-theme or .qss files in {path}"
 msgstr ""
 "Thèmes personnalisés : placer les fichiers .luducat-theme ou .qss dans "
-"{path}Thèmes personnalisés : Placez des fichiers .luducat-theme ou .qss dans"
-" {path}"
+"{path}Thèmes personnalisés : Placez des fichiers .luducat-theme ou .qss "
+"dans {path}"
 
 #: luducat/ui/dialogs/settings.py:628
 msgid "UI Scale"
@@ -6553,20 +6617,19 @@ msgstr "Densité des couvertures :"
 #: luducat/ui/dialogs/settings.py:713
 msgid "How large cover tiles are. Smaller values fit more games per row"
 msgstr ""
-"Taille des vignettes de couverture. Des valeurs plus petites affichent plus "
-"de jeux par ligneTaille des vignettes de jaquettes. Des valeurs plus petites"
-" affichent plus de jeux par ligne"
+"Taille des vignettes de couverture. Des valeurs plus petites affichent "
+"plus de jeux par ligneTaille des vignettes de jaquettes. Des valeurs plus"
+" petites affichent plus de jeux par ligne"
 
 #: luducat/ui/dialogs/settings.py:720
 msgid "Game mode badges"
 msgstr "Badges de mode de jeu"
 
 #: luducat/ui/dialogs/settings.py:722
-msgid ""
-"Show game mode badges (multiplayer, co-op, etc.) on covers and screenshots"
+msgid "Show game mode badges (multiplayer, co-op, etc.) on covers and screenshots"
 msgstr ""
-"Afficher les badges de mode de jeu (multijoueur, coopératif, etc.) sur les "
-"couvertures et captures d'écran"
+"Afficher les badges de mode de jeu (multijoueur, coopératif, etc.) sur "
+"les couvertures et captures d'écran"
 
 #: luducat/ui/dialogs/settings.py:727
 msgid "Screenshot density:"
@@ -6575,9 +6638,9 @@ msgstr "Densité des captures d'écran :"
 #: luducat/ui/dialogs/settings.py:730
 msgid "How large screenshot tiles are. Smaller values fit more games per row"
 msgstr ""
-"Taille des vignettes de captures. Des valeurs plus petites affichent plus de"
-" jeux par ligneTaille des vignettes de captures d'écran. Des valeurs plus "
-"petites affichent plus de jeux par ligne"
+"Taille des vignettes de captures. Des valeurs plus petites affichent plus"
+" de jeux par ligneTaille des vignettes de captures d'écran. Des valeurs "
+"plus petites affichent plus de jeux par ligne"
 
 #: luducat/ui/dialogs/settings.py:737
 msgid "Store badges"
@@ -6585,8 +6648,7 @@ msgstr "Badges de magasin"
 
 #: luducat/ui/dialogs/settings.py:739
 msgid "Show store badges on covers and screenshots"
-msgstr ""
-"Afficher les badges de magasin sur les couvertures et captures d'écran"
+msgstr "Afficher les badges de magasin sur les couvertures et captures d'écran"
 
 #: luducat/ui/dialogs/settings.py:910
 #, python-brace-format
@@ -6688,30 +6750,38 @@ msgstr ""
 #: luducat/ui/dialogs/settings.py:1370
 #, python-brace-format
 msgid ""
-"{count} game(s) that exist only in {name} will be hidden from the library.\n"
+"{count} game(s) that exist only in {name} will be hidden from the "
+"library.\n"
 "\n"
 msgstr ""
-"{count} jeu(x) existant uniquement dans {name} seront masqués de la bibliothèque.\n"
+"{count} jeu(x) existant uniquement dans {name} seront masqués de la "
+"bibliothèque.\n"
 "\n"
 
 #: luducat/ui/dialogs/settings.py:1376
 #, python-brace-format
 msgid ""
-"No games will be hidden (all {name} games also exist in other enabled stores).\n"
+"No games will be hidden (all {name} games also exist in other enabled "
+"stores).\n"
 "\n"
 msgstr ""
-"Aucun jeu ne sera masqué (tous les jeux {name} existent aussi dans d'autres boutiques activées).\n"
+"Aucun jeu ne sera masqué (tous les jeux {name} existent aussi dans "
+"d'autres boutiques activées).\n"
 "\n"
 
 #: luducat/ui/dialogs/settings.py:1380
 msgid ""
-"Games and user data (favorites, tags) are preserved and will reappear when the plugin is re-enabled.\n"
+"Games and user data (favorites, tags) are preserved and will reappear "
+"when the plugin is re-enabled.\n"
 "\n"
-"Stored credentials will be cleared. You will need to log in again when re-enabling."
+"Stored credentials will be cleared. You will need to log in again when "
+"re-enabling."
 msgstr ""
-"Les jeux et données utilisateur (favoris, tags) sont préservés et réapparaîtront lorsque le plugin sera réactivé.\n"
+"Les jeux et données utilisateur (favoris, tags) sont préservés et "
+"réapparaîtront lorsque le plugin sera réactivé.\n"
 "\n"
-"Les identifiants enregistrés seront supprimés. Vous devrez vous reconnecter lors de la réactivation."
+"Les identifiants enregistrés seront supprimés. Vous devrez vous "
+"reconnecter lors de la réactivation."
 
 #: luducat/ui/dialogs/settings.py:1387
 #, python-brace-format
@@ -6731,12 +6801,17 @@ msgid ""
 "Which browser to read your store login sessions from.\n"
 "Auto-detect tries all supported browsers in order.\n"
 "\n"
-"Store plugins use this browser for reading game store cookies to authenticate. Cookies are read-only, never modified or stored."
+"Store plugins use this browser for reading game store cookies to "
+"authenticate. Cookies are read-only, never modified or stored."
 msgstr ""
-"Quel navigateur utiliser pour lire vos sessions de connexion aux magasins.\n"
-"La détection automatique essaie tous les navigateurs pris en charge dans l'ordre.\n"
+"Quel navigateur utiliser pour lire vos sessions de connexion aux "
+"magasins.\n"
+"La détection automatique essaie tous les navigateurs pris en charge dans "
+"l'ordre.\n"
 "\n"
-"Les plugins de magasin utilisent ce navigateur pour lire les cookies d'authentification. Les cookies sont en lecture seule, jamais modifiés ni stockés."
+"Les plugins de magasin utilisent ce navigateur pour lire les cookies "
+"d'authentification. Les cookies sont en lecture seule, jamais modifiés ni"
+" stockés."
 
 #: luducat/ui/dialogs/settings.py:1451
 msgid "Auto-detect"
@@ -6781,8 +6856,8 @@ msgstr "Budget :"
 #: luducat/ui/dialogs/settings.py:1506
 msgid "Maximum memory for cached cover and screenshot images (64– 2048 MB)"
 msgstr ""
-"Mémoire maximale pour les images en cache (64– 2048 Mo)Mémoire maximale pour"
-" les images de couverture et captures d'écran en cache (64– 2048 Mo)"
+"Mémoire maximale pour les images en cache (64– 2048 Mo)Mémoire maximale "
+"pour les images de couverture et captures d'écran en cache (64– 2048 Mo)"
 
 #: luducat/ui/dialogs/settings.py:1524
 msgid "Keep cached images indefinitely"
@@ -6794,7 +6869,8 @@ msgid ""
 "Useful for browsing your library without an internet connection.\n"
 "You can still clear the cache manually at any time."
 msgstr ""
-"Conserver toutes les images téléchargées sur le disque de façon permanente.\n"
+"Conserver toutes les images téléchargées sur le disque de façon "
+"permanente.\n"
 "Utile pour parcourir votre bibliothèque sans connexion internet.\n"
 "Vous pouvez toujours vider le cache manuellement à tout moment."
 
@@ -6823,12 +6899,18 @@ msgid ""
 "Hide games flagged as adult content based on age ratings\n"
 "and content descriptors from Steam, IGDB, and other sources.\n"
 "\n"
-"Uses confidence scoring from Steam content descriptors, IGDB age ratings, and other sources. Games rated Adults Only or with explicit content descriptors are hidden by default."
+"Uses confidence scoring from Steam content descriptors, IGDB age ratings,"
+" and other sources. Games rated Adults Only or with explicit content "
+"descriptors are hidden by default."
 msgstr ""
-"Masquer les jeux signalés comme contenu pour adultes selon les classifications d'âge\n"
+"Masquer les jeux signalés comme contenu pour adultes selon les "
+"classifications d'âge\n"
 "et les descripteurs de contenu de Steam, IGDB et d'autres sources.\n"
 "\n"
-"Utilise un score de confiance basé sur les descripteurs de contenu Steam, les classifications d'âge IGDB et d'autres sources. Les jeux classés Adultes uniquement ou avec des descripteurs de contenu explicite sont masqués par défaut."
+"Utilise un score de confiance basé sur les descripteurs de contenu Steam,"
+" les classifications d'âge IGDB et d'autres sources. Les jeux classés "
+"Adultes uniquement ou avec des descripteurs de contenu explicite sont "
+"masqués par défaut."
 
 #: luducat/ui/dialogs/settings.py:1590
 #, python-brace-format
@@ -6837,11 +6919,11 @@ msgstr "Recommandé : {optimal} Mo  ·  Minimum : {minimum} Mo"
 
 #: luducat/ui/dialogs/settings.py:1594
 msgid ""
-"Based on current grid density and window size. Hero and description caches "
-"use a fixed 50 MB."
+"Based on current grid density and window size. Hero and description "
+"caches use a fixed 50 MB."
 msgstr ""
-"Basé sur la densité de grille et la taille de la fenêtre. Les caches hero et"
-" description utilisent 50 Mo fixes."
+"Basé sur la densité de grille et la taille de la fenêtre. Les caches hero"
+" et description utilisent 50 Mo fixes."
 
 #: luducat/ui/dialogs/settings.py:1604
 #, python-brace-format
@@ -6894,8 +6976,8 @@ msgstr "Espace insuffisant"
 #, python-brace-format
 msgid "Target has {free} free, but {required} is needed."
 msgstr ""
-"La cible a {free} libres, mais {required} sont nécessaires.La cible dispose "
-"de {free} d'espace libre, mais {required} sont nécessaires."
+"La cible a {free} libres, mais {required} sont nécessaires.La cible "
+"dispose de {free} d'espace libre, mais {required} sont nécessaires."
 
 #: luducat/ui/dialogs/settings.py:1790
 msgid "Non-Empty Target"
@@ -7074,9 +7156,9 @@ msgstr "Sauvegarder maintenant…"
 #: luducat/ui/dialogs/settings.py:2036
 msgid "Create a backup of your game database and settings right now"
 msgstr ""
-"Créer une sauvegarde de votre base de données et paramètres maintenantCréer "
-"immédiatement une sauvegarde de votre base de données de jeux et de vos "
-"paramètres"
+"Créer une sauvegarde de votre base de données et paramètres "
+"maintenantCréer immédiatement une sauvegarde de votre base de données de "
+"jeux et de vos paramètres"
 
 #: luducat/ui/dialogs/settings.py:2039
 msgid "Restore…"
@@ -7086,8 +7168,8 @@ msgstr "Restaurer…"
 msgid "Restore your game database and settings from a previous backup"
 msgstr ""
 "Restaurer votre base de données de jeux et paramètres depuis une "
-"sauvegardeRestaurer votre base de données de jeux et vos paramètres depuis "
-"une sauvegarde précédente"
+"sauvegardeRestaurer votre base de données de jeux et vos paramètres "
+"depuis une sauvegarde précédente"
 
 #: luducat/ui/dialogs/settings.py:2051
 msgid "What to backup"
@@ -7132,8 +7214,7 @@ msgstr "Bannières hero"
 
 #: luducat/ui/dialogs/settings.py:2082
 msgid "Include hero banners and description images in backup"
-msgstr ""
-"Inclure les bannières hero et images de description dans la sauvegarde"
+msgstr "Inclure les bannières hero et images de description dans la sauvegarde"
 
 #: luducat/ui/dialogs/settings.py:2087
 msgid "Include screenshot images in backup"
@@ -7150,10 +7231,11 @@ msgstr "Activer les sauvegardes automatiques"
 
 #: luducat/ui/dialogs/settings.py:2101
 msgid ""
-"Automatically back up your game database and settings on a regular schedule"
+"Automatically back up your game database and settings on a regular "
+"schedule"
 msgstr ""
-"Sauvegarder automatiquement votre base de données de jeux et vos paramètres "
-"selon un calendrier régulier"
+"Sauvegarder automatiquement votre base de données de jeux et vos "
+"paramètres selon un calendrier régulier"
 
 #: luducat/ui/dialogs/settings.py:2113
 msgid "Backup every"
@@ -7191,8 +7273,8 @@ msgstr "Politique de conservation"
 msgid "How many daily backups to keep. Older ones are deleted automatically"
 msgstr ""
 "Nombre de sauvegardes quotidiennes à conserver. Les plus anciennes sont "
-"supprimées automatiquementNombre de sauvegardes quotidiennes à conserver. "
-"Les plus anciennes sont supprimées automatiquement"
+"supprimées automatiquementNombre de sauvegardes quotidiennes à conserver."
+" Les plus anciennes sont supprimées automatiquement"
 
 #: luducat/ui/dialogs/settings.py:2157
 msgid "<b>Daily</b> backups to keep:"
@@ -7202,8 +7284,8 @@ msgstr "Sauvegardes <b>quotidiennes</b> à conserver :"
 msgid "How many weekly backups to keep. Older ones are deleted automatically"
 msgstr ""
 "Nombre de sauvegardes hebdomadaires à conserver. Les plus anciennes sont "
-"supprimées automatiquementNombre de sauvegardes hebdomadaires à conserver. "
-"Les plus anciennes sont supprimées automatiquement"
+"supprimées automatiquementNombre de sauvegardes hebdomadaires à "
+"conserver. Les plus anciennes sont supprimées automatiquement"
 
 #: luducat/ui/dialogs/settings.py:2170
 msgid "<b>Weekly</b> backups to keep:"
@@ -7213,8 +7295,8 @@ msgstr "Sauvegardes <b>hebdomadaires</b> à conserver :"
 msgid "How many monthly backups to keep. Older ones are deleted automatically"
 msgstr ""
 "Nombre de sauvegardes mensuelles à conserver. Les plus anciennes sont "
-"supprimées automatiquementNombre de sauvegardes mensuelles à conserver. Les "
-"plus anciennes sont supprimées automatiquement"
+"supprimées automatiquementNombre de sauvegardes mensuelles à conserver. "
+"Les plus anciennes sont supprimées automatiquement"
 
 #: luducat/ui/dialogs/settings.py:2183
 msgid "<b>Monthly</b> backups to keep:"
@@ -7224,8 +7306,8 @@ msgstr "Sauvegardes <b>mensuelles</b> à conserver :"
 msgid "How many yearly backups to keep. Older ones are deleted automatically"
 msgstr ""
 "Nombre de sauvegardes annuelles à conserver. Les plus anciennes sont "
-"supprimées automatiquementNombre de sauvegardes annuelles à conserver. Les "
-"plus anciennes sont supprimées automatiquement"
+"supprimées automatiquementNombre de sauvegardes annuelles à conserver. "
+"Les plus anciennes sont supprimées automatiquement"
 
 #: luducat/ui/dialogs/settings.py:2196
 msgid "<b>Yearly</b> backups to keep:"
@@ -7243,8 +7325,8 @@ msgstr "Nettoyer maintenant…"
 #: luducat/ui/dialogs/settings.py:2218
 msgid "Delete old backups that exceed the retention limits above"
 msgstr ""
-"Supprimer les anciennes sauvegardes dépassant les limites de conservation "
-"ci-dessusSupprimer les anciennes sauvegardes dépassant les limites de "
+"Supprimer les anciennes sauvegardes dépassant les limites de conservation"
+" ci-dessusSupprimer les anciennes sauvegardes dépassant les limites de "
 "conservation ci-dessus"
 
 #: luducat/ui/dialogs/settings.py:2233 luducat/ui/dialogs/update_dialog.py:131
@@ -7279,11 +7361,14 @@ msgstr "Conservation automatique des sauvegardes"
 
 #: luducat/ui/dialogs/settings.py:2386
 msgid ""
-"When automatic backups are enabled, old backups that exceed your retention policy will be permanently deleted after each backup.\n"
+"When automatic backups are enabled, old backups that exceed your "
+"retention policy will be permanently deleted after each backup.\n"
 "\n"
 "You can adjust retention limits below."
 msgstr ""
-"Quand les sauvegardes automatiques sont activées, les anciennes sauvegardes qui dépassent la politique de conservation seront définitivement supprimées après chaque sauvegarde.\n"
+"Quand les sauvegardes automatiques sont activées, les anciennes "
+"sauvegardes qui dépassent la politique de conservation seront "
+"définitivement supprimées après chaque sauvegarde.\n"
 "\n"
 "Vous pouvez ajuster les limites de conservation ci-dessous."
 
@@ -7291,8 +7376,8 @@ msgstr ""
 msgid "I understand that old backups will be automatically deleted"
 msgstr ""
 "Je comprends que les anciennes sauvegardes seront automatiquement "
-"suppriméesJe comprends que les anciennes sauvegardes seront automatiquement "
-"supprimées"
+"suppriméesJe comprends que les anciennes sauvegardes seront "
+"automatiquement supprimées"
 
 #: luducat/ui/dialogs/settings.py:2430
 msgid "(0 backups)"
@@ -7324,8 +7409,8 @@ msgstr "Aucune sauvegarde trouvée."
 msgid "All backups are within retention limits. Nothing to delete."
 msgstr ""
 "Toutes les sauvegardes sont dans les limites de conservation. Rien à "
-"supprimer.Toutes les sauvegardes sont dans les limites de conservation. Rien"
-" à supprimer."
+"supprimer.Toutes les sauvegardes sont dans les limites de conservation. "
+"Rien à supprimer."
 
 #: luducat/ui/dialogs/settings.py:2499
 msgid "Clean Up Backups"
@@ -7469,8 +7554,8 @@ msgid ""
 "This is an image cache backup. Please select the data backup file "
 "(luducat_backup_...) instead."
 msgstr ""
-"Ceci est une sauvegarde du cache d'images. Veuillez sélectionner le fichier "
-"de sauvegarde des données (luducat_backup_...)."
+"Ceci est une sauvegarde du cache d'images. Veuillez sélectionner le "
+"fichier de sauvegarde des données (luducat_backup_...)."
 
 #: luducat/ui/dialogs/settings.py:2852
 msgid "Invalid Backup"
@@ -7519,22 +7604,26 @@ msgstr "Sauvegarde incompatible"
 #: luducat/ui/dialogs/settings.py:2898
 #, python-brace-format
 msgid ""
-"This backup was created with version {backup_version}, which is too old to restore.\n"
+"This backup was created with version {backup_version}, which is too old "
+"to restore.\n"
 "\n"
 "Minimum supported version: {min_version}"
 msgstr ""
-"Cette sauvegarde a été créée avec la version {backup_version}, trop ancienne pour être restaurée.\n"
+"Cette sauvegarde a été créée avec la version {backup_version}, trop "
+"ancienne pour être restaurée.\n"
 "\n"
 "Version minimale prise en charge : {min_version}"
 
 #: luducat/ui/dialogs/settings.py:2910
 #, python-brace-format
 msgid ""
-"WARNING: This backup was created with a different version of luducat ({backup_version}). The current version is {current_version}.\n"
+"WARNING: This backup was created with a different version of luducat "
+"({backup_version}). The current version is {current_version}.\n"
 "Restoring may require database migration.\n"
 "\n"
 msgstr ""
-"ATTENTION : Cette sauvegarde a été créée avec une version différente de luducat ({backup_version}). La version actuelle est {current_version}.\n"
+"ATTENTION : Cette sauvegarde a été créée avec une version différente de "
+"luducat ({backup_version}). La version actuelle est {current_version}.\n"
 "La restauration peut nécessiter une migration de la base de données.\n"
 "\n"
 
@@ -7632,14 +7721,14 @@ msgstr "Statistiques"
 
 #: luducat/ui/dialogs/settings.py:3187
 msgid ""
-"Configure which data source has priority for each metadata field. Click a "
-"field button to edit its priority order. Priority is left to right, first "
-"source with data wins."
+"Configure which data source has priority for each metadata field. Click a"
+" field button to edit its priority order. Priority is left to right, "
+"first source with data wins."
 msgstr ""
 "Configurez quelle source de données a la priorité pour chaque champ de "
 "métadonnées. Cliquez sur un bouton de champ pour modifier l'ordre de "
-"priorité. La priorité est de gauche à droite, la première source avec des "
-"données l'emporte."
+"priorité. La priorité est de gauche à droite, la première source avec des"
+" données l'emporte."
 
 #: luducat/ui/dialogs/settings.py:3190
 msgid "Note:"
@@ -7647,19 +7736,19 @@ msgstr "Remarque :"
 
 #: luducat/ui/dialogs/settings.py:3191
 msgid ""
-"Changing cover, hero, or screenshot priorities automatically resets those "
-"fields so they refetch from the new order. Other fields take effect on next "
-"sync."
+"Changing cover, hero, or screenshot priorities automatically resets those"
+" fields so they refetch from the new order. Other fields take effect on "
+"next sync."
 msgstr ""
 "La modification des priorités de couverture, héros ou captures d'écran "
-"réinitialise automatiquement ces champs pour qu'ils soient rechargés dans le"
-" nouvel ordre. Les autres champs prennent effet lors de la prochaine "
+"réinitialise automatiquement ces champs pour qu'ils soient rechargés dans"
+" le nouvel ordre. Les autres champs prennent effet lors de la prochaine "
 "synchronisation."
 
 #: luducat/ui/dialogs/settings.py:3224
 msgid ""
-"Load priorities from a saved preset, e.g. your own backup or one shared by a"
-" friend"
+"Load priorities from a saved preset, e.g. your own backup or one shared "
+"by a friend"
 msgstr ""
 "Charger les priorités depuis un preset enregistré, par ex. votre propre "
 "sauvegarde ou un fichier partagé par un ami"
@@ -7670,7 +7759,8 @@ msgid ""
 "You can share presets with friends or edit them with a text editor."
 msgstr ""
 "Enregistrér vos priorités actuelles comme preset réutilisable.\n"
-"Vous pouvez partager les presets avec des amis ou les modifier avec un éditeur de texte."
+"Vous pouvez partager les presets avec des amis ou les modifier avec un "
+"éditeur de texte."
 
 #: luducat/ui/dialogs/settings.py:3240
 msgid "See how your priority settings affect a specific game"
@@ -7684,8 +7774,8 @@ msgstr "Par défaut"
 msgid "Revert all changes made this session. Right-click for factory reset."
 msgstr ""
 "Annuler toutes les modifications de cette session. Clic droit pour "
-"réinitialisation d'usine.Annuler toutes les modifications de cette session. "
-"Clic droit pour la réinitialisation d'usine."
+"réinitialisation d'usine.Annuler toutes les modifications de cette "
+"session. Clic droit pour la réinitialisation d'usine."
 
 #: luducat/ui/dialogs/settings.py:3354
 msgid "Reset to Factory Defaults"
@@ -7702,13 +7792,16 @@ msgstr "Réinitialiser les champs modifiés"
 #: luducat/ui/dialogs/settings.py:3502
 #, python-brace-format
 msgid ""
-"The following fields will be reset on all games so they refetch from the new priority order on next sync:\n"
+"The following fields will be reset on all games so they refetch from the "
+"new priority order on next sync:\n"
 "\n"
 "{fields}\n"
 "\n"
 "Proceed?"
 msgstr ""
-"Les champs suivants seront réinitialisés sur tous les jeux pour qu'ils soient récupérés dans le nouvel ordre de priorité lors de la prochaine synchronisation :\n"
+"Les champs suivants seront réinitialisés sur tous les jeux pour qu'ils "
+"soient récupérés dans le nouvel ordre de priorité lors de la prochaine "
+"synchronisation :\n"
 "\n"
 "{fields}\n"
 "\n"
@@ -7784,13 +7877,15 @@ msgid ""
 "\n"
 "Line {line}, column {col}: {msg}\n"
 "\n"
-"Open the file in a text editor and check that line for missing commas, brackets, or quotes."
+"Open the file in a text editor and check that line for missing commas, "
+"brackets, or quotes."
 msgstr ""
 "Le fichier contient du JSON non valide (erreur de syntaxe).\n"
 "\n"
 "Ligne {line}, colonne {col} : {msg}\n"
 "\n"
-"Ouvrez le fichier dans un éditeur de texte et vérifiez cette ligne pour des virgules, crochets ou guillemets manquants."
+"Ouvrez le fichier dans un éditeur de texte et vérifiez cette ligne pour "
+"des virgules, crochets ou guillemets manquants."
 
 #: luducat/ui/dialogs/settings.py:3641
 #: luducat/ui/dialogs/tag_manager_dialog.py:1079
@@ -7808,12 +7903,14 @@ msgid ""
 "The file does not contain a valid preset.\n"
 "\n"
 "Expected a JSON object with a \"priorities\" key, like:\n"
-"{\"name\": \"My Preset\", \"priorities\": {\"title\": [\"steam\", \"gog\"], ...}}"
+"{\"name\": \"My Preset\", \"priorities\": {\"title\": [\"steam\", "
+"\"gog\"], ...}}"
 msgstr ""
 "Le fichier ne contient pas de préréglage valide.\n"
 "\n"
 "Un objet JSON avec une clé \"priorities\" est attendu, comme :\n"
-"{\"name\": \"My Preset\", \"priorities\": {\"title\": [\"steam\", \"gog\"], ...}}"
+"{\"name\": \"My Preset\", \"priorities\": {\"title\": [\"steam\", "
+"\"gog\"], ...}}"
 
 #: luducat/ui/dialogs/settings.py:3658
 #, python-brace-format
@@ -7821,20 +7918,24 @@ msgid ""
 "The preset file is missing the \"priorities\" key.\n"
 "\n"
 "A valid preset looks like:\n"
-"{\"name\": \"My Preset\", \"priorities\": {\"title\": [\"steam\", \"gog\"], ...}}"
+"{\"name\": \"My Preset\", \"priorities\": {\"title\": [\"steam\", "
+"\"gog\"], ...}}"
 msgstr ""
 "La clé \"priorities\" est manquante dans le fichier de préréglage.\n"
 "\n"
 "Un préréglage valide ressemble à :\n"
-"{\"name\": \"My Preset\", \"priorities\": {\"title\": [\"steam\", \"gog\"], ...}}"
+"{\"name\": \"My Preset\", \"priorities\": {\"title\": [\"steam\", "
+"\"gog\"], ...}}"
 
 #: luducat/ui/dialogs/settings.py:3667
 #, python-brace-format
 msgid ""
-"The \"priorities\" key should contain an object mapping field names to source lists, like:\n"
+"The \"priorities\" key should contain an object mapping field names to "
+"source lists, like:\n"
 "{\"title\": [\"steam\", \"gog\", \"igdb\"], ...}"
 msgstr ""
-"La clé \"priorities\" doit contenir un objet associant des noms de champs à des listes de sources, comme :\n"
+"La clé \"priorities\" doit contenir un objet associant des noms de champs"
+" à des listes de sources, comme :\n"
 "{\"title\": [\"steam\", \"gog\", \"igdb\"], ...}"
 
 #: luducat/ui/dialogs/settings.py:3692
@@ -7871,26 +7972,27 @@ msgstr "Apercu indisponible"
 
 #: luducat/ui/dialogs/settings.py:3716
 msgid ""
-"The preview requires a game service. Please try again from the main window."
+"The preview requires a game service. Please try again from the main "
+"window."
 msgstr ""
-"L'apercu necessite un service de jeux. Veuillez réessayer depuis la fenetre "
-"principale."
+"L'apercu necessite un service de jeux. Veuillez réessayer depuis la "
+"fenetre principale."
 
 #: luducat/ui/dialogs/settings.py:3753 luducat/ui/dialogs/setup_wizard.py:314
 #: luducat/ui/dialogs/setup_wizard.py:427
 msgid "Allow access to browser cookies and local game launcher data"
 msgstr ""
-"Autoriser l'accès aux cookies du navigateur et aux données des lanceurs de "
-"jeuxAutoriser l'accès aux cookies du navigateur et aux données locales des "
-"lanceurs"
+"Autoriser l'accès aux cookies du navigateur et aux données des lanceurs "
+"de jeuxAutoriser l'accès aux cookies du navigateur et aux données locales"
+" des lanceurs"
 
 #: luducat/ui/dialogs/settings.py:3756
 msgid ""
-"Required for GOG browser login, Steam VDF import, and Heroic tag/favourite "
-"sync"
+"Required for GOG browser login, Steam VDF import, and Heroic "
+"tag/favourite sync"
 msgstr ""
-"Nécessaire pour la connexion GOG par navigateur, l'import Steam VDF et la "
-"synchronisation des tags/favoris Heroic"
+"Nécessaire pour la connexion GOG par navigateur, l'import Steam VDF et la"
+" synchronisation des tags/favoris Heroic"
 
 #: luducat/ui/dialogs/settings.py:3765
 #, python-brace-format
@@ -7900,10 +8002,10 @@ msgid ""
 "Heroic). Nothing is sent anywhere — all imported data stays on your "
 "computer."
 msgstr ""
-"Permet à {app_name} de lire les cookies du navigateur pour se connecter aux "
-"boutiques de jeux et d'importer les tags, favoris et temps de jeu depuis les"
-" lanceurs locaux (Steam, GOG Galaxy, Heroic). Rien n'est envoyé nulle part —"
-" toutes les données importées restent sur votre ordinateur."
+"Permet à {app_name} de lire les cookies du navigateur pour se connecter "
+"aux boutiques de jeux et d'importer les tags, favoris et temps de jeu "
+"depuis les lanceurs locaux (Steam, GOG Galaxy, Heroic). Rien n'est envoyé"
+" nulle part — toutes les données importées restent sur votre ordinateur."
 
 #: luducat/ui/dialogs/settings.py:3778
 msgid "Your Data"
@@ -7911,34 +8013,31 @@ msgstr "Vos données"
 
 #: luducat/ui/dialogs/settings.py:3783
 msgid ""
-"Everything stays on your computer — game data, settings, metadata, all of it"
+"Everything stays on your computer — game data, settings, metadata, all of"
+" it"
 msgstr ""
-"Tout reste sur votre ordinateur — données de jeu, paramètres, métadonnées, "
-"tout"
+"Tout reste sur votre ordinateur — données de jeu, paramètres, "
+"métadonnées, tout"
 
 #: luducat/ui/dialogs/settings.py:3785
 #, python-brace-format
 msgid "No account needed — {app_name} has no server, no cloud, no tracking"
-msgstr ""
-"Aucun compte nécessaire — {app_name} n'a ni serveur, ni cloud, ni suivi"
+msgstr "Aucun compte nécessaire — {app_name} n'a ni serveur, ni cloud, ni suivi"
 
 #: luducat/ui/dialogs/settings.py:3787
 msgid "Nothing goes online unless you turn on a feature that needs it"
-msgstr ""
-"Rien ne passe en ligne sauf si vous activez une fonction qui le nécessite"
+msgstr "Rien ne passe en ligne sauf si vous activez une fonction qui le nécessite"
 
 #: luducat/ui/dialogs/settings.py:3789
-msgid ""
-"Passwords and API keys are kept in your system's secure storage (keyring)"
+msgid "Passwords and API keys are kept in your system's secure storage (keyring)"
 msgstr ""
-"Les mots de passe et clés API sont conservés dans le stockage sécurisé du "
-"système (trousseau)Les mots de passe et clés API sont conservés dans le "
+"Les mots de passe et clés API sont conservés dans le stockage sécurisé du"
+" système (trousseau)Les mots de passe et clés API sont conservés dans le "
 "stockage sécurisé du système (keyring)"
 
 #: luducat/ui/dialogs/settings.py:3791
 msgid "Browser cookies are only read, never changed or copied"
-msgstr ""
-"Les cookies du navigateur sont uniquement lus, jamais modifiés ni copiés"
+msgstr "Les cookies du navigateur sont uniquement lus, jamais modifiés ni copiés"
 
 #: luducat/ui/dialogs/settings.py:3802
 msgid "Online Features"
@@ -7950,8 +8049,9 @@ msgid ""
 "When you enable store or metadata plugins, {app_name} connects to these "
 "services to fetch game information:"
 msgstr ""
-"Lorsque vous activez des plugins de boutique ou de métadonnées, {app_name} "
-"se connecte à ces services pour récupérer les informations de jeu :"
+"Lorsque vous activez des plugins de boutique ou de métadonnées, "
+"{app_name} se connecte à ces services pour récupérer les informations de "
+"jeu :"
 
 #: luducat/ui/dialogs/settings.py:3826 luducat/ui/dialogs/settings.py:3827
 msgid "none enabled"
@@ -7977,17 +8077,17 @@ msgstr ""
 
 #: luducat/ui/dialogs/settings.py:3845
 msgid ""
-"IGDB access goes through a free proxy on Cloudflare. You can use your own "
-"Twitch API credentials instead if you prefer (see Plugins tab)."
+"IGDB access goes through a free proxy on Cloudflare. You can use your own"
+" Twitch API credentials instead if you prefer (see Plugins tab)."
 msgstr ""
 "L'accès à IGDB passe par un proxy gratuit sur Cloudflare. Vous pouvez "
-"utiliser vos propres identifiants API Twitch si vous préférez (voir l'onglet"
-" Plugins)."
+"utiliser vos propres identifiants API Twitch si vous préférez (voir "
+"l'onglet Plugins)."
 
 #: luducat/ui/dialogs/settings.py:3854
 msgid ""
-"You can disable any of these in the Plugins tab, or go fully offline with "
-"the offline toggle in the bottom-right corner of the main window."
+"You can disable any of these in the Plugins tab, or go fully offline with"
+" the offline toggle in the bottom-right corner of the main window."
 msgstr ""
 "Vous pouvez désactiver tout cela dans l'onglet Plugins, ou passer "
 "complètement hors ligne avec le bouton en bas à droite de la fenêtre "
@@ -8015,8 +8115,10 @@ msgid ""
 "Full sync: mirror source tags exactly (adds and removes).\n"
 "Disabled: do not import tags from any source."
 msgstr ""
-"Ajout seul : importer les nouveaux tags, conserver ceux supprimés manuellement.\n"
-"Synchronisation complète : reproduire exactement les tags source (ajouts et suppressions).\n"
+"Ajout seul : importer les nouveaux tags, conserver ceux supprimés "
+"manuellement.\n"
+"Synchronisation complète : reproduire exactement les tags source (ajouts "
+"et suppressions).\n"
 "Désactivé : ne pas importer de tags depuis les sources."
 
 #: luducat/ui/dialogs/settings.py:3915
@@ -8032,8 +8134,8 @@ msgid ""
 "When enabled, imported tags that you delete will not be recreated on the "
 "next sync."
 msgstr ""
-"Lorsque cette option est activée, les tags importés que vous avez supprimés "
-"ne seront pas recréés lors de la prochaine synchronisation."
+"Lorsque cette option est activée, les tags importés que vous avez "
+"supprimés ne seront pas recréés lors de la prochaine synchronisation."
 
 #: luducat/ui/dialogs/settings.py:3926
 msgid "Per-Plugin Tag Sync"
@@ -8052,8 +8154,8 @@ msgid ""
 "When enabled, imported tags show a colored left border indicating their "
 "source (Steam blue, GOG purple, etc.)"
 msgstr ""
-"Lorsque cette option est activée, les tags importés affichent une bordure "
-"gauche colorée indiquant leur source (Steam bleu, GOG violet, etc.)"
+"Lorsque cette option est activée, les tags importés affichent une bordure"
+" gauche colorée indiquant leur source (Steam bleu, GOG violet, etc.)"
 
 #: luducat/ui/dialogs/settings.py:4055
 msgid "Active Plugins:"
@@ -8144,8 +8246,8 @@ msgid ""
 "Default launch method per store. Can be overridden in individual game "
 "settings."
 msgstr ""
-"Méthode de lancement par défaut par boutique. Peut être modifiée dans les "
-"paramètres de chaque jeu."
+"Méthode de lancement par défaut par boutique. Peut être modifiée dans les"
+" paramètres de chaque jeu."
 
 #: luducat/ui/dialogs/settings.py:4429
 msgid "Launcher status"
@@ -8192,13 +8294,12 @@ msgstr "Configurer la connexion et l'appariement du bridge"
 msgid "Select the default Wine or Proton runtime for Windows games"
 msgstr ""
 "Sélectionner l'environnement Wine ou Proton par défaut pour les jeux "
-"WindowsSélectionner l'environnement Wine ou Proton par défaut pour les jeux "
-"Windows"
+"WindowsSélectionner l'environnement Wine ou Proton par défaut pour les "
+"jeux Windows"
 
 #: luducat/ui/dialogs/settings.py:4745
 msgid "Open Wine configuration (per-runtime and per-game settings)"
-msgstr ""
-"Ouvrir la configuration Wine (paramètres par environnement et par jeu)"
+msgstr "Ouvrir la configuration Wine (paramètres par environnement et par jeu)"
 
 #: luducat/ui/dialogs/settings.py:4797
 msgid "Browse for custom path"
@@ -8327,8 +8428,7 @@ msgstr "Confidentialité"
 
 #: luducat/ui/dialogs/settings.py:5365
 msgid "Reset all settings in this dialog to their default values"
-msgstr ""
-"Restaurer tous les paramètres de cette fenêtre à leurs valeurs par défaut"
+msgstr "Restaurer tous les paramètres de cette fenêtre à leurs valeurs par défaut"
 
 #: luducat/ui/dialogs/settings.py:5391
 #: luducat/ui/dialogs/tag_manager_dialog.py:426
@@ -8341,7 +8441,8 @@ msgid ""
 "\n"
 "Discard changes?"
 msgstr ""
-"Vous avez des modifications non enregistrées dans les priorités de métadonnées.\n"
+"Vous avez des modifications non enregistrées dans les priorités de "
+"métadonnées.\n"
 "\n"
 "Abandonner les modifications ?"
 
@@ -8388,13 +8489,14 @@ msgstr "Bienvenue dans {app_name} !"
 #: luducat/ui/dialogs/setup_wizard.py:156
 #: luducat/ui/dialogs/setup_wizard.py:241
 msgid ""
-"Browse all your game libraries in one place — covers, ratings, compatibility"
-" data, powerful filters, tag and favorite import, offline-capable, and fully"
-" private with no telemetry."
+"Browse all your game libraries in one place — covers, ratings, "
+"compatibility data, powerful filters, tag and favorite import, offline-"
+"capable, and fully private with no telemetry."
 msgstr ""
-"Parcourez toutes vos bibliothèques de jeux en un seul endroit — jaquettes, "
-"notes, données de compatibilité, filtres puissants, import de tags et "
-"favoris, utilisable hors ligne et entièrement privé sans télémétrie."
+"Parcourez toutes vos bibliothèques de jeux en un seul endroit — "
+"jaquettes, notes, données de compatibilité, filtres puissants, import de "
+"tags et favoris, utilisable hors ligne et entièrement privé sans "
+"télémétrie."
 
 #: luducat/ui/dialogs/setup_wizard.py:164
 #: luducat/ui/dialogs/setup_wizard.py:246
@@ -8419,16 +8521,16 @@ msgstr "Configuration rapide :"
 #: luducat/ui/dialogs/setup_wizard.py:255
 #, python-brace-format
 msgid ""
-"{app_name} pre-configures backups, a default theme, and update checks. You "
-"will still choose your game stores and enter credentials. Consent is "
+"{app_name} pre-configures backups, a default theme, and update checks. "
+"You will still choose your game stores and enter credentials. Consent is "
 "required for reading browser cookies and local launcher data (tags, "
 "favorites, playtime) from other applications on your machine."
 msgstr ""
 "{app_name} préconfigure les sauvegardes, un thème par défaut et les "
-"vérifications de mises à jour. Vous choisirez tout de même vos boutiques et "
-"saisirez vos identifiants. Votre consentement est requis pour lire les "
-"cookies du navigateur et les données locales des lanceurs (tags, favoris, "
-"temps de jeu) des autres applications sur votre machine."
+"vérifications de mises à jour. Vous choisirez tout de même vos boutiques "
+"et saisirez vos identifiants. Votre consentement est requis pour lire les"
+" cookies du navigateur et les données locales des lanceurs (tags, "
+"favoris, temps de jeu) des autres applications sur votre machine."
 
 #: luducat/ui/dialogs/setup_wizard.py:226
 #: luducat/ui/dialogs/setup_wizard.py:261
@@ -8447,27 +8549,26 @@ msgstr "Accès aux données"
 
 #: luducat/ui/dialogs/setup_wizard.py:305
 #: luducat/ui/dialogs/setup_wizard.py:424
-msgid ""
-"Grant permission to read local data from your browsers and game launchers"
+msgid "Grant permission to read local data from your browsers and game launchers"
 msgstr ""
-"Autoriser la lecture des données locales de vos navigateurs et lanceurs de "
-"jeuxAccorder la permission de lire les données locales de vos navigateurs et"
-" lanceurs de jeux"
+"Autoriser la lecture des données locales de vos navigateurs et lanceurs "
+"de jeuxAccorder la permission de lire les données locales de vos "
+"navigateurs et lanceurs de jeux"
 
 #: luducat/ui/dialogs/setup_wizard.py:323
 #: luducat/ui/dialogs/setup_wizard.py:430
 #, python-brace-format
 msgid ""
-"{app_name} reads your browser's store login cookies for authentication and "
-"imports tags, favorites, playtime, and install status from Steam, GOG "
-"Galaxy, Heroic, and other launchers on your machine. All data stays local. "
-"You can change this anytime in Settings → Privacy."
+"{app_name} reads your browser's store login cookies for authentication "
+"and imports tags, favorites, playtime, and install status from Steam, GOG"
+" Galaxy, Heroic, and other launchers on your machine. All data stays "
+"local. You can change this anytime in Settings → Privacy."
 msgstr ""
-"{app_name} lit les cookies de connexion aux boutiques de votre navigateur "
-"pour l'authentification et importe les tags, favoris, temps de jeu et statut"
-" d'installation depuis Steam, GOG Galaxy, Heroic et les autres lanceurs sur "
-"votre machine. Toutes les données restent locales. Vous pouvez modifier cela"
-" à tout moment dans Paramètres → Confidentialité."
+"{app_name} lit les cookies de connexion aux boutiques de votre navigateur"
+" pour l'authentification et importe les tags, favoris, temps de jeu et "
+"statut d'installation depuis Steam, GOG Galaxy, Heroic et les autres "
+"lanceurs sur votre machine. Toutes les données restent locales. Vous "
+"pouvez modifier cela à tout moment dans Paramètres → Confidentialité."
 
 #: luducat/ui/dialogs/setup_wizard.py:384
 #: luducat/ui/dialogs/setup_wizard.py:440
@@ -8482,8 +8583,9 @@ msgid ""
 "Settings → Advanced."
 msgstr ""
 "Utilise un score de confiance provenant de plusieurs sources "
-"(classifications d'âge, descripteurs de contenu) pour identifier le contenu "
-"pour adultes. Vous pouvez modifier cela plus tard dans Paramètres → Avancé."
+"(classifications d'âge, descripteurs de contenu) pour identifier le "
+"contenu pour adultes. Vous pouvez modifier cela plus tard dans Paramètres"
+" → Avancé."
 
 #: luducat/ui/dialogs/setup_wizard.py:399
 msgid "Your data stays on your machine"
@@ -8491,8 +8593,8 @@ msgstr "Vos données restent sur votre machine"
 
 #: luducat/ui/dialogs/setup_wizard.py:400
 msgid ""
-"All game data, settings, and metadata are stored locally. No accounts, no "
-"cloud, no tracking."
+"All game data, settings, and metadata are stored locally. No accounts, no"
+" cloud, no tracking."
 msgstr ""
 "Toutes les données de jeux, paramètres et métadonnées sont stockés "
 "localement. Pas de compte, pas de cloud, pas de pistage."
@@ -8504,8 +8606,8 @@ msgstr "Fonctionnement des connexions aux boutiques"
 #: luducat/ui/dialogs/setup_wizard.py:406
 msgid ""
 "Store plugins access your game libraries via official APIs or browser "
-"cookies for authentication. You provide API keys yourself; cookies are read "
-"from your browser with your consent above."
+"cookies for authentication. You provide API keys yourself; cookies are "
+"read from your browser with your consent above."
 msgstr ""
 "Les plugins de boutique accèdent à vos bibliothèques de jeux via les API "
 "officielles ou les cookies du navigateur pour l'authentification. Vous "
@@ -8518,13 +8620,13 @@ msgstr "Informations de jeux depuis des sources publiques"
 
 #: luducat/ui/dialogs/setup_wizard.py:414
 msgid ""
-"Game information (genres, ratings, screenshots, compatibility) comes from "
-"public databases via a privacy-respecting proxy. The proxy sees only game "
-"IDs, never your identity."
+"Game information (genres, ratings, screenshots, compatibility) comes from"
+" public databases via a privacy-respecting proxy. The proxy sees only "
+"game IDs, never your identity."
 msgstr ""
-"Les informations de jeux (genres, notes, captures d'écran, compatibilité) "
-"proviennent de bases de données publiques via un proxy respectueux de la vie"
-" privée. Le proxy ne voit que les identifiants de jeux, jamais votre "
+"Les informations de jeux (genres, notes, captures d'écran, compatibilité)"
+" proviennent de bases de données publiques via un proxy respectueux de la"
+" vie privée. Le proxy ne voit que les identifiants de jeux, jamais votre "
 "identité."
 
 #: luducat/ui/dialogs/setup_wizard.py:489
@@ -8537,16 +8639,16 @@ msgstr "Choisissez votre thème"
 msgid "Select a visual theme (you can change this later in Settings)"
 msgstr ""
 "Choisir un thème visuel (modifiable plus tard dans les "
-"paramètres)Sélectionnez un thème visuel (vous pourrez le modifier plus tard "
-"dans les Paramètres)"
+"paramètres)Sélectionnez un thème visuel (vous pourrez le modifier plus "
+"tard dans les Paramètres)"
 
 #: luducat/ui/dialogs/setup_wizard.py:506
 #: luducat/ui/dialogs/setup_wizard.py:548
 msgid "Preview themes live. The theme applies instantly as you select it."
 msgstr ""
 "Aperçu des thèmes en direct. Le thème s'applique instantanément à la "
-"sélection.Aperçu des thèmes en direct. Le thème s'applique instantanément "
-"lorsque vous le sélectionnez."
+"sélection.Aperçu des thèmes en direct. Le thème s'applique instantanément"
+" lorsque vous le sélectionnez."
 
 #: luducat/ui/dialogs/setup_wizard.py:586
 msgid "Uses your system's default appearance"
@@ -8569,12 +8671,11 @@ msgstr "Sélectionnez les boutiques de jeux que vous souhaitez connecter"
 
 #: luducat/ui/dialogs/setup_wizard.py:702
 #: luducat/ui/dialogs/setup_wizard.py:758
-msgid ""
-"Pick the stores where you own games. You can add more later in Settings."
+msgid "Pick the stores where you own games. You can add more later in Settings."
 msgstr ""
-"Sélectionnez les magasins où vous possédez des jeux. D'autres peuvent être "
-"ajoutés plus tard.Choisissez les boutiques où vous possédez des jeux. Vous "
-"pourrez en ajouter d'autres plus tard dans les paramètres."
+"Sélectionnez les magasins où vous possédez des jeux. D'autres peuvent "
+"être ajoutés plus tard.Choisissez les boutiques où vous possédez des "
+"jeux. Vous pourrez en ajouter d'autres plus tard dans les paramètres."
 
 #: luducat/ui/dialogs/setup_wizard.py:745
 #: luducat/ui/dialogs/setup_wizard.py:761
@@ -8582,8 +8683,10 @@ msgid ""
 "Game metadata (covers, descriptions, ratings) is fetched automatically.\n"
 "Additional options can be configured in Settings later."
 msgstr ""
-"Les métadonnées des jeux (couvertures, descriptions, notes) sont récupérées automatiquement.\n"
-"Des options supplémentaires peuvent être configurées dans les Paramètres ultérieurement."
+"Les métadonnées des jeux (couvertures, descriptions, notes) sont "
+"récupérées automatiquement.\n"
+"Des options supplémentaires peuvent être configurées dans les Paramètres "
+"ultérieurement."
 
 #: luducat/ui/dialogs/setup_wizard.py:774
 msgid "Selection Required"
@@ -8681,20 +8784,19 @@ msgstr "Protégez vos données de bibliothèque"
 #: luducat/ui/dialogs/setup_wizard.py:1313
 #: luducat/ui/dialogs/setup_wizard.py:1357
 #, python-brace-format
-msgid ""
-"{app_name} can automatically back up your library database and settings."
+msgid "{app_name} can automatically back up your library database and settings."
 msgstr ""
 "{app_name} peut sauvegarder automatiquement votre base de données et vos "
-"paramètres.{app_name} peut sauvegarder automatiquement votre base de données"
-" de bibliothèque et vos paramètres."
+"paramètres.{app_name} peut sauvegarder automatiquement votre base de "
+"données de bibliothèque et vos paramètres."
 
 #: luducat/ui/dialogs/setup_wizard.py:1342
 #: luducat/ui/dialogs/setup_wizard.py:1368
 msgid "You can configure detailed scheduling and retention in Settings later."
 msgstr ""
-"La planification et la conservation détaillées sont configurables plus tard "
-"dans les paramètres.Vous pourrez configurer la planification et la rétention"
-" en détail dans les Paramètres ultérieurement."
+"La planification et la conservation détaillées sont configurables plus "
+"tard dans les paramètres.Vous pourrez configurer la planification et la "
+"rétention en détail dans les Paramètres ultérieurement."
 
 #: luducat/ui/dialogs/setup_wizard.py:1409
 #: luducat/ui/dialogs/setup_wizard.py:1468
@@ -8710,11 +8812,11 @@ msgstr "Restez informe des nouvelles versions"
 #: luducat/ui/dialogs/setup_wizard.py:1471
 #, python-brace-format
 msgid ""
-"{app_name} can check for new versions on startup and after each sync. This "
-"is completely optional."
+"{app_name} can check for new versions on startup and after each sync. "
+"This is completely optional."
 msgstr ""
-"{app_name} peut vérifier les nouvelles versions au démarrage et après chaque"
-" synchronisation. C'est entièrement facultatif."
+"{app_name} peut vérifier les nouvelles versions au démarrage et après "
+"chaque synchronisation. C'est entièrement facultatif."
 
 #: luducat/ui/dialogs/setup_wizard.py:1457
 msgid "How it works:"
@@ -8723,23 +8825,24 @@ msgstr "Comment ça fonctionne :"
 #: luducat/ui/dialogs/setup_wizard.py:1458
 msgid "• Connects to a Cloudflare-hosted server to check version numbers"
 msgstr ""
-"• Se connecte à un serveur Cloudflare pour vérifier les numéros de version• "
-"Se connecte à un serveur hébergé par Cloudflare pour vérifier les numéros de"
-" version"
+"• Se connecte à un serveur Cloudflare pour vérifier les numéros de "
+"version• Se connecte à un serveur hébergé par Cloudflare pour vérifier "
+"les numéros de version"
 
 #: luducat/ui/dialogs/setup_wizard.py:1460
 msgid "• No personal data, library info, or telemetry is ever sent"
 msgstr ""
-"• Aucune donnée personnelle, information de bibliothèque ou télémétrie n'est"
-" envoyée• Aucune donnée personnelle, information de bibliothèque ou "
+"• Aucune donnée personnelle, information de bibliothèque ou télémétrie "
+"n'est envoyée• Aucune donnée personnelle, information de bibliothèque ou "
 "télémétrie n'est jamais envoyée"
 
 #: luducat/ui/dialogs/setup_wizard.py:1461
 msgid ""
-"• If a new version is found, you'll see a notification with a download link"
+"• If a new version is found, you'll see a notification with a download "
+"link"
 msgstr ""
-"• Si une nouvelle version est trouvée, vous verrez une notification avec un "
-"lien de téléchargement"
+"• Si une nouvelle version est trouvée, vous verrez une notification avec "
+"un lien de téléchargement"
 
 #: luducat/ui/dialogs/setup_wizard.py:1463
 msgid "• Nothing is downloaded or installed automatically"
@@ -8857,8 +8960,8 @@ msgstr "Fusionner la sélection..."
 msgid "Select two tags to merge (keeps the first, absorbs the second)"
 msgstr ""
 "Sélectionnez deux tags à fusionner (garde le premier, absorbe le "
-"second)Sélectionnez deux tags à fusionner (conserve le premier, absorbe le "
-"second)"
+"second)Sélectionnez deux tags à fusionner (conserve le premier, absorbe "
+"le second)"
 
 #: luducat/ui/dialogs/tag_manager_dialog.py:383
 msgid "Import tags from a file or from your game stores"
@@ -8870,7 +8973,8 @@ msgid ""
 "You can share this file with friends or edit it with a text editor."
 msgstr ""
 "Enregistrér tous vos tags dans un fichier.\n"
-"Vous pouvez partager ce fichier avec des amis ou le modifier avec un éditeur de texte."
+"Vous pouvez partager ce fichier avec des amis ou le modifier avec un "
+"éditeur de texte."
 
 #: luducat/ui/dialogs/tag_manager_dialog.py:427
 msgid ""
@@ -9170,8 +9274,9 @@ msgstr "Activer les sauvegardes planifiées"
 #: luducat/ui/dialogs/update_dialog.py:158
 msgid "Full changelog available in Help → About → News"
 msgstr ""
-"Journal des modifications complet dans Aide → À propos → NouveautésJournal "
-"des modifications complet disponible dans Aide -> À propos -> Nouveautés"
+"Journal des modifications complet dans Aide → À propos → "
+"NouveautésJournal des modifications complet disponible dans Aide -> À "
+"propos -> Nouveautés"
 
 #: luducat/ui/dialogs/update_dialog.py:171
 msgid "Skip version"
@@ -9181,61 +9286,61 @@ msgstr "Ignorer cette version"
 msgid "Dismiss"
 msgstr "Fermer"
 
-#: luducat/ui/widgets/download_list.py:88
+#: luducat/ui/widgets/download_list.py:77
 msgid "< 1 min"
 msgstr "< 1 min"
 
-#: luducat/ui/widgets/download_list.py:91
+#: luducat/ui/widgets/download_list.py:80
 #, python-brace-format
 msgid "~{n} min"
 msgstr "~{n} min"
 
-#: luducat/ui/widgets/download_list.py:94
+#: luducat/ui/widgets/download_list.py:83
 #, python-brace-format
 msgid "~{h}h {m}m"
 msgstr "~{h}h {m}m"
 
-#: luducat/ui/widgets/download_list.py:424
-#: luducat/ui/widgets/download_list.py:499
-#: luducat/ui/widgets/download_list.py:562
+#: luducat/ui/widgets/download_list.py:414
+#: luducat/ui/widgets/download_list.py:492
+#: luducat/ui/widgets/download_list.py:547
 msgid "Resolving..."
 msgstr "Résolution..."
 
-#: luducat/ui/widgets/download_list.py:425
+#: luducat/ui/widgets/download_list.py:415
 msgid "Done"
 msgstr "Terminé"
 
-#: luducat/ui/widgets/download_list.py:426
+#: luducat/ui/widgets/download_list.py:416
 msgid "Downloading"
 msgstr "En cours"
 
-#: luducat/ui/widgets/download_list.py:427
-#: luducat/ui/widgets/download_list.py:572
+#: luducat/ui/widgets/download_list.py:417
+#: luducat/ui/widgets/download_list.py:557
 msgid "Paused"
 msgstr "En pause"
 
-#: luducat/ui/widgets/download_list.py:428
-#: luducat/ui/widgets/download_list.py:433
-#: luducat/ui/widgets/download_list.py:569
+#: luducat/ui/widgets/download_list.py:418
+#: luducat/ui/widgets/download_list.py:422
+#: luducat/ui/widgets/download_list.py:554
 msgid "Queued"
 msgstr "En attente"
 
-#: luducat/ui/widgets/download_list.py:429
-#: luducat/ui/widgets/download_list.py:567
+#: luducat/ui/widgets/download_list.py:419
+#: luducat/ui/widgets/download_list.py:552
 msgid "Failed"
 msgstr "Échoué"
 
-#: luducat/ui/widgets/download_list.py:430
+#: luducat/ui/widgets/download_list.py:420
 msgid "Cancelled"
 msgstr "Annulé"
 
-#: luducat/ui/widgets/download_list.py:511
-#: luducat/ui/widgets/download_list.py:514
+#: luducat/ui/widgets/download_list.py:503
+#: luducat/ui/widgets/download_list.py:506
 #, python-brace-format
 msgid "{done} of {total} files"
 msgstr "{done} sur {total} fichiers"
 
-#: luducat/ui/widgets/download_list.py:564
+#: luducat/ui/widgets/download_list.py:549
 msgid "Complete"
 msgstr "Terminé"
 
@@ -9278,11 +9383,13 @@ msgstr "Partage familial Steam"
 
 #: luducat/utils/workers.py:803
 msgid ""
-"The Steam family sharing API was not available. Family data was detected from local files instead.\n"
+"The Steam family sharing API was not available. Family data was detected "
+"from local files instead.\n"
 "\n"
 "Retry sync later for complete data."
 msgstr ""
-"L'API de partage familial Steam n'était pas disponible. Les données familiales ont été détectées à partir de fichiers locaux.\n"
+"L'API de partage familial Steam n'était pas disponible. Les données "
+"familiales ont été détectées à partir de fichiers locaux.\n"
 "\n"
 "Réessayer la synchronisation plus tard pour des données complètes."
 
@@ -9292,7 +9399,8 @@ msgid ""
 "\n"
 "If this persists, please open an issue on GitHub."
 msgstr ""
-"Les données familiales Steam n'ont pas pu être récupérées. Réessayer la synchronisation plus tard.\n"
+"Les données familiales Steam n'ont pas pu être récupérées. Réessayer la "
+"synchronisation plus tard.\n"
 "\n"
 "Si le problème persiste, veuillez ouvrir un ticket sur GitHub."
 
@@ -9379,3 +9487,4 @@ msgstr ""
 
 #~ msgid "Keep window on top"
 #~ msgstr "Garder la fenêtre au premier plan"
+

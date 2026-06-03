@@ -36,7 +36,7 @@ pillow-heif>=0.16.0
 SecretStorage>=3.3.0;sys_platform=="linux"
 
 vdf>=3.4
-browser_cookie3>=0.19.0
+browser_cookie3 @ git+https://github.com/luducat/browser_cookie3.git@fix-firefox-wal-copy
 
 # Cryptography (bridge pairing, keyring backend)
 cryptography>=41.0.0

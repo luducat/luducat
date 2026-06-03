@@ -515,7 +515,6 @@ class GogGame(Base):
             "rank_bestselling": self.rank_bestselling,
             "rank_trending": self.rank_trending,
             # Detailed metadata
-            "copyright_notice": self.copyright_notice,
             "is_using_dosbox": self.is_using_dosbox,
             "is_in_development": self.is_in_development,
             "store_release_date": self.store_release_date,
@@ -536,6 +535,7 @@ class GogGame(Base):
             result["description_cool"] = self.description_cool
             result["changelog"] = self.changelog
             result["downloads_json"] = self.downloads_json
+            result["copyright_notice"] = self.copyright_notice
 
         return result
 

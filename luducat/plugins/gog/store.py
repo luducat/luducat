@@ -148,24 +148,20 @@ class GogStore(StorePlugin):
         """Check browser for GOG login cookies and import if found
 
         This is called automatically when checking auth status.
-        If cookies are found in the browser, they are imported.
+        If cookies are found in the browser, they are imported
+        (updating any previously stored cookies).
 
         Returns:
-            True if valid cookies were found and imported
+            True if valid cookies are available (stored or freshly imported)
         """
         if self._browser_cookies_checked:
             return self._has_valid_cookies()
 
         self._browser_cookies_checked = True
 
-        # Don't check if we already have cookies
-        if self._has_valid_cookies():
-            return True
-
-        # Check if credential manager is available
         if not self._credential_manager:
             logger.debug("Credential manager not initialized, skipping browser cookie check")
-            return False
+            return self._has_valid_cookies()
 
         try:
             from luducat.plugins.sdk.cookies import get_browser_cookie_manager
@@ -181,7 +177,7 @@ class GogStore(StorePlugin):
         except Exception as e:
             logger.debug(f"Could not check browser cookies: {e}")
 
-        return False
+        return self._has_valid_cookies()
 
     def refresh_auth_state(self) -> bool:
         """Refresh authentication state by checking browser cookies
@@ -242,8 +238,37 @@ class GogStore(StorePlugin):
         return self._has_valid_cookies()
 
     def get_account_identifier(self) -> Optional[str]:
-        """Return the GOG auth cookie identifying the current account."""
-        return self.get_credential("gog_al")
+        """Return a stable GOG user ID for account change detection.
+
+        The gog_al cookie rotates on every browser session so it cannot
+        be compared across syncs.  We fetch the userId via a cheap
+        userData call on first use and cache it as a plugin setting.
+        """
+        stored = self.get_setting("gog_user_id")
+        if stored:
+            return str(stored)
+        if not self._has_valid_cookies():
+            return None
+        try:
+            api = self._get_api_client()
+            from luducat.plugins.sdk.constants import USER_AGENT
+            resp = api._http.get(
+                "https://www.gog.com/userData.json",
+                headers={
+                    "Cookie": api._build_cookie_header(),
+                    "User-Agent": USER_AGENT,
+                },
+                timeout=10,
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                uid = data.get("userId")
+                if uid:
+                    self.set_setting("gog_user_id", str(uid))
+                    return str(uid)
+        except Exception as e:
+            logger.debug(f"Could not fetch GOG user ID: {e}")
+        return None
 
     def get_auth_status(self) -> tuple:
         """Get authentication status with details

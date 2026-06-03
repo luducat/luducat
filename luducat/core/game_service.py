@@ -444,7 +444,8 @@ class GameService:
                         StoreGame.family_shared_owner,
                         StoreGame.is_installed,
                         StoreGame.install_path,
-                        # metadata_json excluded — fetched separately for steam_deck_compat
+                        StoreGame.is_private_app,
+                        StoreGame.is_delisted,
                     ),
                     selectinload(DbGame.tags),
                     selectinload(DbGame.user_data),

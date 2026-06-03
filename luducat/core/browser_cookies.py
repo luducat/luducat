@@ -134,7 +134,7 @@ class BrowserCookieManager:
                     result = self._try_browser(func, display_name, domain, required_cookie)
                     if result[0]:  # Found cookies
                         return result
-                    logger.warning(f"Preferred browser {display_name} has no cookies for {domain}")
+                    logger.debug(f"Preferred browser {display_name} has no cookies for {domain}")
                     return {}, None
 
             logger.warning(f"Preferred browser '{preferred}' not available, falling back to auto")
@@ -189,7 +189,8 @@ class BrowserCookieManager:
             logger.debug(f"Found {len(cookies)} cookies for {domain} from {browser_name}")
             return cookies, browser_name
 
-        except Exception:
+        except Exception as e:
+            logger.debug("Failed to read cookies from %s for %s: %s", browser_name, domain, e)
             return {}, None
 
     def get_cookie_jar_for_domain(
@@ -245,7 +246,8 @@ class BrowserCookieManager:
                     logger.debug(f"Found {len(cookie_names)} cookies from {browser_name}")
                     return cookie_jar, browser_name
 
-            except Exception:
+            except Exception as e:
+                logger.debug("Failed to read cookie jar from %s: %s", browser_name, e)
                 continue
 
         return None, None

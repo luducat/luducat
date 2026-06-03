@@ -169,12 +169,14 @@ class Toolbar(QWidget):
         # Tools dropdown button
         self.btn_tools = QPushButton(_("Tools"))
         self.btn_tools.setObjectName("toolsButton")
+        self.btn_tools.setToolTip(_("Backup, export, and other tools"))
         self._setup_tools_menu()
         self._layout.addWidget(self.btn_tools)
 
         # Settings button
         self.btn_settings = QPushButton(_("Settings"))
         self.btn_settings.setObjectName("settingsButton")
+        self.btn_settings.setToolTip(_("Open application settings"))
         self._layout.addWidget(self.btn_settings)
 
         # About button (?)

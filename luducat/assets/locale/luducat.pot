@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: luducat VERSION\n"
 "Report-Msgid-Bugs-To: luducat@trinity2k.net\n"
-"POT-Creation-Date: 2026-05-25 13:17+0200\n"
+"POT-Creation-Date: 2026-05-31 21:15+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -33,11 +33,11 @@ msgstr ""
 msgid "Don't ask again (run backups silently)"
 msgstr ""
 
-#: luducat/main.py:481 luducat/ui/main_window.py:3782
+#: luducat/main.py:481 luducat/ui/main_window.py:3784
 msgid "Creating backup..."
 msgstr ""
 
-#: luducat/main.py:482 luducat/ui/main_window.py:3783
+#: luducat/main.py:482 luducat/ui/main_window.py:3785
 msgid "Backup in Progress"
 msgstr ""
 
@@ -54,7 +54,7 @@ msgid ""
 msgstr ""
 
 #: luducat/main.py:509 luducat/ui/dialogs/plugin_config.py:304
-#: luducat/ui/main_window.py:3799
+#: luducat/ui/main_window.py:3801
 msgid "Backup Failed"
 msgstr ""
 
@@ -249,52 +249,52 @@ msgstr ""
 msgid "DECK N/A"
 msgstr ""
 
-#: luducat/core/game_service.py:428 luducat/core/game_service.py:452
-#: luducat/ui/main_window.py:2124
+#: luducat/core/game_service.py:432 luducat/core/game_service.py:457
+#: luducat/ui/main_window.py:2126
 msgid "Loading games..."
 msgstr ""
 
-#: luducat/core/game_service.py:428
+#: luducat/core/game_service.py:432
 msgid "Querying database..."
 msgstr ""
 
-#: luducat/core/game_service.py:453
+#: luducat/core/game_service.py:458
 #, python-format
 msgid "Found %d games"
 msgstr ""
 
-#: luducat/core/game_service.py:497
+#: luducat/core/game_service.py:502
 msgid "No configured stores (using cached data)"
 msgstr ""
 
-#: luducat/core/game_service.py:503
+#: luducat/core/game_service.py:508
 #, python-format
 msgid "Fetching metadata (%d games, %d stores)..."
 msgstr ""
 
-#: luducat/core/game_service.py:543
+#: luducat/core/game_service.py:548
 msgid "Loading enrichment data..."
 msgstr ""
 
-#: luducat/core/game_service.py:606
+#: luducat/core/game_service.py:611
 #, python-format
 msgid "Loading %s data..."
 msgstr ""
 
-#: luducat/core/game_service.py:620
+#: luducat/core/game_service.py:625
 msgid "Loading game modes..."
 msgstr ""
 
-#: luducat/core/game_service.py:648
+#: luducat/core/game_service.py:653
 msgid "Building game list..."
 msgstr ""
 
-#: luducat/core/game_service.py:666
+#: luducat/core/game_service.py:671
 #, python-format
 msgid "Processing games (%d/%d)..."
 msgstr ""
 
-#: luducat/core/game_service.py:757
+#: luducat/core/game_service.py:762
 msgid "Building search index..."
 msgstr ""
 
@@ -1147,7 +1147,7 @@ msgid "Connected as {account}"
 msgstr ""
 
 #: luducat/plugins/epic/store.py:144 luducat/plugins/epic/store.py:148
-#: luducat/plugins/gog/store.py:269 luducat/plugins/steam/store.py:267
+#: luducat/plugins/gog/store.py:265 luducat/plugins/steam/store.py:267
 #: luducat/plugins/store_engine/store.py:1229
 #: luducat/plugins/store_engine/store.py:1237
 #: luducat/plugins/store_engine/store.py:1245
@@ -1160,12 +1160,12 @@ msgstr ""
 msgid "Not connected"
 msgstr ""
 
-#: luducat/plugins/gog/store.py:263
+#: luducat/plugins/gog/store.py:259
 #, python-brace-format
 msgid "Connected ({browser})"
 msgstr ""
 
-#: luducat/plugins/gog/store.py:267 luducat/plugins/steam/store.py:304
+#: luducat/plugins/gog/store.py:263 luducat/plugins/steam/store.py:304
 #: luducat/plugins/store_engine/store.py:1236
 #: luducat/plugins/store_engine/store.py:1244
 #: luducat/ui/dialogs/plugin_config.py:1355 luducat/ui/dialogs/settings.py:4521
@@ -1214,8 +1214,8 @@ msgstr ""
 
 #: luducat/plugins/platforms/wine/config_dialog.py:176
 #: luducat/ui/dialogs/plugin_config.py:904 luducat/ui/dialogs/settings.py:5285
-#: luducat/ui/download_window.py:321 luducat/ui/list_view.py:1623
-#: luducat/ui/toolbar.py:176
+#: luducat/ui/download_window.py:322 luducat/ui/list_view.py:1623
+#: luducat/ui/toolbar.py:177
 msgid "Settings"
 msgstr ""
 
@@ -1453,7 +1453,7 @@ msgstr ""
 #: luducat/plugins/steamgriddb/ui/author_dialog.py:710
 #: luducat/ui/dialogs/csv_export.py:281
 #: luducat/ui/dialogs/developer_console.py:232
-#: luducat/ui/dialogs/installer_picker.py:345
+#: luducat/ui/dialogs/installer_picker.py:416
 #: luducat/ui/dialogs/plugin_config.py:285 luducat/ui/dialogs/settings.py:5031
 #: luducat/ui/dialogs/settings.py:5111 luducat/ui/dialogs/settings.py:5132
 #: luducat/ui/list_view.py:1946 luducat/ui/list_view.py:2097
@@ -1933,123 +1933,123 @@ msgstr ""
 msgid "FREE"
 msgstr ""
 
-#: luducat/ui/download_window.py:90
+#: luducat/ui/download_window.py:91
 msgid "Queue all updates"
 msgstr ""
 
-#: luducat/ui/download_window.py:100
+#: luducat/ui/download_window.py:101
 #, python-brace-format
 msgid "{n} NEW"
 msgstr ""
 
-#: luducat/ui/download_window.py:107
+#: luducat/ui/download_window.py:108
 #, python-brace-format
 msgid "{n} game updates"
 msgstr ""
 
-#: luducat/ui/download_window.py:154
+#: luducat/ui/download_window.py:155
 #, python-brace-format
 msgid "{n} total"
 msgstr ""
 
-#: luducat/ui/download_window.py:156
+#: luducat/ui/download_window.py:157
 #, python-brace-format
 msgid "{n} finished"
 msgstr ""
 
-#: luducat/ui/download_window.py:158
+#: luducat/ui/download_window.py:159
 #, python-brace-format
 msgid "{n} downloading"
 msgstr ""
 
-#: luducat/ui/download_window.py:160
+#: luducat/ui/download_window.py:161
 #, python-brace-format
 msgid "{n} paused"
 msgstr ""
 
-#: luducat/ui/download_window.py:162
+#: luducat/ui/download_window.py:163
 #, python-brace-format
 msgid "{n} queued"
 msgstr ""
 
-#: luducat/ui/download_window.py:164
+#: luducat/ui/download_window.py:165
 #, python-brace-format
 msgid "{n} failed"
 msgstr ""
 
-#: luducat/ui/download_window.py:166
+#: luducat/ui/download_window.py:167
 #, python-brace-format
 msgid "{n} cancelled"
 msgstr ""
 
-#: luducat/ui/download_window.py:201
+#: luducat/ui/download_window.py:202
 msgid "Drop to add"
 msgstr ""
 
-#: luducat/ui/download_window.py:235
+#: luducat/ui/download_window.py:236
 #, python-brace-format
 msgid "{app} Downloader"
 msgstr ""
 
-#: luducat/ui/download_window.py:272
+#: luducat/ui/download_window.py:273
 msgid "Move selected up in queue"
 msgstr ""
 
-#: luducat/ui/download_window.py:281
+#: luducat/ui/download_window.py:282
 msgid "Move selected down in queue"
 msgstr ""
 
-#: luducat/ui/download_window.py:290
+#: luducat/ui/download_window.py:291
 msgid "Start selected (Shift: all pending)"
 msgstr ""
 
-#: luducat/ui/download_window.py:299
+#: luducat/ui/download_window.py:300
 msgid "Pause selected (Shift: pause all)"
 msgstr ""
 
-#: luducat/ui/download_window.py:308
+#: luducat/ui/download_window.py:309
 msgid "Cancel selected (Shift: cancel all)"
 msgstr ""
 
 #: luducat/ui/dialogs/developer_console.py:183
-#: luducat/ui/download_window.py:313 luducat/ui/filter_bar.py:924
+#: luducat/ui/download_window.py:314 luducat/ui/filter_bar.py:924
 #: luducat/ui/filter_bar.py:1180 luducat/ui/list_view.py:2082
 msgid "Clear"
 msgstr ""
 
-#: luducat/ui/download_window.py:315
+#: luducat/ui/download_window.py:316
 msgid "Clear finished downloads (Shift: cancel and remove all)"
 msgstr ""
 
-#: luducat/ui/download_window.py:323
+#: luducat/ui/download_window.py:324
 msgid "Open download settings"
 msgstr ""
 
-#: luducat/ui/download_window.py:330
+#: luducat/ui/download_window.py:331
 msgid "Pin window on top of other windows"
 msgstr ""
 
-#: luducat/ui/download_window.py:364
+#: luducat/ui/download_window.py:365
 msgid "No downloads — drag links here or paste a URL below"
 msgstr ""
 
-#: luducat/ui/download_window.py:375 luducat/ui/download_window.py:603
+#: luducat/ui/download_window.py:376 luducat/ui/download_window.py:606
 msgid "Paste URL here..."
 msgstr ""
 
-#: luducat/ui/download_window.py:379
+#: luducat/ui/download_window.py:380
 msgid "Add"
 msgstr ""
 
-#: luducat/ui/download_window.py:380
+#: luducat/ui/download_window.py:381
 msgid "Add URL to download queue"
 msgstr ""
 
-#: luducat/ui/download_window.py:567
+#: luducat/ui/download_window.py:568
 msgid "Unsupported URL"
 msgstr ""
 
-#: luducat/ui/download_window.py:568
+#: luducat/ui/download_window.py:569
 #, python-brace-format
 msgid ""
 "This URL is not supported by any download handler:\n"
@@ -2057,22 +2057,22 @@ msgid ""
 "{url}"
 msgstr ""
 
-#: luducat/ui/download_window.py:580 luducat/ui/download_window.py:619
-#: luducat/ui/download_window.py:635 luducat/ui/download_window.py:670
+#: luducat/ui/download_window.py:581 luducat/ui/download_window.py:622
+#: luducat/ui/download_window.py:638 luducat/ui/download_window.py:673
 msgid "Download Error"
 msgstr ""
 
-#: luducat/ui/download_window.py:588
+#: luducat/ui/download_window.py:589
 #, python-brace-format
 msgid "Resolving {url}..."
 msgstr ""
 
-#: luducat/ui/download_window.py:824 luducat/ui/sync_progress_bar.py:177
+#: luducat/ui/download_window.py:827 luducat/ui/sync_progress_bar.py:177
 #: luducat/ui/sync_widget.py:533
 msgid "Resume"
 msgstr ""
 
-#: luducat/ui/download_window.py:826 luducat/ui/sync_progress_bar.py:91
+#: luducat/ui/download_window.py:829 luducat/ui/sync_progress_bar.py:91
 #: luducat/ui/sync_progress_bar.py:172 luducat/ui/sync_widget.py:240
 #: luducat/ui/sync_widget.py:298 luducat/ui/sync_widget.py:528
 msgid "Pause"
@@ -2082,8 +2082,8 @@ msgstr ""
 #: luducat/ui/dialogs/csv_export.py:637
 #: luducat/ui/dialogs/download_covers.py:228
 #: luducat/ui/dialogs/gogdb_import.py:233
-#: luducat/ui/dialogs/installer_picker.py:362
-#: luducat/ui/dialogs/oauth_dialog.py:167
+#: luducat/ui/dialogs/installer_picker.py:433
+#: luducat/ui/dialogs/oauth_dialog.py:168
 #: luducat/ui/dialogs/plugin_config.py:2813
 #: luducat/ui/dialogs/plugin_config.py:2828
 #: luducat/ui/dialogs/plugin_config.py:3019
@@ -2092,16 +2092,16 @@ msgstr ""
 #: luducat/ui/dialogs/plugin_config.py:3157 luducat/ui/dialogs/settings.py:1829
 #: luducat/ui/dialogs/sync_dialog.py:436
 #: luducat/ui/dialogs/tag_manager_dialog.py:709
-#: luducat/ui/download_window.py:828 luducat/ui/sync_progress_bar.py:98
+#: luducat/ui/download_window.py:831 luducat/ui/sync_progress_bar.py:98
 #: luducat/ui/sync_widget.py:266 luducat/ui/sync_widget.py:303
 msgid "Cancel"
 msgstr ""
 
-#: luducat/ui/download_window.py:831
+#: luducat/ui/download_window.py:834
 msgid "Open folder"
 msgstr ""
 
-#: luducat/ui/download_window.py:836
+#: luducat/ui/download_window.py:839
 msgid "Remove"
 msgstr ""
 
@@ -2124,7 +2124,7 @@ msgid "Filter games by store, tag, genre, and more"
 msgstr ""
 
 #: luducat/ui/dialogs/developer_console.py:40
-#: luducat/ui/dialogs/installer_picker.py:314 luducat/ui/filter_bar.py:302
+#: luducat/ui/dialogs/installer_picker.py:390 luducat/ui/filter_bar.py:302
 msgid "All"
 msgstr ""
 
@@ -3134,7 +3134,7 @@ msgstr ""
 msgid "URI Handler Not Registered"
 msgstr ""
 
-#: luducat/ui/main_window.py:1234 luducat/ui/main_window.py:2793
+#: luducat/ui/main_window.py:1234 luducat/ui/main_window.py:2795
 msgid "Don't show this again"
 msgstr ""
 
@@ -3217,42 +3217,42 @@ msgid ""
 "saved locally."
 msgstr ""
 
-#: luducat/ui/main_window.py:1933 luducat/ui/sync_widget.py:518
+#: luducat/ui/main_window.py:1935 luducat/ui/sync_widget.py:518
 msgid "Shutting down..."
 msgstr ""
 
 #: luducat/ui/dialogs/settings.py:102 luducat/ui/dialogs/settings.py:1821
-#: luducat/ui/dialogs/settings.py:2704 luducat/ui/main_window.py:2124
+#: luducat/ui/dialogs/settings.py:2704 luducat/ui/main_window.py:2126
 msgid "Preparing..."
 msgstr ""
 
-#: luducat/ui/main_window.py:2289
+#: luducat/ui/main_window.py:2291
 msgid "Error Loading Games"
 msgstr ""
 
-#: luducat/ui/main_window.py:2290
+#: luducat/ui/main_window.py:2292
 #, python-brace-format
 msgid ""
 "Failed to load games from database:\n"
 "{error}"
 msgstr ""
 
-#: luducat/ui/main_window.py:2750
+#: luducat/ui/main_window.py:2752
 msgid "Switch to Offline Mode"
 msgstr ""
 
-#: luducat/ui/main_window.py:2751
+#: luducat/ui/main_window.py:2753
 msgid ""
 "Switch to offline mode?\n"
 "\n"
 "Sync and image downloads will be paused."
 msgstr ""
 
-#: luducat/ui/main_window.py:2762
+#: luducat/ui/main_window.py:2764
 msgid "Switch to Online Mode"
 msgstr ""
 
-#: luducat/ui/main_window.py:2763
+#: luducat/ui/main_window.py:2765
 msgid ""
 "Switch to online mode?\n"
 "\n"
@@ -3260,19 +3260,19 @@ msgid ""
 msgstr ""
 
 #: luducat/ui/dialogs/settings.py:485 luducat/ui/dialogs/settings.py:531
-#: luducat/ui/main_window.py:2789
+#: luducat/ui/main_window.py:2791
 msgid "Offline Mode"
 msgstr ""
 
-#: luducat/ui/main_window.py:2790
+#: luducat/ui/main_window.py:2792
 msgid "Luducat is in offline mode. Switch to online mode to sync."
 msgstr ""
 
-#: luducat/ui/main_window.py:2850
+#: luducat/ui/main_window.py:2852
 msgid "Full Resync"
 msgstr ""
 
-#: luducat/ui/main_window.py:2851
+#: luducat/ui/main_window.py:2853
 msgid ""
 "This will re-download metadata for ALL games.\n"
 "\n"
@@ -3282,22 +3282,22 @@ msgid ""
 "Continue?"
 msgstr ""
 
-#: luducat/ui/main_window.py:2879 luducat/ui/main_window.py:3145
-#: luducat/ui/main_window.py:3202
+#: luducat/ui/main_window.py:2881 luducat/ui/main_window.py:3147
+#: luducat/ui/main_window.py:3204
 msgid "Sync In Progress"
 msgstr ""
 
-#: luducat/ui/main_window.py:2880 luducat/ui/main_window.py:3146
-#: luducat/ui/main_window.py:3203
+#: luducat/ui/main_window.py:2882 luducat/ui/main_window.py:3148
+#: luducat/ui/main_window.py:3205
 msgid "A sync operation is already in progress."
 msgstr ""
 
 #: luducat/ui/dialogs/plugin_config.py:2628 luducat/ui/dialogs/settings.py:3748
-#: luducat/ui/main_window.py:2888
+#: luducat/ui/main_window.py:2890
 msgid "Local Data Access"
 msgstr ""
 
-#: luducat/ui/dialogs/plugin_config.py:2629 luducat/ui/main_window.py:2889
+#: luducat/ui/dialogs/plugin_config.py:2629 luducat/ui/main_window.py:2891
 #, python-brace-format
 msgid ""
 "{app_name} can read browser cookies for store authentication and import "
@@ -3309,49 +3309,49 @@ msgid ""
 "Allow access to local data?"
 msgstr ""
 
-#: luducat/ui/dialogs/plugin_config.py:2927 luducat/ui/main_window.py:3001
+#: luducat/ui/dialogs/plugin_config.py:2927 luducat/ui/main_window.py:3003
 msgid "Sync cancelled"
 msgstr ""
 
-#: luducat/ui/main_window.py:3079
+#: luducat/ui/main_window.py:3081
 #, python-brace-format
 msgid "{count} games"
 msgstr ""
 
-#: luducat/ui/dialogs/plugin_config.py:2945 luducat/ui/main_window.py:3085
+#: luducat/ui/dialogs/plugin_config.py:2945 luducat/ui/main_window.py:3087
 msgid "Sync Error"
 msgstr ""
 
-#: luducat/ui/main_window.py:3085
+#: luducat/ui/main_window.py:3087
 #, python-brace-format
 msgid ""
 "Sync failed:\n"
 "{error}"
 msgstr ""
 
-#: luducat/ui/main_window.py:3157
+#: luducat/ui/main_window.py:3159
 #, python-brace-format
 msgid "{name}: nothing to enrich"
 msgstr ""
 
-#: luducat/ui/dialogs/csv_export.py:477 luducat/ui/main_window.py:3347
+#: luducat/ui/dialogs/csv_export.py:477 luducat/ui/main_window.py:3349
 msgid "No games to export."
 msgstr ""
 
-#: luducat/ui/main_window.py:3359
+#: luducat/ui/main_window.py:3361
 #, python-brace-format
 msgid "Exported {count} games to CSV"
 msgstr ""
 
-#: luducat/ui/main_window.py:3389
+#: luducat/ui/main_window.py:3391
 msgid "No covers to download."
 msgstr ""
 
-#: luducat/ui/main_window.py:3610
+#: luducat/ui/main_window.py:3612
 msgid "Initial Library Sync"
 msgstr ""
 
-#: luducat/ui/main_window.py:3611
+#: luducat/ui/main_window.py:3613
 msgid ""
 "Would you like to sync your game libraries now?\n"
 "\n"
@@ -3359,11 +3359,11 @@ msgid ""
 "libraries."
 msgstr ""
 
-#: luducat/ui/main_window.py:3624
+#: luducat/ui/main_window.py:3626
 msgid "Setup Required"
 msgstr ""
 
-#: luducat/ui/main_window.py:3626
+#: luducat/ui/main_window.py:3628
 #, python-brace-format
 msgid ""
 "{app_name} requires at least one game store to be configured.\n"
@@ -3371,7 +3371,7 @@ msgid ""
 "The setup wizard will appear again next time you start the app."
 msgstr ""
 
-#: luducat/ui/main_window.py:3800
+#: luducat/ui/main_window.py:3802
 #, python-brace-format
 msgid ""
 "Failed to create backup:\n"
@@ -3381,15 +3381,15 @@ msgid ""
 "You can still proceed with the download."
 msgstr ""
 
-#: luducat/ui/dialogs/game_settings.py:469 luducat/ui/main_window.py:4366
+#: luducat/ui/dialogs/game_settings.py:469 luducat/ui/main_window.py:4370
 msgid "this game"
 msgstr ""
 
-#: luducat/ui/main_window.py:4370
+#: luducat/ui/main_window.py:4374
 msgid "Force Rescan"
 msgstr ""
 
-#: luducat/ui/main_window.py:4371
+#: luducat/ui/main_window.py:4375
 #, python-brace-format
 msgid ""
 "Re-scan metadata for \"{title}\" from all sources?\n"
@@ -3601,80 +3601,88 @@ msgstr ""
 msgid "Tools"
 msgstr ""
 
-#: luducat/ui/toolbar.py:183
+#: luducat/ui/toolbar.py:172
+msgid "Backup, export, and other tools"
+msgstr ""
+
+#: luducat/ui/toolbar.py:179
+msgid "Open application settings"
+msgstr ""
+
+#: luducat/ui/toolbar.py:185
 #, python-brace-format
 msgid "About {app_name}"
 msgstr ""
 
-#: luducat/ui/toolbar.py:206
+#: luducat/ui/toolbar.py:208
 msgid "Sync All"
 msgstr ""
 
-#: luducat/ui/toolbar.py:221
+#: luducat/ui/toolbar.py:223
 msgid "Full Resync..."
 msgstr ""
 
-#: luducat/ui/toolbar.py:223
+#: luducat/ui/toolbar.py:225
 msgid "Re-download metadata for ALL games"
 msgstr ""
 
-#: luducat/ui/toolbar.py:233
+#: luducat/ui/toolbar.py:235
 msgid "Backup && Restore..."
 msgstr ""
 
-#: luducat/ui/toolbar.py:234
+#: luducat/ui/toolbar.py:236
 msgid "Open backup and restore settings"
 msgstr ""
 
-#: luducat/ui/toolbar.py:238
+#: luducat/ui/toolbar.py:240
 msgid "Export your games as CSV..."
 msgstr ""
 
-#: luducat/ui/toolbar.py:241
+#: luducat/ui/toolbar.py:243
 msgid "Export the currently filtered game list as CSV"
 msgstr ""
 
-#: luducat/ui/toolbar.py:245
+#: luducat/ui/toolbar.py:247
 msgid "Downloader"
 msgstr ""
 
-#: luducat/ui/toolbar.py:247
+#: luducat/ui/toolbar.py:249
 msgid "Open the download companion window"
 msgstr ""
 
-#: luducat/ui/dialogs/settings.py:1533 luducat/ui/toolbar.py:254
+#: luducat/ui/dialogs/settings.py:1533 luducat/ui/toolbar.py:256
 msgid "Download Missing Covers..."
 msgstr ""
 
-#: luducat/ui/dialogs/settings.py:1535 luducat/ui/toolbar.py:257
+#: luducat/ui/dialogs/settings.py:1535 luducat/ui/toolbar.py:259
 msgid "Pre-download all cover images for faster browsing"
 msgstr ""
 
-#: luducat/ui/toolbar.py:261
+#: luducat/ui/toolbar.py:263
 msgid "Tag Manager..."
 msgstr ""
 
-#: luducat/ui/toolbar.py:263
+#: luducat/ui/toolbar.py:265
 msgid "Manage tags: create, edit, delete, merge, and import/export"
 msgstr ""
 
-#: luducat/ui/toolbar.py:269
+#: luducat/ui/toolbar.py:271
 msgid "Developer Console..."
 msgstr ""
 
-#: luducat/ui/toolbar.py:271
+#: luducat/ui/toolbar.py:273
 msgid "Open the developer console with logs and diagnostics"
 msgstr ""
 
-#: luducat/ui/toolbar.py:275
+#: luducat/ui/toolbar.py:277
 msgid "Setup Wizard..."
 msgstr ""
 
-#: luducat/ui/toolbar.py:276
+#: luducat/ui/toolbar.py:278
 msgid "Re-run the initial setup wizard"
 msgstr ""
 
-#: luducat/ui/toolbar.py:419
+#: luducat/ui/toolbar.py:421
 #, python-brace-format
 msgid "Run {name} sync"
 msgstr ""
@@ -3983,7 +3991,6 @@ msgid "Collection Manager"
 msgstr ""
 
 #: luducat/ui/dialogs/collection_manager.py:133
-#: luducat/ui/dialogs/installer_picker.py:325
 #: luducat/ui/dialogs/tag_manager_dialog.py:224
 #: luducat/ui/dialogs/tag_manager_dialog.py:476
 msgid "Games"
@@ -4403,7 +4410,7 @@ msgid "No splittable fields are selected."
 msgstr ""
 
 #: luducat/ui/dialogs/csv_export.py:394
-#: luducat/ui/dialogs/installer_picker.py:359
+#: luducat/ui/dialogs/installer_picker.py:430
 #: luducat/ui/dialogs/tag_manager_dialog.py:708
 msgid "OK"
 msgstr ""
@@ -5005,66 +5012,74 @@ msgstr ""
 msgid "0 / 0"
 msgstr ""
 
-#: luducat/ui/dialogs/installer_picker.py:255
+#: luducat/ui/dialogs/installer_picker.py:319
 #, python-brace-format
 msgid "Download - {title}"
 msgstr ""
 
-#: luducat/ui/dialogs/installer_picker.py:305
+#: luducat/ui/dialogs/installer_picker.py:331
+msgid "Installers"
+msgstr ""
+
+#: luducat/ui/dialogs/installer_picker.py:332
+msgid "DLC"
+msgstr ""
+
+#: luducat/ui/dialogs/installer_picker.py:333
+msgid "Patches"
+msgstr ""
+
+#: luducat/ui/dialogs/installer_picker.py:334
+msgid "Extras"
+msgstr ""
+
+#: luducat/ui/dialogs/installer_picker.py:381
 #: luducat/ui/dialogs/settings.py:5101
 msgid "Windows"
 msgstr ""
 
-#: luducat/ui/dialogs/installer_picker.py:305
+#: luducat/ui/dialogs/installer_picker.py:381
 #: luducat/ui/dialogs/settings.py:5102
 msgid "Linux"
 msgstr ""
 
-#: luducat/ui/dialogs/installer_picker.py:305
+#: luducat/ui/dialogs/installer_picker.py:381
 #: luducat/ui/dialogs/settings.py:5103
 msgid "macOS"
 msgstr ""
 
-#: luducat/ui/dialogs/installer_picker.py:316
+#: luducat/ui/dialogs/installer_picker.py:392
 msgid "None"
 msgstr ""
 
-#: luducat/ui/dialogs/installer_picker.py:326
-msgid "Patches"
-msgstr ""
-
-#: luducat/ui/dialogs/installer_picker.py:327
-msgid "Extras"
-msgstr ""
-
-#: luducat/ui/dialogs/installer_picker.py:346
+#: luducat/ui/dialogs/installer_picker.py:417
 msgid "Restore default selection from preferences"
 msgstr ""
 
-#: luducat/ui/dialogs/installer_picker.py:354
+#: luducat/ui/dialogs/installer_picker.py:425
 msgid "Click to check disk space and show download directory"
 msgstr ""
 
-#: luducat/ui/dialogs/installer_picker.py:386
+#: luducat/ui/dialogs/installer_picker.py:457
 #, python-brace-format
 msgid "No installers found for {os}. Showing all available."
 msgstr ""
 
-#: luducat/ui/dialogs/installer_picker.py:425
+#: luducat/ui/dialogs/installer_picker.py:496
 #, python-brace-format
 msgid "Size: {size}"
 msgstr ""
 
-#: luducat/ui/dialogs/installer_picker.py:458
+#: luducat/ui/dialogs/installer_picker.py:529
 msgid "No download directory configured."
 msgstr ""
 
-#: luducat/ui/dialogs/installer_picker.py:464
+#: luducat/ui/dialogs/installer_picker.py:535
 #, python-brace-format
 msgid "Download directory does not exist: {path}"
 msgstr ""
 
-#: luducat/ui/dialogs/installer_picker.py:477
+#: luducat/ui/dialogs/installer_picker.py:548
 #, python-brace-format
 msgid "{path} - {free} free"
 msgstr ""
@@ -5109,17 +5124,17 @@ msgstr ""
 msgid "from"
 msgstr ""
 
-#: luducat/ui/dialogs/oauth_dialog.py:117
+#: luducat/ui/dialogs/oauth_dialog.py:118
 #, python-brace-format
 msgid "Login to {name}"
 msgstr ""
 
-#: luducat/ui/dialogs/oauth_dialog.py:131
+#: luducat/ui/dialogs/oauth_dialog.py:132
 #, python-brace-format
 msgid "<h3>Login to {name}</h3>"
 msgstr ""
 
-#: luducat/ui/dialogs/oauth_dialog.py:136
+#: luducat/ui/dialogs/oauth_dialog.py:137
 #, python-brace-format
 msgid ""
 "<b>Step 1:</b> Click 'Open {name}' and log in with your "
@@ -5127,30 +5142,30 @@ msgid ""
 "import your session."
 msgstr ""
 
-#: luducat/ui/dialogs/oauth_dialog.py:145
+#: luducat/ui/dialogs/oauth_dialog.py:146
 #, python-brace-format
 msgid "Open {name}"
 msgstr ""
 
-#: luducat/ui/dialogs/oauth_dialog.py:161
+#: luducat/ui/dialogs/oauth_dialog.py:162
 msgid "Check Login"
 msgstr ""
 
-#: luducat/ui/dialogs/oauth_dialog.py:181
+#: luducat/ui/dialogs/oauth_dialog.py:182
 #, python-brace-format
 msgid ""
 "Found existing {name} login in {browser}.\n"
 "Click 'Check Login' to use it, or log in again if needed."
 msgstr ""
 
-#: luducat/ui/dialogs/oauth_dialog.py:193
+#: luducat/ui/dialogs/oauth_dialog.py:194
 #, python-brace-format
 msgid ""
 "Browser opened. Please log in to {name},\n"
 "then click 'Check Login'."
 msgstr ""
 
-#: luducat/ui/dialogs/oauth_dialog.py:210
+#: luducat/ui/dialogs/oauth_dialog.py:211
 #, python-brace-format
 msgid "Login successful! (from {browser})"
 msgstr ""
@@ -5163,7 +5178,13 @@ msgid ""
 "then try again."
 msgstr ""
 
-#: luducat/ui/dialogs/oauth_dialog.py:228
+#: luducat/ui/dialogs/oauth_dialog.py:223
+msgid ""
+"If this keeps failing, close your browser completely, then click 'Check "
+"Login'."
+msgstr ""
+
+#: luducat/ui/dialogs/oauth_dialog.py:231
 #: luducat/ui/dialogs/plugin_config.py:3454
 msgid "Login cancelled"
 msgstr ""
@@ -8546,61 +8567,61 @@ msgstr ""
 msgid "Dismiss"
 msgstr ""
 
-#: luducat/ui/widgets/download_list.py:88
+#: luducat/ui/widgets/download_list.py:77
 msgid "< 1 min"
 msgstr ""
 
-#: luducat/ui/widgets/download_list.py:91
+#: luducat/ui/widgets/download_list.py:80
 #, python-brace-format
 msgid "~{n} min"
 msgstr ""
 
-#: luducat/ui/widgets/download_list.py:94
+#: luducat/ui/widgets/download_list.py:83
 #, python-brace-format
 msgid "~{h}h {m}m"
 msgstr ""
 
-#: luducat/ui/widgets/download_list.py:424
-#: luducat/ui/widgets/download_list.py:499
-#: luducat/ui/widgets/download_list.py:562
+#: luducat/ui/widgets/download_list.py:414
+#: luducat/ui/widgets/download_list.py:492
+#: luducat/ui/widgets/download_list.py:547
 msgid "Resolving..."
 msgstr ""
 
-#: luducat/ui/widgets/download_list.py:425
+#: luducat/ui/widgets/download_list.py:415
 msgid "Done"
 msgstr ""
 
-#: luducat/ui/widgets/download_list.py:426
+#: luducat/ui/widgets/download_list.py:416
 msgid "Downloading"
 msgstr ""
 
-#: luducat/ui/widgets/download_list.py:427
-#: luducat/ui/widgets/download_list.py:572
+#: luducat/ui/widgets/download_list.py:417
+#: luducat/ui/widgets/download_list.py:557
 msgid "Paused"
 msgstr ""
 
-#: luducat/ui/widgets/download_list.py:428
-#: luducat/ui/widgets/download_list.py:433
-#: luducat/ui/widgets/download_list.py:569
+#: luducat/ui/widgets/download_list.py:418
+#: luducat/ui/widgets/download_list.py:422
+#: luducat/ui/widgets/download_list.py:554
 msgid "Queued"
 msgstr ""
 
-#: luducat/ui/widgets/download_list.py:429
-#: luducat/ui/widgets/download_list.py:567
+#: luducat/ui/widgets/download_list.py:419
+#: luducat/ui/widgets/download_list.py:552
 msgid "Failed"
 msgstr ""
 
-#: luducat/ui/widgets/download_list.py:430
+#: luducat/ui/widgets/download_list.py:420
 msgid "Cancelled"
 msgstr ""
 
-#: luducat/ui/widgets/download_list.py:511
-#: luducat/ui/widgets/download_list.py:514
+#: luducat/ui/widgets/download_list.py:503
+#: luducat/ui/widgets/download_list.py:506
 #, python-brace-format
 msgid "{done} of {total} files"
 msgstr ""
 
-#: luducat/ui/widgets/download_list.py:564
+#: luducat/ui/widgets/download_list.py:549
 msgid "Complete"
 msgstr ""
 
