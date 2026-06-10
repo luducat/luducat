@@ -423,6 +423,7 @@ class GogStore(StorePlugin):
             # Round 1: catalog delta (owned - catalog = candidates)
             # Round 2: bundle resolution (filter out re-packaged games)
             self._delisted_app_ids = set()
+            self._catalog_id_strs = None
             if self.get_setting("detect_delisted_games"):
                 try:
                     api = self._get_api_client()
@@ -434,6 +435,7 @@ class GogStore(StorePlugin):
                         logger.warning("Empty catalog — skipping delisted detection")
                     else:
                         catalog_id_strs = {str(gid) for gid in catalog}
+                        self._catalog_id_strs = catalog_id_strs
                         candidates = set(app_ids) - catalog_id_strs
 
                         if candidates:

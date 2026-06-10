@@ -463,6 +463,12 @@ class GogApiClient:
             if not isinstance(extra, dict):
                 continue
             dl_url = extra.get("manualUrl", "")
+            if not dl_url:
+                continue
+            size_str = extra.get("size", "")
+            if size_str in ("0 MB", "0 KB", "0 bytes", "0 GB", ""):
+                logger.debug("Skipping 0-byte extra: %s", extra.get("name"))
+                continue
             file_id = dl_url.rsplit("/", 1)[-1] if dl_url else ""
             name = extra.get("name", "Extra")
             if dlc_title:
@@ -471,7 +477,7 @@ class GogApiClient:
                 "id": file_id,
                 "name": name,
                 "type": extra.get("type", "unknown"),
-                "size": extra.get("size"),
+                "size": size_str,
                 "downlink": dl_url,
             })
 
@@ -946,8 +952,17 @@ class GogApiClient:
                 except Exception:
                     pass
 
+            if response.status_code == 403:
+                detail = response.text[:200].strip()
+                logger.warning(
+                    "Downlink forbidden (403): %s -- %s",
+                    downlink, detail,
+                )
+                raise GogApiError(f"403 Forbidden: {detail}")
+
             logger.warning(
-                f"Failed to resolve downlink: status={response.status_code}"
+                "Failed to resolve downlink: status=%d",
+                response.status_code,
             )
             return None
 

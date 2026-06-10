@@ -100,3 +100,4 @@ class DownloadTarget:
     store_app_id: str
     icon_url: Optional[str] = None
     files: list[ArchiveRequest] = field(default_factory=list)
+    skipped: list[dict[str, str]] = field(default_factory=list)

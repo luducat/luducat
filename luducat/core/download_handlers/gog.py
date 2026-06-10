@@ -24,6 +24,11 @@ from luducat.core.download_handlers.base import AbstractDownloadHandler, AuthSta
 
 logger = logging.getLogger(__name__)
 
+try:
+    _("")
+except NameError:
+    def _(s): return s
+
 
 def extract_filename_from_cdn_url(cdn_url: str) -> str:
     """Extract the real filename from a GOG CDN URL.
@@ -170,6 +175,7 @@ class GogDownloadHandler(AbstractDownloadHandler):
         api = self._plugin._get_api_client()
         cookies = self._get_download_cookies()
         files: list[ArchiveRequest] = []
+        skipped: list[dict[str, str]] = []
 
         installer_downlinks = {item["downlink"] for item in info.installers}
         patch_downlinks = {item["downlink"] for item in info.patches}
@@ -179,19 +185,30 @@ class GogDownloadHandler(AbstractDownloadHandler):
             if not downlink:
                 continue
 
-            # GOG's gameDetails returns relative paths (/downloads/...)
             full_downlink = self._to_full_url(downlink)
             try:
                 cdn_url = self._run_async(api.resolve_download_link(full_downlink))
             except Exception as e:
-                raise ValueError(
-                    f"Could not resolve download link for "
-                    f"{item.get('name', downlink)}: {e}"
-                ) from e
-            if not cdn_url:
-                raise ValueError(
-                    f"Could not resolve download link for {item.get('name', downlink)}"
+                logger.warning(
+                    "Skipping %s: %s", item.get("name", downlink), e,
                 )
+                skipped.append({
+                    "name": item.get("name", "Unknown"),
+                    "url": full_downlink,
+                    "reason": str(e),
+                })
+                continue
+            if not cdn_url:
+                logger.warning(
+                    "Skipping %s: could not resolve download link",
+                    item.get("name", downlink),
+                )
+                skipped.append({
+                    "name": item.get("name", "Unknown"),
+                    "url": full_downlink,
+                    "reason": _("Could not resolve download link"),
+                })
+                continue
 
             filename = extract_filename_from_cdn_url(cdn_url)
             if not filename:
@@ -215,11 +232,19 @@ class GogDownloadHandler(AbstractDownloadHandler):
                 cookies=cookies,
             ))
 
+        if not files and skipped:
+            raise ValueError(
+                _("Could not resolve any download links for {title}").format(
+                    title=info.game_title
+                )
+            )
+
         return DownloadTarget(
             game_title=info.game_title,
             store_name="gog",
             store_app_id=info.store_app_id,
             files=files,
+            skipped=skipped,
         )
 
     def _get_download_cookies(self) -> dict[str, str]:

@@ -432,85 +432,6 @@ def install_desktop_icons(config: Config) -> bool:
         return False
 
 
-def _check_startup_backup(config: Config) -> None:
-    """Check if a scheduled backup is due and run it if needed.
-
-    Args:
-        config: Application configuration
-    """
-    from .core.backup_manager import is_backup_due, create_backup
-
-    if not is_backup_due(config):
-        return
-
-    logger.info("Scheduled backup is due")
-
-    # Import Qt components for dialogs
-    from PySide6.QtWidgets import QMessageBox, QProgressDialog, QCheckBox
-    from PySide6.QtCore import Qt
-
-    silent = config.get("backup.silent", False)
-
-    if not silent:
-        # Prompt user before backup
-        msg_box = QMessageBox()
-        msg_box.setWindowTitle(_("Scheduled Backup"))
-        msg_box.setText(_("A scheduled backup is due."))
-        msg_box.setInformativeText(_("Would you like to create a backup now?"))
-        msg_box.setStandardButtons(
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-        )
-        msg_box.setDefaultButton(QMessageBox.StandardButton.Yes)
-
-        # Add "don't ask again" checkbox
-        dont_ask_checkbox = QCheckBox(_("Don't ask again (run backups silently)"))
-        msg_box.setCheckBox(dont_ask_checkbox)
-
-        result = msg_box.exec()
-
-        # Save checkbox preference
-        if dont_ask_checkbox.isChecked():
-            config.set("backup.silent", True)
-            config.save()
-
-        if result != QMessageBox.StandardButton.Yes:
-            logger.info("User declined scheduled backup")
-            return
-
-    # Show progress dialog
-    progress = QProgressDialog(_("Creating backup..."), None, 0, 0)
-    progress.setWindowTitle(_("Backup in Progress"))
-    progress.setWindowModality(Qt.WindowModality.ApplicationModal)
-    progress.setMinimumDuration(0)
-    progress.setValue(0)
-    progress.show()
-
-    # Force UI update
-    from PySide6.QtWidgets import QApplication
-    QApplication.processEvents()
-
-    # Run backup
-    success, result, _assets = create_backup(config)
-
-    progress.close()
-
-    if success:
-        logger.info(f"Startup backup completed: {result}")
-        if not silent:
-            QMessageBox.information(
-                None,
-                _("Backup Complete"),
-                _("Backup saved successfully.\n\n{path}").format(path=result)
-            )
-    else:
-        logger.error(f"Startup backup failed: {result}")
-        QMessageBox.warning(
-            None,
-            _("Backup Failed"),
-            _("Failed to create backup:\n\n{error}").format(error=result)
-        )
-
-
 def _check_directory_permissions(config: Config) -> None:
     """Warn user if data directories had loose permissions.
 
@@ -814,9 +735,6 @@ def run_gui(config: Config, database: Database, plugin_manager: PluginManager) -
     # Note: UI zoom is applied via QT_SCALE_FACTOR before QApplication creation
     # The theme_manager tracks the current zoom level for the settings dialog
     theme_manager.set_current_zoom(saved_zoom)
-
-    # Check if scheduled backup is due
-    _check_startup_backup(config)
 
     # Startup disk health check — warn user before problems snowball
     _check_startup_disk_health()

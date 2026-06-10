@@ -669,8 +669,34 @@ class DownloadWindow(QWidget):
             else:
                 dm.submit(target)
             self._poll()
+            if target.skipped:
+                self._show_skipped_warning(info.game_title, target.skipped)
         except Exception as e:
             QMessageBox.warning(self, _("Download Error"), str(e))
+
+    def _show_skipped_warning(
+        self, game_title: str, skipped: list[dict[str, str]],
+    ) -> None:
+        lines = []
+        for item in skipped:
+            lines.append(
+                f"{item['name']}\n"
+                f"  URL: {item['url']}\n"
+                f"  {_('Reason')}: {item['reason']}"
+            )
+        detail = "\n\n".join(lines)
+        msg = QMessageBox(self)
+        msg.setIcon(QMessageBox.Icon.Warning)
+        msg.setWindowTitle(_("Skipped Downloads"))
+        msg.setText(
+            ngettext(
+                "{count} file for {title} could not be resolved and was skipped.",
+                "{count} files for {title} could not be resolved and were skipped.",
+                len(skipped),
+            ).format(count=len(skipped), title=game_title)
+        )
+        msg.setDetailedText(detail)
+        msg.exec()
 
     # -- Selection helpers --
 

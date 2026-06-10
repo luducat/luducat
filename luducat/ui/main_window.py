@@ -2264,6 +2264,8 @@ class MainWindow(QMainWindow):
             QTimer.singleShot(200, self._check_show_news)
             # Deferred update check (3s after UI settles)
             QTimer.singleShot(3000, self._check_for_updates)
+            # Deferred backup check (after UI is settled)
+            QTimer.singleShot(500, self._check_startup_backup)
 
         # Restore density slider visibility based on view mode
         current_mode = self.toolbar.get_current_view_mode()
@@ -2809,6 +2811,72 @@ class MainWindow(QMainWindow):
         if self.config.get("sync.auto_sync_on_startup", False):
             logger.info("Auto-sync enabled, starting sync...")
             self._start_sync(stores=None)
+
+    def _check_startup_backup(self) -> None:
+        """Check if a scheduled backup is due and run it after UI is loaded."""
+        from ..core.backup_manager import is_backup_due, create_backup
+
+        if not is_backup_due(self.config):
+            return
+
+        logger.info("Scheduled backup is due")
+
+        silent = self.config.get("backup.silent", False)
+
+        if not silent:
+            from PySide6.QtWidgets import QMessageBox
+            msg_box = QMessageBox(self)
+            msg_box.setWindowTitle(_("Scheduled Backup"))
+            msg_box.setText(_("A scheduled backup is due."))
+            msg_box.setInformativeText(
+                _("Would you like to create a backup now?"))
+            msg_box.setStandardButtons(
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+            msg_box.setDefaultButton(QMessageBox.StandardButton.Yes)
+
+            dont_ask = QCheckBox(
+                _("Don't ask again (run backups silently)"))
+            msg_box.setCheckBox(dont_ask)
+
+            result = msg_box.exec()
+
+            if dont_ask.isChecked():
+                self.config.set("backup.silent", True)
+                self.config.save()
+
+            if result != QMessageBox.StandardButton.Yes:
+                logger.info("User declined scheduled backup")
+                return
+
+        from PySide6.QtWidgets import QProgressDialog
+        progress = QProgressDialog(
+            _("Creating backup..."), None, 0, 0, self)
+        progress.setWindowTitle(_("Backup in Progress"))
+        progress.setWindowModality(Qt.WindowModality.WindowModal)
+        progress.setMinimumDuration(0)
+        progress.setValue(0)
+        progress.show()
+        QApplication.processEvents()
+
+        success, result, _assets = create_backup(self.config)
+
+        progress.close()
+
+        if success:
+            logger.info(f"Startup backup completed: {result}")
+            if not silent:
+                from PySide6.QtWidgets import QMessageBox
+                QMessageBox.information(
+                    self, _("Backup Complete"),
+                    _("Backup saved successfully.\n\n{path}").format(
+                        path=result))
+        else:
+            logger.error(f"Startup backup failed: {result}")
+            from PySide6.QtWidgets import QMessageBox
+            QMessageBox.warning(
+                self, _("Backup Failed"),
+                _("Failed to create backup:\n\n{error}").format(
+                    error=result))
 
     def _trigger_initial_sync(self) -> None:
         """Trigger sync for all enabled stores after wizard completes."""

@@ -1682,6 +1682,11 @@ class GameService:
                 # Don't touch family shared games
                 if sg.family_shared:
                     continue
+                # Don't remove delisted games -- store API may stop
+                # returning them even though the user still owns them
+                # (see github.com/Sude-/lgogdownloader/issues/313)
+                if sg.is_delisted:
+                    continue
 
                 game_id = sg.game_id
                 session.delete(sg)

@@ -1033,6 +1033,32 @@ class PluginsSettingsTab(QWidget):
         ("platform", N_("Platforms"), "plug-platform.svg"),
     ]
 
+    # plugin.json descriptions -- N_() marks for pybabel extraction.
+    # The actual _() call happens at render time in _build_plugin_list().
+    _PLUGIN_DESCRIPTIONS = [
+        N_("Epic library integration"),
+        N_("GOG.com game library integration"),
+        N_("Import tags and favourites from Heroic"),
+        N_("IGDB metadata provider - comprehensive game data with normalized database storage"),
+        N_("Import tags, favourites, playtime and hidden status from Lutris"),
+        N_("PCGamingWiki metadata provider - game modes and technical details"),
+        N_("Import tags, favourites, and playtime from Playnite via the luducat bridge"),
+        N_("ProtonDB compatibility ratings for Steam games on Linux"),
+        N_("Steam game library integration via Steam Web API"),
+        N_("SteamGridDB metadata provider - community-sourced hero banners, covers, and logos"),
+        N_("Rule-based store plugin engine that fetches game libraries using JSON rulesets"),
+        N_("Launch Epic games via Heroic, Epic Games Launcher, or other runners"),
+        N_("Launch GOG games via GOG Galaxy client (Windows)"),
+        N_("Launch GOG and Epic games via Heroic Games Launcher"),
+        N_("Launch games via Lutris"),
+        N_("Launch games directly as native executables — manual assignment only"),
+        N_("Launch games via the Playnite bridge"),
+        N_("Launch Steam games via the Steam client"),
+        N_("Run DOS games using DOSBox-Staging or vanilla DOSBox"),
+        N_("Run classic adventure games using ScummVM"),
+        N_("Run Windows games on Linux using Wine/Proton"),
+    ]
+
     def __init__(
         self,
         config: Config,
@@ -1251,7 +1277,7 @@ class PluginsSettingsTab(QWidget):
                     plugin_name=name,
                     display_name=metadata.display_name,
                     version=metadata.version,
-                    description=metadata.description,
+                    description=_(metadata.description),
                     is_enabled=is_enabled,
                     is_authenticated=is_auth,
                     plugin_types=metadata.plugin_types,

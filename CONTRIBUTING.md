@@ -9,25 +9,27 @@ We aim for the latter.
 
 ### The Development Loop
 
-1. **Human designs.** Architecture decisions, feature scope, UI/UX design,
-   and technical direction are human-driven. Major features start as design
-   documents before any code is written.
+For transparency, this how tool assisted development is used.
+Contributors using LLMs for code generation should follow the same approach.
 
-2. **Human directs.** Implementation tasks are specified with context:
-   what to build, which patterns to follow, what constraints apply, what
-   not to do. The AI works within these boundaries.
+1. **Architecture and design decisions** are made by human software engineers.
+   Major features start as design documents, before any code is written. The
+   LLM does not decide scope, technical direction or trade-offs.
 
-3. **Human reviews and signs off.** Every change is read and understood
-   before commit. Code that doesn't make sense gets questioned, reworked,
-   or rejected. The human is responsible for what ships. This includes
-   commit messages, public-facing text, and release notes.
+2. **Implementation** is specified by the developer with full context: what to
+   build, which patterns to follow, what constraints apply, what to avoid. The
+   AI stays within these set boundaries and is not permitted to cross them.
 
-4. **Tests verify.** The test suite runs against every change. New
-   functionality requires new tests. Regressions are caught before they
-   reach users.
+3. **Review and responsibility** rests with the developer. Every change must be
+   read and understood before commit. If something is unclear, question it and
+   have it explained before greenlighting. This applies to source code,
+   commits, release notes, and any public-facing text. 
+
+4. **Testing and verification** goes beyond generated unit tests. Every change
+   requires direct testing, debugging, and review by the human developer.
 
 This is not "generate and ship." It is closer to pair programming where
-one partner is very fast at typing but needs clear direction and regular
+one partner is fast at typing but needs clear direction and regular
 correction.
 
 ### What "Industry-Standard Practices" Means Here

@@ -299,12 +299,32 @@ class SyncOrchestrator:
             )
             stale_ids = synced_ids - set(all_ids)
             if stale_ids:
-                removed = self._reconcile_stale_fn(store_name, stale_ids)
-                if removed:
-                    logger.info(
-                        f"{store_name}: removed {removed} stale games "
-                        "no longer owned"
-                    )
+                # If catalog data is available, games that vanished from
+                # the owned list AND aren't in the catalog are probably
+                # delisted, not refunded. Flag them instead of removing.
+                catalog_ids = getattr(plugin, "_catalog_id_strs", None)
+                if isinstance(catalog_ids, set):
+                    vanished = {
+                        sid for sid in stale_ids
+                        if sid not in catalog_ids
+                    }
+                    if vanished:
+                        delisted_ids = getattr(plugin, "_delisted_app_ids", set())
+                        plugin._delisted_app_ids = delisted_ids | vanished
+                        stale_ids = stale_ids - vanished
+                        logger.info(
+                            "%s: %d stale games not in catalog, "
+                            "flagging as delisted instead of removing",
+                            store_name, len(vanished),
+                        )
+
+                if stale_ids:
+                    removed = self._reconcile_stale_fn(store_name, stale_ids)
+                    if removed:
+                        logger.info(
+                            f"{store_name}: removed {removed} stale games "
+                            "no longer owned"
+                        )
 
         # --- Update status flags (private/delisted) on existing games ---
         private_ids = getattr(plugin, "_private_app_ids", set())

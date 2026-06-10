@@ -18,6 +18,23 @@ from typing import Any, Dict, List, Optional
 # Each item has optional "section" prefix and required "text"
 NEWS_ENTRIES: List[Dict[str, Any]] = [
     {
+        "version": "0.8.2",
+        "date": "2026-06-10",
+        "items": [
+            {"section": "", "text":
+             "Games removed from store listings are now preserved in "
+             "your library instead of silently disappearing during sync"},
+            {"section": "Downloader", "text":
+             "GOG extras that can't be downloaded (gated DLC, "
+             "0-byte stubs) are skipped gracefully with a summary"},
+            {"section": "", "text":
+             "Backup reminder no longer appears before the main "
+             "window has finished loading"},
+            {"section": "Plugins", "text":
+             "Plugin descriptions are now translated in the settings dialog"},
+        ],
+    },
+    {
         "version": "0.8.1",
         "date": "2026-06-02",
         "items": [
@@ -179,6 +196,16 @@ def get_news_html() -> str:
 #   "improved" — Enhancements to things that already existed
 #   "fixed"    — User-impacting bugfixes
 UPDATE_SUMMARIES: Dict[str, Dict[str, List[str]]] = {
+    "0.8.2": {
+        "new": [
+            "Delisted game protection during sync",
+        ],
+        "fixed": [
+            "GOG downloader skips unresolvable extras gracefully",
+            "Backup dialog no longer blocks startup",
+            "Plugin descriptions translated in settings",
+        ],
+    },
     "0.8.1": {
         "fixed": [
             "Firefox cookie auth for WAL-mode profiles",

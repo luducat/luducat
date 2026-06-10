@@ -2,7 +2,6 @@
 .python/
 .luducat-tmp/
 __pycache__/
-.claude/
 .idea/
 *.pyc
 *.log
