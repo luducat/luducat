@@ -18,6 +18,31 @@ from typing import Any, Dict, List, Optional
 # Each item has optional "section" prefix and required "text"
 NEWS_ENTRIES: List[Dict[str, Any]] = [
     {
+        "version": "0.8.3",
+        "date": "2026-06-23",
+        "items": [
+            {"section": "Themes", "text":
+             "Ginger Max theme in two warm variants with optional "
+             "paw accents and a matching application icon"},
+            {"section": "Steam", "text":
+             "Free games that the Steam API skips are now picked "
+             "up from supplementary sources"},
+            {"section": "", "text":
+             "Fixed a sync loop that could queue hundreds of "
+             "thousands of redundant enrichment requests"},
+            {"section": "", "text":
+             "Startup backup no longer freezes the UI on slow "
+             "storage"},
+            {"section": "", "text":
+             "Restart after backup restore works correctly when "
+             "launched as a Python package"},
+            {"section": "", "text":
+             "This release is dedicated to a ginger cat who "
+             "enjoyed a long life of nineteen years and should "
+             "never be forgotten."},
+        ],
+    },
+    {
         "version": "0.8.2",
         "date": "2026-06-10",
         "items": [
@@ -196,6 +221,18 @@ def get_news_html() -> str:
 #   "improved" — Enhancements to things that already existed
 #   "fixed"    — User-impacting bugfixes
 UPDATE_SUMMARIES: Dict[str, Dict[str, List[str]]] = {
+    "0.8.3": {
+        "new": [
+            "Ginger Max theme (two warm color variants)",
+            "Optional paw accents on section titles",
+            "Steam free games gap-filler",
+        ],
+        "fixed": [
+            "Sync enrichment loop causing runaway queue growth",
+            "Backup freeze on slow or network storage",
+            "Package-mode restart after backup restore",
+        ],
+    },
     "0.8.2": {
         "new": [
             "Delisted game protection during sync",

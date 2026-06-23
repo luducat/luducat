@@ -25,6 +25,8 @@ from luducat.plugins.base import (
     LaunchResult,
 )
 
+from .bridge_client import BridgeClient
+
 logger = logging.getLogger(__name__)
 
 # Default bridge port (matches C# BridgeServer default)
@@ -252,8 +254,6 @@ class PlayniteRunner(AbstractRunnerPlugin):
 
         Returns True on success.
         """
-        from .bridge_client import BridgeClient
-
         on_status(_("Connecting..."))
         try:
             client = BridgeClient(host=host, port=port, data_dir=self.data_dir)
@@ -325,7 +325,6 @@ class PlayniteRunner(AbstractRunnerPlugin):
                         "detail": str(e)}
 
         try:
-            from .bridge_client import BridgeClient
             client = BridgeClient(host=host, port=port, data_dir=self.data_dir)
             if not client.connect():
                 return {"status": "error", "detail": _("Connection failed")}
@@ -343,7 +342,6 @@ class PlayniteRunner(AbstractRunnerPlugin):
             self._client.unpair()
             self._client = None
         else:
-            from .bridge_client import BridgeClient
             client = BridgeClient(
                 host="127.0.0.1", port=DEFAULT_BRIDGE_PORT,
                 data_dir=self.data_dir,

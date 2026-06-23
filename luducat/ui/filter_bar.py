@@ -2155,8 +2155,30 @@ class FilterBar(QWidget):
         self._active_years &= set(years)
 
     def _update_dice_icon(self) -> None:
-        """Tint dice SVG icon using the theme's navbar_icon_color."""
+        """Tint dice SVG icon using the theme's navbar_icon_color.
+
+        When a Ginger Max theme is active, shows the cat app icon instead.
+        """
+        from pathlib import Path
+        from PySide6.QtGui import QIcon
+
         size = max(18, self.btn_random.height() - 8)
+
+        # Use cat icon when Ginger Max theme is active
+        app = QApplication.instance()
+        if app and "gingermax-paws" in (app.styleSheet() or ""):
+            cat_svg = (
+                Path(__file__).parent.parent
+                / "assets" / "appicons" / "ginger-max" / "app_icon.svg"
+            )
+            if cat_svg.exists():
+                icon = QIcon(str(cat_svg))
+                if not icon.isNull():
+                    self.btn_random.setIcon(icon)
+                    self.btn_random.setIconSize(QSize(size, size))
+                    self.btn_random.setText("")
+                    return
+
         color = getattr(self, '_navbar_icon_color', None)
         icon = load_tinted_icon("dice.svg", size=size, color=color)
         if icon.isNull():

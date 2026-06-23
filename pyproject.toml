@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "luducat"
-version = "0.8.2"
+version = "0.8.3"
 description = "Cross-platform game catalogue browser"
 readme = "README.md"
 license = {text = "GPL-3.0-or-later"}
@@ -101,6 +101,7 @@ ignore = ["E501"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+addopts = "-m 'not integration'"
 filterwarnings = [
     "error::DeprecationWarning",
     "error::ResourceWarning",

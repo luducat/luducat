@@ -32,10 +32,11 @@ from .family_api import (
 )
 from .family_sharing import find_steam_path, get_family_shared_games
 from .vdf_scanner import parse_login_users, parse_user_config, scan_installed_games
+from .app_type_cache import AppTypeCache
 
 # Import the steamscraper module
 from .steamscraper import SteamGameManager
-from .steamscraper.database import Database as ScraperDatabase, Game as ScraperGame
+from .steamscraper.database import Database as ScraperDatabase, Game as ScraperGame, Image as ScraperImage
 from .steamscraper.exceptions import (
     RateLimitExceededError,
     SteamScraperException,
@@ -403,6 +404,7 @@ class SteamStore(AbstractGameStore):
                 "include_appinfo": 1,  # Include name so we have basic info
                 "skip_unvetted_apps": 0,
                 "include_played_free_games": 1,
+                "include_free_sub": 1,
             }
 
             logger.info(f"Fetching owned games for Steam ID {steam_id}...")
@@ -490,6 +492,37 @@ class SteamStore(AbstractGameStore):
                     owned_app_ids, api_key,
                 )
 
+            # Gap-fill: detect games the API missed via browser userdata
+            if cancel_check and cancel_check():
+                return app_ids
+
+            userdata_ids = self._fetch_userdata_owned_apps()
+            if userdata_ids:
+                api_ints = {int(a) for a in owned_app_ids}
+                gap = userdata_ids - api_ints
+
+                if gap:
+                    logger.info("Steam ownership gap: %d apps", len(gap))
+                    cache_path = Path(self.cache_dir) / "app_types.db"
+                    cache = AppTypeCache(cache_path)
+
+                    try:
+                        self._resolve_types_via_store_browse(
+                            gap, cache, api_key,
+                            cancel_check=cancel_check,
+                        )
+                        gap_games = self._collect_gap_games(
+                            owned_app_ids, userdata_ids, cache,
+                        )
+                        if gap_games:
+                            app_ids.extend(gap_games)
+                            logger.info(
+                                "Gap-filler added %d games (total: %d)",
+                                len(gap_games), len(app_ids),
+                            )
+                    finally:
+                        cache.close()
+
             return app_ids
 
         except RequestTimeout as e:
@@ -500,6 +533,158 @@ class SteamStore(AbstractGameStore):
             raise
         except Exception as e:
             raise NetworkError(f"Failed to fetch user games: {e}") from e
+
+    # EStoreAppType protobuf enum values
+    _STORE_APP_TYPES = {
+        0: "game", 1: "demo", 2: "mod", 3: "movie", 4: "dlc",
+        5: "guide", 6: "software", 7: "video", 8: "series",
+        9: "episode", 10: "hardware", 11: "music",
+    }
+
+    def _fetch_userdata_owned_apps(self) -> Set[int]:
+        """Fetch full owned app list from Steam's dynamic store userdata.
+
+        Uses browser cookies for authentication. Returns the complete set
+        of app IDs Steam considers owned, which includes free games,
+        complimentary licenses, and other items that GetOwnedGames misses.
+        """
+        try:
+            from luducat.plugins.sdk.cookies import get_browser_cookie_manager
+
+            manager = get_browser_cookie_manager()
+            cookie_jar, browser = manager.get_cookie_jar_for_domain(
+                ".steampowered.com"
+            )
+            if not cookie_jar:
+                logger.debug("No Steam browser cookies for userdata fetch")
+                return set()
+
+            logger.info(
+                "Fetching Steam userdata via %s cookies",
+                browser or "browser",
+            )
+            response = self.http.get(
+                "https://store.steampowered.com/dynamicstore/userdata/",
+                cookies=cookie_jar,
+                timeout=60,
+            )
+
+            if response.status_code != 200:
+                logger.warning(
+                    "Steam userdata HTTP %d", response.status_code
+                )
+                return set()
+
+            data = response.json()
+            owned = data.get("rgOwnedApps", [])
+            logger.info("Steam userdata: %d owned apps", len(owned))
+            return set(owned)
+
+        except Exception as e:
+            logger.debug("Could not fetch Steam userdata: %s", e)
+            return set()
+
+    def _resolve_types_via_store_browse(
+        self,
+        appids: Set[int],
+        cache,
+        api_key: str,
+        cancel_check=None,
+    ) -> None:
+        """Bulk-resolve app types via IStoreBrowseService/GetItems.
+
+        Queries up to 200 app IDs per request. Stores all results in
+        the type cache, including unknown/delisted entries.
+        """
+        uncached = cache.get_uncached(appids)
+        if not uncached:
+            return
+
+        batch_list = sorted(uncached)
+        batch_size = 200
+        total = len(batch_list)
+        resolved = 0
+
+        for i in range(0, total, batch_size):
+            if cancel_check and cancel_check():
+                break
+
+            batch = batch_list[i:i + batch_size]
+            input_data = {
+                "ids": [{"appid": aid} for aid in batch],
+                "context": {"language": "english", "country_code": "US"},
+                "data_request": {"include_basic_info": True},
+            }
+
+            try:
+                response = self.http.get(
+                    "https://api.steampowered.com/IStoreBrowseService/GetItems/v1/",
+                    params={
+                        "key": api_key,
+                        "input_json": json.dumps(input_data),
+                    },
+                    timeout=30,
+                )
+
+                if response.status_code != 200:
+                    logger.warning(
+                        "StoreBrowse returned HTTP %d", response.status_code
+                    )
+                    continue
+
+                items = response.json().get("response", {}).get(
+                    "store_items", []
+                )
+
+                entries = []
+                returned_ids = set()
+                for item in items:
+                    aid = item.get("id")
+                    returned_ids.add(aid)
+                    raw_type = item.get("type")
+                    app_type = self._STORE_APP_TYPES.get(raw_type)
+                    entries.append((
+                        aid,
+                        app_type,
+                        item.get("name"),
+                        bool(item.get("is_free", False)),
+                    ))
+
+                for aid in batch:
+                    if aid not in returned_ids:
+                        entries.append((aid, None, None, False))
+
+                cache.store_batch(entries)
+                resolved += len(entries)
+
+            except Exception as e:
+                logger.warning("StoreBrowse batch failed: %s", e)
+
+        if resolved:
+            logger.info(
+                "StoreBrowse resolved %d / %d app types", resolved, total
+            )
+
+    def _collect_gap_games(
+        self,
+        api_app_ids: Set[str],
+        userdata_app_ids: Set[int],
+        cache,
+    ) -> List[str]:
+        """Return app ID strings for gap entries confirmed as type==game."""
+        if not userdata_app_ids:
+            return []
+
+        api_ints = {int(a) for a in api_app_ids}
+        gap = userdata_app_ids - api_ints
+        if not gap:
+            return []
+
+        cached = cache.get_cached_types(gap)
+        return [
+            str(appid) for appid, app_type in cached.items()
+            if app_type == "game"
+        ]
 
     def _fetch_private_app_list(self, access_token: str) -> Set[str]:
         """Fetch app IDs marked private on user's Steam profile."""
@@ -624,8 +809,6 @@ class SteamStore(AbstractGameStore):
         try:
             manager = self._get_manager()
             session = manager.database.get_session()
-            from .steamscraper.database import Game as ScraperGame
-
             count = 0
             for game_data in games:
                 appid = game_data.get("appid")
@@ -905,8 +1088,6 @@ class SteamStore(AbstractGameStore):
         manager = self._get_manager()
         session = manager.database.get_session()
         try:
-            from .steamscraper.database import Game as ScraperGame
-
             # Check if game already exists
             existing = session.query(ScraperGame).filter_by(appid=app.appid).first()
             if existing:
@@ -1100,7 +1281,6 @@ class SteamStore(AbstractGameStore):
 
             # Get the game from manager's own session
             session = manager.database.get_session()
-            from .steamscraper.database import Game as ScraperGame
             db_game = session.query(ScraperGame).filter_by(appid=appid).first()
 
             if not db_game:
@@ -1157,8 +1337,6 @@ class SteamStore(AbstractGameStore):
                 api_key=self.get_credential("api_key"),
             )
             session = manager.database.get_session()
-
-            from .steamscraper.database import Game as ScraperGame
 
             # Find all games with header_image but no library_capsule
             games_needing_repair = session.query(ScraperGame).filter(
@@ -1269,8 +1447,6 @@ class SteamStore(AbstractGameStore):
             session = database.get_session()
 
             try:
-                from .steamscraper.database import Image as ScraperImage
-
                 # Get all images with URLs, grouped by appid
                 images = session.query(ScraperImage).filter(
                     ScraperImage.url.isnot(None)
@@ -1320,8 +1496,6 @@ class SteamStore(AbstractGameStore):
             session = database.get_session()
 
             try:
-                from .steamscraper.database import Image as ScraperImage
-
                 appid_int = int(app_id)
 
                 # 1. Check for existing Image records with URLs
@@ -1445,8 +1619,6 @@ class SteamStore(AbstractGameStore):
             # Update the database
             session = manager.database.get_session()
             try:
-                from .steamscraper.database import Game as ScraperGame
-
                 game = session.query(ScraperGame).filter_by(appid=appid_int).first()
                 if game:
                     game.detailed_description = html_description
@@ -1497,6 +1669,17 @@ class SteamStore(AbstractGameStore):
             return None
         return self._manager.api_client.get_budget_status()
 
+    def reset_api_budget(self) -> int:
+        """Force a cooldown and reset the request counter.
+
+        Called by the sync worker when the budget threshold is reached
+        but the proactive cooldown hasn't triggered yet. Returns the
+        cooldown duration in seconds.
+        """
+        if self._manager is None:
+            return 0
+        return self._manager.api_client.reset_budget()
+
     async def fetch_playtime(self, app_ids: List[str]) -> Dict[str, int]:
         """Fetch playtime data from database
 
@@ -1509,8 +1692,6 @@ class SteamStore(AbstractGameStore):
         try:
             manager = self._get_manager()
             session = manager.database.get_session()
-            from .steamscraper.database import Game as ScraperGame
-
             result = {}
             for app_id in app_ids:
                 game = session.query(ScraperGame).filter_by(appid=int(app_id)).first()
@@ -1625,8 +1806,6 @@ class SteamStore(AbstractGameStore):
             session = database.get_session()
 
             try:
-                from .steamscraper.database import Game as ScraperGame
-
                 game = session.query(ScraperGame).filter_by(appid=int(app_id)).first()
                 if game:
                     return self._scraper_game_to_metadata(game, include_description=True)
@@ -1762,8 +1941,6 @@ class SteamStore(AbstractGameStore):
 
             try:
                 from sqlalchemy.orm import defer
-                from .steamscraper.database import Game as ScraperGame
-
                 # Convert to ints and query in bulk
                 # Defer heavy text columns not needed for cache build
                 # (descriptions are lazy-loaded on demand via get_game_description)
@@ -1957,8 +2134,6 @@ class SteamStore(AbstractGameStore):
             session = database.get_session()
 
             try:
-                from .steamscraper.database import Game as ScraperGame
-
                 game = session.query(ScraperGame).filter_by(appid=int(app_id)).first()
                 if game:
                     return game.detailed_description or game.about_the_game or ""

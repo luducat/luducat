@@ -106,6 +106,15 @@ class SteamAPIClient:
             "cooldown_remaining": remaining,
         }
 
+    def reset_budget(self) -> int:
+        """Force a cooldown and reset the request counter.
+
+        Returns the cooldown duration in seconds.
+        """
+        self._cooldown_until = time.monotonic() + PROACTIVE_COOLDOWN_SECONDS
+        self._request_count = 0
+        return PROACTIVE_COOLDOWN_SECONDS
+
     def _check_response(self, response: Response) -> None:
         """Check HTTP response for rate limiting status codes.
 

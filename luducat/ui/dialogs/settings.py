@@ -611,6 +611,19 @@ class AppearanceSettingsTab(QWidget):
         theme_row.addRow(_("Theme:"), self.cmb_theme)
         theme_layout.addLayout(theme_row)
 
+        # Paw accents toggle (Ginger Max themes)
+        self.chk_paw_accents = QCheckBox(
+            _("Show paw accents on section titles")
+        )
+        self.chk_paw_accents.setToolTip(
+            _("Draws small paw prints next to group titles.\n"
+              "Only visible with Ginger Max themes.")
+        )
+        self.chk_paw_accents.setChecked(
+            self.config.get("appearance.paw_accents", True)
+        )
+        theme_layout.addWidget(self.chk_paw_accents)
+
         # Note about custom themes
         from ...core.config import get_config_dir
         themes_path = get_config_dir() / "themes"
@@ -833,6 +846,7 @@ class AppearanceSettingsTab(QWidget):
         self.config.set("appearance.cover_scaling", self.combo_cover_scaling.currentData())
         self.config.set("appearance.show_game_mode_badges", self.chk_game_mode_badges.isChecked())
         self.config.set("appearance.show_store_badges", self.chk_store_badges.isChecked())
+        self.config.set("appearance.paw_accents", self.chk_paw_accents.isChecked())
 
     def reset_to_defaults(self) -> None:
         """Reset appearance settings to defaults."""
@@ -849,6 +863,7 @@ class AppearanceSettingsTab(QWidget):
         self.combo_cover_scaling.setCurrentIndex(0)
         self.chk_game_mode_badges.setChecked(True)
         self.chk_store_badges.setChecked(True)
+        self.chk_paw_accents.setChecked(True)
 
 
 class PluginListItem(QWidget):
@@ -5441,6 +5456,10 @@ class SettingsDialog(QDialog):
         # Apply RAM cache budgets immediately
         from ...utils.image_cache import apply_cache_budgets
         apply_cache_budgets(self.config)
+
+        # Apply paw accent toggle immediately
+        from ...ui.gingermax_paws import set_config_allowed
+        set_config_allowed(self.config.get("appearance.paw_accents", True))
 
         # Apply theme changes immediately
         main_window = self.parent()

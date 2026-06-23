@@ -532,6 +532,7 @@ class MainWindow(QMainWindow):
             self.theme_manager.theme_changed.connect(self._on_theme_delegate_config_changed)
             self.theme_manager.theme_changed.connect(self.filter_bar.refresh_icons)
             self.theme_manager.theme_changed.connect(self.status_bar.refresh_icons)
+            self.theme_manager.theme_changed.connect(self._on_theme_icon_changed)
             # Apply initial config from current theme
             self._on_theme_delegate_config_changed()
 
@@ -1895,8 +1896,15 @@ class MainWindow(QMainWindow):
             logger.error(f"Post-restore migration failed: {e}")
             # Continue with restart anyway — the app will handle it on startup
 
-        # Re-exec the process for a clean restart
-        os.execv(sys.executable, [sys.executable] + sys.argv)
+        # Re-exec the process for a clean restart.
+        # When launched via "python -m luducat", sys.argv[0] is the
+        # __main__.py path which can't be exec'd directly (relative
+        # imports need the package context). Use -m instead.
+        if sys.argv and sys.argv[0].endswith("__main__.py"):
+            args = [sys.executable, "-m", "luducat"] + sys.argv[1:]
+        else:
+            args = [sys.executable] + sys.argv
+        os.execv(sys.executable, args)
 
     def _toggle_download_window(self) -> None:
         """Show or hide the download companion window."""
@@ -2814,7 +2822,10 @@ class MainWindow(QMainWindow):
 
     def _check_startup_backup(self) -> None:
         """Check if a scheduled backup is due and run it after UI is loaded."""
-        from ..core.backup_manager import is_backup_due, create_backup
+        from ..core.backup_manager import (
+            is_backup_due, create_backup,
+            collect_backup_items, collect_assets_items,
+        )
 
         if not is_backup_due(self.config):
             return
@@ -2848,35 +2859,47 @@ class MainWindow(QMainWindow):
                 logger.info("User declined scheduled backup")
                 return
 
-        from PySide6.QtWidgets import QProgressDialog
-        progress = QProgressDialog(
-            _("Creating backup..."), None, 0, 0, self)
-        progress.setWindowTitle(_("Backup in Progress"))
-        progress.setWindowModality(Qt.WindowModality.WindowModal)
-        progress.setMinimumDuration(0)
-        progress.setValue(0)
-        progress.show()
-        QApplication.processEvents()
+        items = collect_backup_items()
+        assets = collect_assets_items(self.config)
+        total = len(items) + len(assets) + 1
 
-        success, result, _assets = create_backup(self.config)
+        from .dialogs.settings import BackupProgressDialog
+        progress = BackupProgressDialog(
+            _("Scheduled Backup"), total, parent=self)
+        backup_dir = self.config.get("backup.location", "")
+        if backup_dir:
+            progress.set_backup_folder(backup_dir)
 
-        progress.close()
+        def run_backup():
+            def progress_cb(message, current, total):
+                if message.startswith("Backing up "):
+                    name = message.replace("Backing up ", "").rstrip("...")
+                    progress.set_item(name)
+                elif message.startswith("Writing metadata"):
+                    progress.set_item(_("Writing metadata..."))
+                elif message.startswith("Finalizing"):
+                    progress.set_item(_("Finalizing..."))
+                else:
+                    progress.set_item(message)
+                progress.set_progress(current)
 
-        if success:
-            logger.info(f"Startup backup completed: {result}")
-            if not silent:
-                from PySide6.QtWidgets import QMessageBox
-                QMessageBox.information(
-                    self, _("Backup Complete"),
-                    _("Backup saved successfully.\n\n{path}").format(
-                        path=result))
-        else:
-            logger.error(f"Startup backup failed: {result}")
-            from PySide6.QtWidgets import QMessageBox
-            QMessageBox.warning(
-                self, _("Backup Failed"),
-                _("Failed to create backup:\n\n{error}").format(
-                    error=result))
+            def file_cb(path):
+                progress.set_path(path)
+
+            ok, msg, _assets = create_backup(
+                self.config, progress_cb, file_cb)
+
+            if ok:
+                logger.info(f"Startup backup completed: {msg}")
+                progress.finish(True, _("Backup saved successfully."))
+            else:
+                logger.error(f"Startup backup failed: {msg}")
+                progress.finish(
+                    False,
+                    _("Backup failed: {error}").format(error=msg))
+
+        progress.start_work(run_backup)
+        progress.exec()
 
     def _trigger_initial_sync(self) -> None:
         """Trigger sync for all enabled stores after wizard completes."""
@@ -3489,6 +3512,39 @@ class MainWindow(QMainWindow):
 
         # Cache score colors for dialogs opened on demand
         self._score_colors = self.theme_manager.get_score_colors()
+
+    def _on_theme_icon_changed(self) -> None:
+        """Swap window icon when a Ginger Max theme is active."""
+        from pathlib import Path
+        from PySide6.QtGui import QIcon
+        from PySide6.QtCore import QSize
+
+        theme_id = self.theme_manager.get_current_theme()
+        is_ginger = theme_id in ("package:ginger-max", "package:ginger-max-light")
+
+        if is_ginger:
+            icon_dir = (
+                Path(__file__).parent.parent / "assets" / "appicons" / "ginger-max"
+            )
+            icon = QIcon()
+            for size in (512, 256, 128, 64, 48, 32, 24, 16):
+                path = icon_dir / f"app_icon_{size}x{size}.png"
+                if path.exists():
+                    icon.addFile(str(path), QSize(size, size))
+            if not icon.isNull():
+                QApplication.instance().setWindowIcon(icon)
+                return
+
+        # Restore default icon
+        from ..core.constants import APP_ICON_BASENAME
+        icon_dir = Path(__file__).parent.parent / "assets" / "appicons"
+        icon = QIcon()
+        for size in (512, 256, 128, 64, 48, 32, 24, 16):
+            path = icon_dir / f"{APP_ICON_BASENAME}_{size}x{size}.png"
+            if path.exists():
+                icon.addFile(str(path), QSize(size, size))
+        if not icon.isNull():
+            QApplication.instance().setWindowIcon(icon)
 
     def _push_download_delegate_colors(self) -> None:
         if not hasattr(self, '_download_window'):

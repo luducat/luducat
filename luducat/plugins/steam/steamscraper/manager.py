@@ -17,6 +17,7 @@ from luducat.plugins.sdk.json import json
 from .database import Database, Game, Image
 from .steam_api import SteamAPIClient
 from .steam_scraper import SteamScraper
+from .config import STEAMSPY_MIN_REVIEWS
 from .exceptions import AppNotFoundError, RateLimitExceededError, SteamScraperException
 
 logger = logging.getLogger(__name__)
@@ -185,7 +186,6 @@ class SteamGameManager:
                 negative = steamspy_data.get('negative', 0)
                 
                 # If SteamSpy has fewer reviews than threshold, use store page scraping as fallback
-                from .config import STEAMSPY_MIN_REVIEWS
                 if positive + negative < STEAMSPY_MIN_REVIEWS:
                     logger.info(
                         f"SteamSpy has {positive + negative} reviews for {appid} "

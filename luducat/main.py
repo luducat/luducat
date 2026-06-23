@@ -697,6 +697,11 @@ def run_gui(config: Config, database: Database, plugin_manager: PluginManager) -
     # Apply platform-native style (Fusion is cross-platform consistent)
     app.setStyle("Fusion")
 
+    # Ginger Max paw-print group-box titles (self-gates on QSS marker + config)
+    from .ui import gingermax_paws
+    gingermax_paws.set_config_allowed(config.get("appearance.paw_accents", True))
+    gingermax_paws.install()
+
     # Install bundled themes (only copies if not already present)
     install_bundled_themes()
 

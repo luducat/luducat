@@ -882,34 +882,52 @@ class SyncWorker(QThread):
     ) -> None:
         """Wait for API budget cooldown before resuming store metadata fetch.
 
-        Enrichment is deferred to the post-sync METADATA phase to avoid
-        proxy rate-limit contention between IGDB and store fetches.
+        The orchestrator pauses at a threshold below the actual cooldown
+        trigger (e.g. 800 of 1000 requests). At that point the plugin
+        is not yet in cooldown. We trigger the cooldown explicitly via
+        reset_api_budget so the counter resets, then wait the cooldown
+        period before re-queued jobs start fresh.
         """
         logger.info(f"{store_name}: budget paused, waiting cooldown")
 
         plugin = self._game_service.plugin_manager.get_plugin(store_name)
-        if plugin and hasattr(plugin, "get_api_budget_status"):
-            budget = plugin.get_api_budget_status()
-            if budget and budget.get("in_cooldown"):
-                remaining = budget.get("cooldown_remaining", 0)
-                if remaining > 0:
-                    if progress_tracker:
-                        self.phase_started.emit(
-                            store_name,
-                            "fetching metadata",
-                            progress_tracker["total"],
-                        )
-                        self.phase_progress.emit(
-                            store_name,
-                            progress_tracker["done"],
-                            progress_tracker["total"],
-                        )
-                    countdown_cb(remaining)
-                    while remaining > 0 and not cancel_or_skip():
-                        chunk = min(10, remaining)
-                        await asyncio.sleep(chunk)
-                        remaining -= chunk
-                    countdown_cb(0)
+        if not plugin or not hasattr(plugin, "get_api_budget_status"):
+            return
+
+        budget = plugin.get_api_budget_status()
+        if not budget:
+            return
+
+        remaining = 0
+        if budget.get("in_cooldown"):
+            remaining = budget.get("cooldown_remaining", 0)
+        elif hasattr(plugin, "reset_api_budget"):
+            # Threshold reached but no cooldown active. Trigger one
+            # explicitly so re-queued jobs start with a fresh counter.
+            remaining = plugin.reset_api_budget()
+            logger.info(
+                "%s: triggered %ds cooldown at budget threshold",
+                store_name, remaining,
+            )
+
+        if remaining > 0:
+            if progress_tracker:
+                self.phase_started.emit(
+                    store_name,
+                    "fetching metadata",
+                    progress_tracker["total"],
+                )
+                self.phase_progress.emit(
+                    store_name,
+                    progress_tracker["done"],
+                    progress_tracker["total"],
+                )
+            countdown_cb(remaining)
+            while remaining > 0 and not cancel_or_skip():
+                chunk = min(10, remaining)
+                await asyncio.sleep(chunk)
+                remaining -= chunk
+            countdown_cb(0)
 
     def _requeue_remaining(
         self, store_name, remaining_ids, job, progress_tracker,
