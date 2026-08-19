@@ -1,0 +1,93 @@
+{
+  "name": "amazon",
+  "display_name": "Amazon Games",
+  "version": "1.0.1",
+  "author": "luducat",
+  "author_email": "luducat@trinity2k.net",
+  "description": "Amazon Games library integration",
+  "homepage": "https://github.com/luducat/luducat",
+
+  "min_luducat_version": "0.8.3",
+  "max_luducat_version": null,
+
+  "plugin_types": ["store"],
+  "store_class": "store.AmazonStore",
+  "config_dialog_class": "config_dialog.AmazonConfigDialog",
+
+  "badge_label": "AMZ",
+  "brand_colors": {"bg": "#232f3e", "text": "#ff9900"},
+
+  "dependencies": {
+    "python": ">=3.11",
+    "packages": [
+      "requests>=2.28.0"
+    ]
+  },
+
+  "platforms": {
+    "linux": true,
+    "windows": true,
+    "macos": true
+  },
+
+  "capabilities": {
+    "fetch_library": true,
+    "fetch_metadata": true,
+    "launch_games": false,
+    "track_playtime": false,
+    "achievements": false,
+    "cloud_saves": false
+  },
+
+  "provides_fields": {
+    "title": {"priority": 30},
+    "short_description": {"priority": 30},
+    "description": {"priority": 40},
+    "developers": {"priority": 50},
+    "publishers": {"priority": 50},
+    "genres": {"priority": 50},
+    "cover": {"priority": 60},
+    "hero": {"priority": 50},
+    "header_url": {"priority": 50},
+    "logo_url": {"priority": 50},
+    "icon_url": {"priority": 50},
+    "screenshots": {"priority": 60},
+    "platforms": {"priority": 50},
+    "links": {"priority": 50},
+    "features": {"priority": 50},
+    "age_ratings": {"priority": 50},
+    "required_age": {"priority": 50},
+    "type": {"priority": 50}
+  },
+
+  "auth": {
+    "type": "oauth",
+    "fields": [],
+    "optional": true,
+    "help_text": "Authenticates via the Amazon sign-in page (device registration)"
+  },
+
+  "settings_schema": {},
+
+  "network": {
+    "allowed_domains": [
+      "api.amazon.com",
+      "gaming.amazon.com",
+      "m.media-amazon.com"
+    ],
+    "rate_limits": {
+      "gaming.amazon.com": {"requests": 5, "window": 1}
+    }
+  },
+
+  "privacy": {
+    "telemetry": false,
+    "data_collection": "none",
+    "third_party_services": []
+  },
+
+  "credentials": {
+    "use_system_keyring": false,
+    "keyring_service": "luducat.amazon"
+  }
+}

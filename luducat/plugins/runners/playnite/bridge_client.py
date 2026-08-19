@@ -739,6 +739,10 @@ class BridgeClient:
                     self._close_socket()
                     return None
                 self._buffer += chunk
+                if len(self._buffer) > MAX_MESSAGE_SIZE:
+                    logger.error("Buffer exceeded limit without newline, dropping")
+                    self._close_socket()
+                    return None
             except socket.timeout:
                 break
 

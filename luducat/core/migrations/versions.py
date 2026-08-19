@@ -42,7 +42,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 # Current schema version (increment when adding new migrations)
-CURRENT_SCHEMA_VERSION = 27
+CURRENT_SCHEMA_VERSION = 31
 
 # Mapping from Alembic revision IDs to internal version numbers
 ALEMBIC_REVISION_MAP = {
@@ -1194,6 +1194,140 @@ def migrate_026_to_027(conn: "Connection") -> None:
     conn.commit()
 
 
+def migrate_027_to_028(conn: "Connection") -> None:
+    """Add download_audit_results table for archive auditor scan results.
+
+    Stores the last update/missing scan per store so the download window
+    can reopen results without rescanning against the store API.
+    """
+    logger.info("Migration 27->28: Creating download_audit_results table")
+
+    tables = {
+        r[0] for r in conn.execute(
+            text("SELECT name FROM sqlite_master WHERE type='table'")
+        ).fetchall()
+    }
+
+    if "download_audit_results" not in tables:
+        conn.execute(text("""
+            CREATE TABLE download_audit_results (
+                id VARCHAR(36) PRIMARY KEY,
+                store_name VARCHAR(50) NOT NULL,
+                kind VARCHAR(10) NOT NULL,
+                store_app_id VARCHAR(100) NOT NULL,
+                game_title TEXT NOT NULL,
+                payload_json JSON NOT NULL,
+                total_bytes BIGINT,
+                scanned_at DATETIME NOT NULL
+            )
+        """))
+        conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS ix_download_audit_store_kind "
+            "ON download_audit_results (store_name, kind)"
+        ))
+        logger.info("Migration 27->28: Created download_audit_results table")
+
+    conn.commit()
+
+
+def migrate_028_to_029(conn: "Connection") -> None:
+    """Add download_audit_scans table recording scan-time preferences.
+
+    Audit results are filtered with the OS/language preferences active
+    at scan time; changing those settings afterwards silently leaves the
+    persisted results describing a different question. The review UI
+    compares this fingerprint against current settings and flags stale
+    results instead of presenting them as current.
+    """
+    logger.info("Migration 28->29: Creating download_audit_scans table")
+
+    tables = {
+        r[0] for r in conn.execute(
+            text("SELECT name FROM sqlite_master WHERE type='table'")
+        ).fetchall()
+    }
+
+    if "download_audit_scans" not in tables:
+        conn.execute(text("""
+            CREATE TABLE download_audit_scans (
+                store_name VARCHAR(50) NOT NULL,
+                kind VARCHAR(10) NOT NULL,
+                scanned_at DATETIME NOT NULL,
+                preferences_json JSON NOT NULL,
+                PRIMARY KEY (store_name, kind)
+            )
+        """))
+        logger.info("Migration 28->29: Created download_audit_scans table")
+
+    conn.commit()
+
+
+def migrate_029_to_030(conn: "Connection") -> None:
+    """Add store_build_cache table for the build-number update check.
+
+    Kept out of store_games and metadata_json deliberately: these rows
+    churn on every scan and grow with the library, and must not bloat
+    games.db's core tables. The expires columns carry the jittered
+    freshness horizon computed at persist time (TTL +/- 20% in hours),
+    so a full library does not all expire on the same day.
+    """
+    logger.info("Migration 29->30: Creating store_build_cache table")
+
+    tables = {
+        r[0] for r in conn.execute(
+            text("SELECT name FROM sqlite_master WHERE type='table'")
+        ).fetchall()
+    }
+
+    if "store_build_cache" not in tables:
+        conn.execute(text("""
+            CREATE TABLE store_build_cache (
+                store_name VARCHAR(50) NOT NULL,
+                store_app_id VARCHAR(100) NOT NULL,
+                local_build INTEGER,
+                local_checked_at DATETIME,
+                local_expires_at DATETIME,
+                online_build INTEGER,
+                online_checked_at DATETIME,
+                online_expires_at DATETIME,
+                PRIMARY KEY (store_name, store_app_id)
+            )
+        """))
+        logger.info("Migration 29->30: Created store_build_cache table")
+
+    conn.commit()
+
+
+def migrate_030_to_031(conn: "Connection") -> None:
+    """Add game_details_cache table for caching GOG gameDetails responses.
+
+    Stores the full parsed response with a jittered TTL so repeat scans
+    skip unchanged games. Same pattern as store_build_cache (v30).
+    """
+    logger.info("Migration 30->31: Creating game_details_cache table")
+
+    tables = {
+        r[0] for r in conn.execute(
+            text("SELECT name FROM sqlite_master WHERE type='table'")
+        ).fetchall()
+    }
+
+    if "game_details_cache" not in tables:
+        conn.execute(text("""
+            CREATE TABLE game_details_cache (
+                store_name TEXT NOT NULL,
+                store_app_id TEXT NOT NULL,
+                details_json TEXT NOT NULL,
+                checked_at TEXT NOT NULL,
+                expires_at TEXT NOT NULL,
+                PRIMARY KEY (store_name, store_app_id)
+            )
+        """))
+        logger.info("Migration 30->31: Created game_details_cache table")
+
+    conn.commit()
+
+
 # Migration registry: list of (from_version, to_version, migration_function)
 MIGRATIONS = [
     (0, 1, migrate_000_to_001),
@@ -1223,4 +1357,8 @@ MIGRATIONS = [
     (24, 25, migrate_024_to_025),
     (25, 26, migrate_025_to_026),
     (26, 27, migrate_026_to_027),
+    (27, 28, migrate_027_to_028),
+    (28, 29, migrate_028_to_029),
+    (29, 30, migrate_029_to_030),
+    (30, 31, migrate_030_to_031),
 ]

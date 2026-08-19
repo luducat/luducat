@@ -430,6 +430,8 @@ _INTERNAL_FIELDS: frozenset = frozenset({
     "engines",  # PCGamingWiki plural → engine
     # Store engine internal fields
     "store_adult_baseline",  # Adult content baseline from store engine rulesets
+    "store_adult_flag",  # Store-side per-game adult flag (JAST mature_content, MangaGamer r18)
+    "mature_content",  # Raw store mature flag (feeds adult_flag ruleset condition)
     "goods_type",  # MangaGamer URL construction parameter
 })
 
@@ -452,23 +454,23 @@ _SEED_GAME_MODES_PRIORITY = ["pcgamingwiki", "igdb"]
 
 _SEED_FIELD_PRIORITIES: Dict[str, List[str]] = {
     # General
-    "title": ["steam", "gog", "epic", "zoom", "jastusa", "mangagamer", "igdb", "pcgamingwiki"],
-    "description": ["steam", "gog", "igdb", "zoom", "jastusa", "mangagamer"],
-    "short_description": ["steam", "gog", "epic", "zoom", "jastusa", "igdb"],
-    "developers": ["igdb", "pcgamingwiki", "steam", "gog", "epic", "zoom", "jastusa", "mangagamer"],
-    "publishers": ["igdb", "pcgamingwiki", "steam", "gog", "epic", "zoom", "jastusa"],
-    "genres": ["pcgamingwiki", "igdb", "steam", "gog", "epic", "zoom", "mangagamer"],
+    "title": ["steam", "gog", "epic", "amazon", "zoom", "jastusa", "mangagamer", "igdb", "pcgamingwiki"],
+    "description": ["steam", "gog", "amazon", "igdb", "zoom", "jastusa", "mangagamer"],
+    "short_description": ["steam", "gog", "epic", "amazon", "zoom", "jastusa", "igdb"],
+    "developers": ["igdb", "pcgamingwiki", "steam", "gog", "epic", "amazon", "zoom", "jastusa", "mangagamer"],
+    "publishers": ["igdb", "pcgamingwiki", "steam", "gog", "epic", "amazon", "zoom", "jastusa"],
+    "genres": ["pcgamingwiki", "igdb", "steam", "gog", "epic", "amazon", "zoom", "mangagamer"],
     "release_date": ["steam", "gog", "igdb", "pcgamingwiki", "zoom", "jastusa", "mangagamer"],
     "game_modes_detail": ["pcgamingwiki", "steam", "gog", "igdb"],
     "crossplay": ["pcgamingwiki"],
     # Media
-    "cover": ["igdb", "steamgriddb", "steam", "epic", "gog", "zoom", "jastusa", "mangagamer"],
-    "hero": ["steamgriddb", "igdb", "steam", "epic", "gog"],
-    "screenshots": ["steam", "gog", "epic", "igdb", "zoom", "jastusa", "mangagamer"],
-    "header_url": ["steam", "epic", "gog"],
+    "cover": ["igdb", "steamgriddb", "steam", "epic", "gog", "zoom", "jastusa", "mangagamer", "amazon"],
+    "hero": ["steamgriddb", "igdb", "steam", "epic", "gog", "amazon"],
+    "screenshots": ["steam", "gog", "epic", "igdb", "zoom", "jastusa", "mangagamer", "amazon"],
+    "header_url": ["steam", "epic", "amazon", "gog"],
     "artworks": ["igdb"],
-    "icon_url": ["steam", "gog"],
-    "logo_url": ["steam", "gog", "epic"],
+    "icon_url": ["steam", "gog", "amazon"],
+    "logo_url": ["steam", "gog", "epic", "amazon"],
     "videos": ["igdb", "gog", "jastusa"],
     # Ratings
     "rating": ["steam", "gog", "igdb"],
@@ -477,7 +479,7 @@ _SEED_FIELD_PRIORITIES: Dict[str, List[str]] = {
     "rating_positive": ["steam"],
     "rating_negative": ["steam"],
     "total_rating": ["igdb"],
-    "age_ratings": ["igdb", "gog"],
+    "age_ratings": ["igdb", "gog", "amazon"],
     "age_rating_esrb": ["igdb"],  # Virtual: extracted from age_ratings at display time
     "age_rating_pegi": ["igdb"],  # Virtual: extracted from age_ratings at display time
     "critic_rating": ["steam", "pcgamingwiki"],
@@ -491,8 +493,8 @@ _SEED_FIELD_PRIORITIES: Dict[str, List[str]] = {
     "tags": ["steam", "gog"],
     "themes": ["igdb", "pcgamingwiki"],
     "perspectives": ["igdb", "pcgamingwiki"],
-    "platforms": ["igdb", "pcgamingwiki", "steam", "gog", "epic", "zoom"],
-    "links": ["igdb", "pcgamingwiki", "steam", "gog", "epic"],
+    "platforms": ["igdb", "pcgamingwiki", "steam", "gog", "epic", "zoom", "amazon"],
+    "links": ["igdb", "pcgamingwiki", "steam", "gog", "epic", "amazon"],
     "storyline": ["igdb"],
     "pacing": ["pcgamingwiki"],
     "art_styles": ["pcgamingwiki"],
@@ -518,16 +520,16 @@ _SEED_FIELD_PRIORITIES: Dict[str, List[str]] = {
     # Cross-store data fields
     "supported_languages": ["steam", "gog", "zoom"],
     "full_audio_languages": ["steam", "gog"],
-    "features": ["gog", "steam", "epic"],
+    "features": ["gog", "steam", "epic", "amazon"],
     # Game classification
     "category": ["igdb"],
     "status": ["igdb"],
     "game_modes": ["pcgamingwiki", "steam", "igdb", "zoom"],
-    "required_age": ["steam", "gog", "igdb"],
+    "required_age": ["steam", "gog", "igdb", "amazon"],
     "content_descriptors": ["steam"],
     # Commercial
     "price": ["steam", "gog", "epic", "zoom"],
-    "type": ["steam", "gog", "epic", "igdb"],
+    "type": ["steam", "gog", "epic", "igdb", "amazon"],
     "is_free": ["steam", "gog", "zoom"],
     "is_demo": ["steam"],
     # Platform detail

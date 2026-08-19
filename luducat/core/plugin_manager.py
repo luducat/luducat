@@ -510,7 +510,7 @@ class PluginManager:
                 continue
 
             try:
-                with open(plugin_json) as f:
+                with open(plugin_json, encoding="utf-8") as f:
                     bundled_meta = json.load(f)
 
                 plugin_name = bundled_meta.get("name", plugin_source.name)
@@ -526,7 +526,7 @@ class PluginManager:
                     # Check version
                     existing_json = plugin_dest / "plugin.json"
                     if existing_json.exists():
-                        with open(existing_json) as f:
+                        with open(existing_json, encoding="utf-8") as f:
                             existing_meta = json.load(f)
 
                         bundled_ver = bundled_meta.get("version", "0.0.0")
@@ -796,7 +796,7 @@ class PluginManager:
         Raises:
             ValueError: If metadata is invalid
         """
-        with open(plugin_json) as f:
+        with open(plugin_json, encoding="utf-8") as f:
             data = json.load(f)
 
         # Required fields (store_class OR provider_class depending on type)
@@ -1335,7 +1335,10 @@ class PluginManager:
             display_name=ruleset.display_name,
             version=parent_metadata.version,
             author=parent_metadata.author,
-            description=f"Virtual store: {ruleset.display_name}",
+            # Same phrasing as first-class store plugins; the settings
+            # dialog keeps an N_() anchor per known store so the
+            # composed string still hits the translation catalog.
+            description=f"{ruleset.display_name} library integration",
             min_luducat_version=parent_metadata.min_luducat_version,
             plugin_types=["store"],
             brand_colors=PluginManager._brand_colors.get(vs_name, {}),

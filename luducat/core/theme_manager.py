@@ -630,6 +630,16 @@ QLabel#warningLabel {
 }
 
 /* ========================================
+   MAIN SPLITTER - Game list / content split
+   ======================================== */
+#mainSplitter::handle {
+    background: palette(mid);
+}
+#mainSplitter::handle:hover {
+    background: palette(highlight);
+}
+
+/* ========================================
    ABOUT SPLITTER - Detail view content/metadata split
    ======================================== */
 #aboutSplitter::handle {
@@ -1401,6 +1411,7 @@ class ThemeManager(QObject):
         self._download_completed: str = DEFAULT_VALUES["download_completed"]
         self._download_failed: str = DEFAULT_VALUES["download_failed"]
         self._download_paused: str = DEFAULT_VALUES["download_paused"]
+        self._download_outdated: str = DEFAULT_VALUES["download_outdated"]
         self._score_positive: str = DEFAULT_VALUES["score_positive"]
         self._score_negative: str = DEFAULT_VALUES["score_negative"]
         self._navbar_icon_color: str = DEFAULT_VALUES["navbar_icon_color"]
@@ -1589,6 +1600,7 @@ class ThemeManager(QObject):
                         self._fav_color = metadata["fav_color"]
                     for _key in ("fav_star_color", "download_completed",
                                  "download_failed", "download_paused",
+                                 "download_outdated",
                                  "score_positive", "score_negative",
                                  "navbar_icon_color"):
                         if _key in metadata:
@@ -1660,7 +1672,7 @@ class ThemeManager(QObject):
         Falls back to filename
         """
         try:
-            with open(qss_path, 'r') as f:
+            with open(qss_path, 'r', encoding="utf-8") as f:
                 first_line = f.readline().strip()
                 if first_line.startswith("/* Theme:") and first_line.endswith("*/"):
                     name = first_line[9:-2].strip()
@@ -1694,7 +1706,7 @@ class ThemeManager(QObject):
         }
 
         try:
-            with open(qss_path, 'r') as f:
+            with open(qss_path, 'r', encoding="utf-8") as f:
                 content = f.read(4000)  # First 4KB should contain metadata
 
             # Parse /* @meta ... */
@@ -1820,6 +1832,7 @@ class ThemeManager(QObject):
         self._download_completed = DEFAULT_VALUES["download_completed"]
         self._download_failed = DEFAULT_VALUES["download_failed"]
         self._download_paused = DEFAULT_VALUES["download_paused"]
+        self._download_outdated = DEFAULT_VALUES["download_outdated"]
         self._score_positive = DEFAULT_VALUES["score_positive"]
         self._score_negative = DEFAULT_VALUES["score_negative"]
 
@@ -1856,6 +1869,8 @@ class ThemeManager(QObject):
                         "download_completed", dv["download_completed"])
                     self._download_failed = complete.get("download_failed", dv["download_failed"])
                     self._download_paused = complete.get("download_paused", dv["download_paused"])
+                    self._download_outdated = complete.get(
+                        "download_outdated", dv["download_outdated"])
                     self._score_positive = complete.get("score_positive", dv["score_positive"])
                     self._score_negative = complete.get("score_negative", dv["score_negative"])
                     self._navbar_icon_color = complete.get(
@@ -1930,7 +1945,7 @@ class ThemeManager(QObject):
                 return False
 
             try:
-                with open(qss_path, 'r') as f:
+                with open(qss_path, 'r', encoding="utf-8") as f:
                     qss_content = f.read()
 
                 # Parse and apply palette if defined
@@ -1986,6 +2001,7 @@ class ThemeManager(QObject):
             "completed": self._download_completed,
             "failed": self._download_failed,
             "paused": self._download_paused,
+            "outdated": self._download_outdated,
         }
 
     def get_score_colors(self) -> Dict[str, str]:

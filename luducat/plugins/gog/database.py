@@ -635,6 +635,7 @@ class GogDatabase:
         Base.metadata.create_all(self.engine)
         self._migrate_columns()
         self._create_bundle_table()
+        self._fix_false_free_flags()
 
     def _migrate_columns(self) -> None:
         """Add any missing columns to existing tables (ALTER TABLE)"""
@@ -649,6 +650,21 @@ class GogDatabase:
                     with self.engine.begin() as conn:
                         conn.execute(text(sql))
                     logger.info(f"Migrated: ALTER TABLE {table_name} ADD COLUMN {col_name}")
+
+    def _fix_false_free_flags(self) -> None:
+        """Clear is_free on games where price was never populated.
+
+        Before the fix, missing price defaulted to 0 which marked
+        games as free. Runs once per startup, only touches affected
+        rows.
+        """
+        with self.engine.begin() as conn:
+            result = conn.execute(text(
+                "UPDATE gog_games SET is_free = 0 "
+                "WHERE is_free = 1 AND price IS NULL"
+            ))
+            if result.rowcount:
+                logger.info("Cleared %d false is_free flags", result.rowcount)
 
     @property
     def session(self) -> Session:

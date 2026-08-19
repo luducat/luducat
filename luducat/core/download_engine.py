@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from email.utils import parsedate_to_datetime
 from pathlib import Path
 from typing import Optional
+from urllib.parse import urlparse, parse_qs
 
 import requests as _requests_module
 
@@ -24,6 +25,15 @@ logger = logging.getLogger(__name__)
 
 # HTTP status codes that should not be retried.
 PERMANENT_HTTP_ERRORS = {401, 403, 404, 410, 451}
+
+# S3/Spaces presigned URLs bind the HTTP verb into the signature,
+# so a HEAD on a GET-signed URL returns 403.
+_S3_SIGNATURE_PARAMS = frozenset({"X-Amz-Signature", "Signature", "AWSAccessKeyId"})
+
+
+def _is_signed_url(url: str) -> bool:
+    qs = parse_qs(urlparse(url).query)
+    return bool(_S3_SIGNATURE_PARAMS & qs.keys())
 
 
 @dataclass(slots=True)
@@ -330,8 +340,8 @@ def download_file(
 ) -> DownloadResult:
     """Download a single URL. Returns DownloadResult.
 
-    Orchestrates HEAD probe -> stream/chunked transfer -> checksum -> result.
-    Does NOT set file timestamps or move to final location.
+    Signed URLs (S3/Spaces) skip the HEAD probe and fall back to
+    Content-Length from the streaming GET response.
     """
     if session is None:
         session = _requests_module.Session()
@@ -362,21 +372,27 @@ def download_file(
                 else:
                     time.sleep(backoff)
 
-            # HEAD probe
-            head = session.head(url, headers=hdrs, allow_redirects=True, timeout=10)
-            last_http = head.status_code
+            signed = _is_signed_url(url)
+            if signed:
+                total = 0
+                accepts_range = False
+                mt = None
+                content_type = ""
+                last_http = 0
+            else:
+                head = session.head(url, headers=hdrs, allow_redirects=True, timeout=10)
+                last_http = head.status_code
 
-            if last_http in PERMANENT_HTTP_ERRORS:
-                return DownloadResult(False, f"HTTP {last_http}", last_http, 0, dest_path)
+                if last_http in PERMANENT_HTTP_ERRORS:
+                    return DownloadResult(False, f"HTTP {last_http}", last_http, 0, dest_path)
 
-            total = int(head.headers.get("Content-Length", 0) or 0)
-            content_enc = head.headers.get("Content-Encoding", "").lower()
-            if content_enc in ("gzip", "br", "deflate", "zstd"):
-                total = 0  # compressed size != decompressed size
-
-            accepts_range = head.headers.get("Accept-Ranges", "none").lower() == "bytes"
-            mt = remote_mtime(head)
-            content_type = head.headers.get("Content-Type", "")
+                total = int(head.headers.get("Content-Length", 0) or 0)
+                content_enc = head.headers.get("Content-Encoding", "").lower()
+                if content_enc in ("gzip", "br", "deflate", "zstd"):
+                    total = 0
+                accepts_range = head.headers.get("Accept-Ranges", "none").lower() == "bytes"
+                mt = remote_mtime(head)
+                content_type = head.headers.get("Content-Type", "")
 
             use_chunks = (
                 num_connections > 1

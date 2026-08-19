@@ -89,6 +89,20 @@ def _now_iso() -> str:
     return datetime.now().isoformat()
 
 
+def _request_metadata_json(req: ArchiveRequest) -> str:
+    """Serialize a request's metadata for the downloads row.
+
+    Manager-owned provenance keys (underscore-prefixed) ride along with
+    the handler's metadata so _on_worker_finished() can restore the
+    archive type and version when writing the manifest entry.
+    """
+    merged = dict(req.metadata or {})
+    merged["_archive_type"] = req.archive_type.value
+    if req.version:
+        merged["_version"] = req.version
+    return json.dumps(merged)
+
+
 # ── Download Worker ─────────────────────────────────────────────────
 
 
@@ -115,6 +129,8 @@ class _DownloadWorker(threading.Thread):
         on_progress=None,
         on_finished=None,
         chunk_state: Optional[dict] = None,
+        resolve_fn=None,
+        resolve_retry_delay: float = 15.0,
     ) -> None:
         super().__init__(daemon=True)
         self.download_id = download_id
@@ -131,11 +147,51 @@ class _DownloadWorker(threading.Thread):
         self._on_progress = on_progress
         self._on_finished = on_finished
         self._chunk_state = chunk_state
+        self._resolve_fn = resolve_fn
+        self._resolve_retry_delay = resolve_retry_delay
         self._last_time = time.monotonic()
         self._last_bytes = 0
 
+    def _resolve_once(self):
+        try:
+            return self._resolve_fn()
+        except Exception as e:
+            logger.error("Lazy URL resolution crashed for %s: %s",
+                         self.download_id, e)
+            return None
+
     def run(self) -> None:
-        from luducat.core.download_engine import download_file
+        from luducat.core.download_engine import DownloadResult, download_file
+
+        # Lazy URL: bulk-enqueued rows store only a stable reference and
+        # resolve it here, on the worker thread, so queue scheduling never
+        # blocks on a network round-trip (Phase B of the update-check plan).
+        if not self._url and self._resolve_fn:
+            resolved = self._resolve_once()
+            if not resolved and not self._cancel.is_set():
+                # Resolve failures are often transient (keyring hiccup,
+                # dbus restart); one delayed retry saves the row from
+                # failing over a blip. The wait is cancel-aware.
+                logger.info(
+                    "Lazy resolve failed for %s, retrying in %.0fs",
+                    self.download_id, self._resolve_retry_delay)
+                if not self._cancel.wait(self._resolve_retry_delay):
+                    resolved = self._resolve_once()
+            if not resolved:
+                if self._on_finished:
+                    self._on_finished(self.download_id, DownloadResult(
+                        ok=False,
+                        reason="Could not resolve download link "
+                               "(store login may have expired)",
+                        http_status=0,
+                    ))
+                return
+            self._url, self._cookies, new_dest = resolved
+            if new_dest is not None:
+                # Placeholder filename corrected from the CDN redirect;
+                # any chunk map for the old name cannot be resumed.
+                self._dest_path = Path(new_dest)
+                self._chunk_state = None
 
         def progress_callback(bytes_written: int, total: int) -> None:
             # Bandwidth throttle
@@ -198,8 +254,17 @@ class DownloadManager:
         self._workers: dict[str, Any] = {}  # download_id -> worker
         self._cancel_events: dict[str, threading.Event] = {}
         self._lock = threading.Lock()
+        # Serializes _schedule_next: every finishing worker calls it from
+        # its own thread, and two schedulers reading the pending rows at
+        # once would start duplicate workers for the same file
+        self._sched_lock = threading.Lock()
 
         self._recover_state()
+
+    @property
+    def engine(self):
+        """Main-DB engine, shared with services that need it (auditor)."""
+        return self._engine
 
     def _recover_state(self) -> None:
         """On startup: DOWNLOADING -> PAUSED for all in-flight rows."""
@@ -295,7 +360,7 @@ class DownloadManager:
                     "priority": priority,
                     "headers": json.dumps(req.headers) if req.headers else None,
                     "cookies": json.dumps(req.cookies) if req.cookies else None,
-                    "metadata": json.dumps(req.metadata) if req.metadata else None,
+                    "metadata": _request_metadata_json(req),
                     "now": now,
                 })
 
@@ -407,7 +472,7 @@ class DownloadManager:
                     "priority": priority,
                     "headers": json.dumps(req.headers) if req.headers else None,
                     "cookies": json.dumps(req.cookies) if req.cookies else None,
-                    "metadata": json.dumps(req.metadata) if req.metadata else None,
+                    "metadata": _request_metadata_json(req),
                     "now": now,
                 })
 
@@ -524,8 +589,29 @@ class DownloadManager:
 
     def resume_download(self, download_id: str) -> None:
         """Resume a paused download (sets to PENDING for worker pickup)."""
+        self._clear_refresh_flag("id = :key", download_id)
         self._update_download_status(download_id, _Status.PENDING)
         self._schedule_next()
+
+    def _clear_refresh_flag(self, where_clause: str, key=None) -> None:
+        """Strip _refresh_attempted so an explicit resume gets one fresh
+        automatic 403 retry again. where_clause is a fixed internal
+        fragment ("id = :key" / "group_id = :key" / "1 = 1"), never
+        user input.
+        """
+        # json_remove needs SQLite >= 3.38, which luducat requires anyway
+        sql = (
+            "UPDATE downloads SET "
+            "metadata_json = json_remove(metadata_json, '$._refresh_attempted'), "
+            "updated_at = :now "
+            f"WHERE {where_clause} AND metadata_json IS NOT NULL"
+        )
+        params = {"now": _now_iso()}
+        if key is not None:
+            params["key"] = key
+        with self._engine.connect() as conn:
+            conn.execute(text(sql), params)
+            conn.commit()
 
     def cancel_download(self, download_id: str) -> None:
         """Cancel a single download."""
@@ -560,6 +646,7 @@ class DownloadManager:
         work is requeued.
         """
         logger.debug("Resuming group %s", group_id)
+        self._clear_refresh_flag("group_id = :key", group_id)
         with self._engine.connect() as conn:
             conn.execute(text(
                 "UPDATE downloads SET status = :pending, updated_at = :now "
@@ -610,6 +697,7 @@ class DownloadManager:
 
     def resume_all(self) -> None:
         """Resume all paused/cancelled/failed downloads."""
+        self._clear_refresh_flag("1 = 1")
         resumable = (_Status.PAUSED, _Status.CANCELLED, _Status.FAILED)
         with self._engine.connect() as conn:
             conn.execute(text(
@@ -684,31 +772,56 @@ class DownloadManager:
         if self._max_concurrent <= 0:
             return  # 0 = don't auto-start (testing mode)
 
-        with self._lock:
-            active_count = len(self._workers)
-            slots = self._max_concurrent - active_count
-            if slots <= 0:
-                return
+        with self._sched_lock:
+            with self._lock:
+                active_count = len(self._workers)
+                slots = self._max_concurrent - active_count
+                if slots <= 0:
+                    return
 
-        # Get next pending downloads, respecting group queue order
+            # Get next pending downloads, respecting group queue order
+            with self._engine.connect() as conn:
+                pending = conn.execute(text(
+                    "SELECT d.id, d.url, d.destination_path, d.temp_path, "
+                    "d.filename, d.checksum_expected, d.headers_json, d.cookies_json, "
+                    "d.group_id, d.chunks_json "
+                    "FROM downloads d "
+                    "JOIN download_groups g ON g.id = d.group_id "
+                    "WHERE d.status = :pending "
+                    "ORDER BY g.priority, d.priority, d.created_at "
+                    "LIMIT :limit"
+                ), {"pending": _Status.PENDING, "limit": slots}).mappings().all()
+
+            for row in pending:
+                self._start_worker(row)
+
+    def _claim_download(self, download_id: str) -> bool:
+        """Atomically flip one row PENDING -> DOWNLOADING.
+
+        The DB is the arbiter: whichever caller's UPDATE matches gets to
+        start the worker, anyone else backs off. Guards the row even if
+        a scheduler read it before another one claimed it.
+        """
         with self._engine.connect() as conn:
-            pending = conn.execute(text(
-                "SELECT d.id, d.url, d.destination_path, d.temp_path, "
-                "d.filename, d.checksum_expected, d.headers_json, d.cookies_json, "
-                "d.group_id, d.chunks_json "
-                "FROM downloads d "
-                "JOIN download_groups g ON g.id = d.group_id "
-                "WHERE d.status = :pending "
-                "ORDER BY g.priority, d.priority, d.created_at "
-                "LIMIT :limit"
-            ), {"pending": _Status.PENDING, "limit": slots}).mappings().all()
-
-        for row in pending:
-            self._start_worker(row)
+            res = conn.execute(text(
+                "UPDATE downloads SET status = :downloading, updated_at = :now "
+                "WHERE id = :id AND status = :pending"
+            ), {"downloading": _Status.DOWNLOADING,
+                "pending": _Status.PENDING,
+                "id": download_id, "now": _now_iso()})
+            conn.commit()
+        return res.rowcount == 1
 
     def _start_worker(self, row) -> None:
         """Create and start a _DownloadWorker for a download row."""
         dl_id = row["id"]
+        with self._lock:
+            if dl_id in self._workers:
+                return
+        if not self._claim_download(dl_id):
+            logger.debug("Download %s already claimed elsewhere, skipping",
+                         dl_id)
+            return
         logger.debug("Starting worker for %s (%s)", dl_id, row.get("filename", "?"))
         cancel_ev = threading.Event()
 
@@ -723,14 +836,7 @@ class DownloadManager:
                 ).mappings().first()
 
             if group:
-                from luducat.core.archivist.volume import VolumeManager
-                archive_path = self._config.get("downloads.archive_path", "")
-                org = self._config.get("downloads.folder_organization", "store-slug")
-                if not archive_path:
-                    from luducat.core.config import get_default_archive_path
-                    archive_path = str(get_default_archive_path())
-                vm = VolumeManager(base_path=Path(archive_path), organization=org)
-                dest_path = vm.resolve_path(
+                dest_path = self._derive_destination(
                     group["store_name"], group.get("store_app_id", ""),
                     group["game_title"], row["filename"],
                 )
@@ -775,18 +881,131 @@ class DownloadManager:
             on_progress=self._on_worker_progress,
             on_finished=self._on_worker_finished,
             chunk_state=chunk_state,
+            resolve_fn=lambda: self._resolve_lazy_url(dl_id),
+            resolve_retry_delay=self._config.get(
+                "downloads.resolve_retry_delay_sec", 15.0),
         )
 
         with self._lock:
             self._workers[dl_id] = worker
             self._cancel_events[dl_id] = cancel_ev
 
-        # Update status to DOWNLOADING
-        self._update_download_status(dl_id, _Status.DOWNLOADING)
+        # The claim already flipped the row itself to DOWNLOADING
         if row.get("group_id"):
             self._update_group_status(row["group_id"], _Status.DOWNLOADING)
 
         worker.start()
+
+    def _derive_destination(
+        self, store_name: str, store_app_id: str, game_title: str, filename: str,
+    ) -> Path:
+        """Resolve the volume destination for a file (creates parent dirs)."""
+        from luducat.core.archivist.volume import volume_manager_from_config
+        vm = volume_manager_from_config(self._config)
+        return vm.resolve_path(store_name, store_app_id, game_title, filename)
+
+    def _resolve_lazy_url(
+        self, download_id: str,
+    ) -> Optional[tuple[str, Optional[dict[str, str]], Optional[Path]]]:
+        """Resolve an empty download URL from its stable store reference.
+
+        Runs on the worker thread (refresh_download_url is a network
+        round-trip). The fresh URL and cookies are persisted so
+        pause/resume reuses them while the token is still valid.
+
+        Bulk-enqueued rows carry placeholder filenames; only the resolved
+        CDN URL reveals the real installer name. When it does, filename
+        and destination are corrected here and the new destination is
+        returned as the third tuple element so the worker writes to it
+        (None when the name did not change).
+        """
+        with self._engine.connect() as conn:
+            row = conn.execute(text(
+                "SELECT d.metadata_json, d.filename, d.destination_path, "
+                "g.store_name, g.store_app_id, g.game_title "
+                "FROM downloads d "
+                "JOIN download_groups g ON g.id = d.group_id "
+                "WHERE d.id = :id"
+            ), {"id": download_id}).mappings().first()
+
+        if row is None or not row["metadata_json"]:
+            return None
+        meta = json.loads(row["metadata_json"])
+        if not meta.get("downlink"):
+            return None
+
+        # Local import: download_handlers imports archivist types that
+        # would otherwise cycle back here (existing pattern in this file).
+        from luducat.core.download_handlers import get_handler
+        handler = get_handler(row["store_name"])
+        if handler is None:
+            logger.warning("No download handler registered for store %r, "
+                           "cannot resolve lazy URL %s",
+                           row["store_name"], download_id)
+            return None
+
+        resolved = handler.refresh_download_url(meta)
+        if not resolved:
+            return None
+
+        url, cookies = resolved
+        new_dest = self._adopt_cdn_filename(download_id, row, url)
+        if new_dest is None:
+            with self._engine.connect() as conn:
+                conn.execute(text(
+                    "UPDATE downloads SET url = :url, cookies_json = :cookies, "
+                    "updated_at = :now WHERE id = :id"
+                ), {"url": url,
+                    "cookies": json.dumps(cookies) if cookies else None,
+                    "now": _now_iso(), "id": download_id})
+                conn.commit()
+        else:
+            with self._engine.connect() as conn:
+                conn.execute(text(
+                    "UPDATE downloads SET url = :url, cookies_json = :cookies, "
+                    "filename = :fname, destination_path = :dest, "
+                    "chunks_json = NULL, updated_at = :now WHERE id = :id"
+                ), {"url": url,
+                    "cookies": json.dumps(cookies) if cookies else None,
+                    "fname": new_dest.name, "dest": str(new_dest),
+                    "now": _now_iso(), "id": download_id})
+                conn.commit()
+        logger.debug("Resolved lazy URL for %s", download_id)
+        return url, cookies, new_dest
+
+    @staticmethod
+    def _is_safe_filename(filename: str) -> bool:
+        return bool(filename) and filename not in (".", "..") \
+            and "/" not in filename and "\\" not in filename
+
+    def _adopt_cdn_filename(self, download_id: str, row, url: str) -> Optional[Path]:
+        """Derive the corrected destination when the CDN reveals the real name.
+
+        Returns the new destination path, or None when the stored filename
+        already matches (eager and 403-refreshed rows) or no safe filename
+        can be extracted from the URL.
+        """
+        from luducat.core.download_handlers.base import extract_filename_from_cdn_url
+
+        real_name = extract_filename_from_cdn_url(url)
+        if not self._is_safe_filename(real_name) or real_name == row["filename"]:
+            return None
+
+        new_dest = self._derive_destination(
+            row["store_name"], row["store_app_id"] or "",
+            row["game_title"], real_name,
+        )
+        # A pre-rename start may have left a temp file under the old
+        # name; it can never be resumed under the new one, drop it.
+        if row["destination_path"]:
+            old_tmp = Path(row["destination_path"] + ".luducat-tmp")
+            try:
+                old_tmp.unlink(missing_ok=True)
+            except OSError as e:
+                logger.warning("Could not remove stale temp %s: %s", old_tmp, e)
+        logger.info("Lazy download %s adopts CDN filename %s (was %s)",
+                    download_id, real_name, row["filename"])
+        return new_dest
 
     def _on_worker_progress(self, download_id: str, bytes_dl: int,
                             total: int, speed: float) -> None:
@@ -806,6 +1025,30 @@ class DownloadManager:
             self._workers.pop(download_id, None)
             self._cancel_events.pop(download_id, None)
 
+        try:
+            self._handle_worker_result(download_id, result)
+        except Exception as exc:
+            # Boundary: an unhandled exception must not wedge the row in
+            # DOWNLOADING with no worker attached (lud-sg47).
+            logger.error("Worker result handler crashed for %s: %s",
+                         download_id, exc)
+            try:
+                self._update_download_status(download_id, _Status.FAILED)
+                with self._engine.connect() as conn:
+                    conn.execute(text(
+                        "UPDATE downloads SET last_error = :err, "
+                        "last_error_at = :now, updated_at = :now "
+                        "WHERE id = :id"
+                    ), {"err": f"Internal error: {exc}",
+                        "now": _now_iso(), "id": download_id})
+                    conn.commit()
+            except Exception:
+                logger.error("Could not mark %s as FAILED", download_id)
+            self._schedule_next()
+
+    def _handle_worker_result(self, download_id: str, result) -> None:
+        """Inner handler for worker completion -- called inside the
+        exception boundary of _on_worker_finished."""
         # Load download + group info from DB
         with self._engine.connect() as conn:
             dl_row = conn.execute(
@@ -840,6 +1083,48 @@ class DownloadManager:
                     derived = self._derive_group_status(group_id)
                     self._update_group_status(group_id, derived)
                 return
+            # Expired CDN token: requeue once with a blank URL so the next
+            # worker re-resolves the stable downlink (Phase B). The flag
+            # limits this to one automatic attempt per file; explicit
+            # resume clears it.
+            if result.http_status in (403, 410):
+                dl_meta = (
+                    json.loads(dl_row["metadata_json"])
+                    if dl_row["metadata_json"] else {}
+                )
+                if dl_meta.get("downlink") and not dl_meta.get("_refresh_attempted"):
+                    logger.info(
+                        "HTTP %d for %s, requeueing with fresh link resolution",
+                        result.http_status, download_id,
+                    )
+                    # Drop partial temp and chunk state: the fresh URL
+                    # may serve a re-signed binary (same name, different
+                    # bytes). Resuming from a stale prefix would corrupt
+                    # the file silently.
+                    if dl_row["destination_path"]:
+                        stale_tmp = Path(dl_row["destination_path"] + ".luducat-tmp")
+                        try:
+                            stale_tmp.unlink(missing_ok=True)
+                        except OSError as e:
+                            logger.warning("Could not remove stale temp %s: %s",
+                                           stale_tmp, e)
+                    dl_meta["_refresh_attempted"] = True
+                    with self._engine.connect() as conn:
+                        conn.execute(text(
+                            "UPDATE downloads SET url = '', status = :pending, "
+                            "metadata_json = :meta, chunks_json = NULL, "
+                            "bytes_downloaded = 0, updated_at = :now "
+                            "WHERE id = :id"
+                        ), {"pending": _Status.PENDING,
+                            "meta": json.dumps(dl_meta),
+                            "now": _now_iso(), "id": download_id})
+                        conn.commit()
+                    if group_id:
+                        derived = self._derive_group_status(group_id)
+                        self._update_group_status(group_id, derived)
+                    self._schedule_next()
+                    return
+
             self._update_download_status(download_id, _Status.FAILED)
             with self._engine.connect() as conn:
                 conn.execute(text(
@@ -862,14 +1147,10 @@ class DownloadManager:
 
             # 2. Move to volume (preserves timestamp)
             try:
-                archive_path = self._config.get("downloads.archive_path", "")
-                org = self._config.get("downloads.folder_organization", "store-slug")
-                if not archive_path:
-                    from luducat.core.config import get_default_archive_path
-                    archive_path = str(get_default_archive_path())
-
-                from luducat.core.archivist.volume import VolumeManager
-                vm = VolumeManager(base_path=Path(archive_path), organization=org)
+                from luducat.core.archivist.volume import (
+                    volume_manager_from_config,
+                )
+                vm = volume_manager_from_config(self._config)
 
                 with self._engine.connect() as conn:
                     group = conn.execute(
@@ -892,12 +1173,27 @@ class DownloadManager:
 
                     archivist = ArchivistManager(
                         engine=self._engine,
-                        base_path=Path(archive_path),
-                        organization=org,
+                        base_path=vm.base_path,
+                        organization=vm.organization,
+                        custom_layout=vm.custom_layout,
                     )
+                    dl_meta = (
+                        json.loads(dl_row["metadata_json"])
+                        if dl_row["metadata_json"] else {}
+                    )
+                    try:
+                        entry_type = ArchiveType(dl_meta.get("_archive_type", ""))
+                    except ValueError:
+                        # Rows queued before provenance tracking (or by
+                        # handlers that never classify) stay installers.
+                        entry_type = ArchiveType.GAME_INSTALLER
+                    entry_meta = {
+                        k: v for k, v in dl_meta.items()
+                        if not k.startswith("_")
+                    }
                     entry = ArchiveEntry(
                         id=uuid.uuid4().hex,
-                        archive_type=ArchiveType.GAME_INSTALLER,
+                        archive_type=entry_type,
                         filename=dl_row["filename"],
                         relative_path=rel_path,
                         size_bytes=result.size,
@@ -905,13 +1201,34 @@ class DownloadManager:
                         downloaded_at=datetime.now(),
                         store_name=group["store_name"],
                         store_app_id=group.get("store_app_id"),
+                        version=dl_meta.get("_version"),
                         original_download_url=dl_row["url"],
                         remote_timestamp=datetime.fromtimestamp(mtime) if mtime else None,
+                        metadata=entry_meta or None,
                     )
                     archivist.add_entry(entry)
 
             except Exception as exc:
-                logger.error("Archivist handoff failed for %s: %s", download_id, exc)
+                # The bytes are on disk but never reached the archive --
+                # completing here would read as success while the volume
+                # holds nothing. Fail the row; the temp file stays for a
+                # retry via resume.
+                logger.error("Archivist handoff failed for %s: %s",
+                             download_id, exc)
+                self._update_download_status(download_id, _Status.FAILED)
+                with self._engine.connect() as conn:
+                    conn.execute(text(
+                        "UPDATE downloads SET last_error = :err, "
+                        "last_error_at = :now, updated_at = :now "
+                        "WHERE id = :id"
+                    ), {"err": f"Archive handoff failed: {exc}",
+                        "now": _now_iso(), "id": download_id})
+                    conn.commit()
+                if group_id:
+                    derived = self._derive_group_status(group_id)
+                    self._update_group_status(group_id, derived)
+                self._schedule_next()
+                return
 
         # 4. Mark download COMPLETED, update group counters (single transaction)
         now = _now_iso()

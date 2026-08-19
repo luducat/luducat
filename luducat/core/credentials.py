@@ -110,7 +110,7 @@ class CredentialManager:
             return self._credentials_cache
 
         try:
-            with open(self._credentials_file, 'r') as f:
+            with open(self._credentials_file, 'r', encoding="utf-8") as f:
                 self._credentials_cache = json.load(f)
         except (json.JSONDecodeError, IOError) as e:
             logger.warning(f"Failed to load credentials file: {e}")
@@ -128,7 +128,7 @@ class CredentialManager:
             self._credentials_file.parent.mkdir(parents=True, exist_ok=True)
 
             # Write with restrictive permissions
-            with open(self._credentials_file, 'w') as f:
+            with open(self._credentials_file, 'w', encoding="utf-8") as f:
                 json.dump(self._credentials_cache, f, indent=2)
 
 

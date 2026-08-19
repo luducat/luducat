@@ -76,6 +76,12 @@ def setup_logging(debug: bool = False, log_file: Path = None) -> None:
     for handler in root_logger.handlers:
         handler.setLevel(level)
 
+    # asyncio's DEBUG output is event-loop internals ("Using selector:
+    # EpollSelector") emitted once per API call during library-scale
+    # scans -- thousands of lines with zero diagnostic value. urllib3
+    # stays at DEBUG; its request lines are the useful API trace.
+    logging.getLogger("asyncio").setLevel(logging.INFO)
+
     # Always write logs to a rotating file in config dir.
     # --log-file overrides the default path but keeps rotation.
     if log_file:
@@ -850,7 +856,7 @@ def main() -> int:
         help="Print application info and exit",
     )
 
-    subparsers = parser.add_subparsers(dest="command", help="Commands")
+    parser.add_subparsers(dest="command", help="Commands")
 
     # CLI subcommands disabled for initial release — kept for future use
     # subparsers.add_parser("plugins", help="List available plugins")

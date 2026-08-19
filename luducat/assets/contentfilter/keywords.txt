@@ -7,6 +7,11 @@
 # These stack with store_adult_baseline (0.50 for MangaGamer).
 # At baseline 0.50: +0.20 → combined 0.60 (threshold), +0.25 → 0.625
 
+# JAST USA tags adult products with an explicit NSFW taxon.
+# 0.55 stays just under the default threshold alone; the store
+# baseline (0.50) or any other signal pushes it over.
+genres:nsfw:+0.55
+
 genres:hardcore:+0.25
 genres:hentai:+0.40
 genres:erotic:+0.30

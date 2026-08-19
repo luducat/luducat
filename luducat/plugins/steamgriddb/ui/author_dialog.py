@@ -404,7 +404,7 @@ class AuthorScoreDialog(QDialog):
 
     def _refresh_icons(self) -> None:
         """Load/reload SVG icons with current palette colors."""
-        for btn, svg_name in zip(self._icon_buttons, self._ICON_NAMES):
+        for btn, svg_name in zip(self._icon_buttons, self._ICON_NAMES, strict=True):
             icon = load_tinted_icon(svg_name)
             if icon.isNull():
                 # Fallback text if SVG missing

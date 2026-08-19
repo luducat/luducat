@@ -1,7 +1,7 @@
 {
   "name": "steamgriddb",
   "display_name": "SteamGridDB",
-  "version": "1.7.3",
+  "version": "1.7.5",
   "author": "luducat",
   "description": "SteamGridDB metadata provider - community-sourced hero banners, covers, and logos",
   "min_luducat_version": "0.2.9.24",
@@ -112,7 +112,7 @@
       "cdn.steamgriddb.com"
     ],
     "rate_limits": {
-      "www.steamgriddb.com": {"requests": 5, "window": 1}
+      "www.steamgriddb.com": {"requests": 3, "window": 1}
     }
   },
 

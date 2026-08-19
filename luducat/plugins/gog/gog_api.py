@@ -23,10 +23,22 @@ _GOG_RATE_LIMIT_REQUESTS = 5
 _GOG_RATE_LIMIT_PERIOD = 1.0  # seconds
 
 # GOG API endpoints
-USER_DATA_URL = "https://www.gog.com/userData.json"
+_USER_DATA_BOOTSTRAP_URL = "https://www.gog.com/userData.json"
+_USER_PROFILE_URL = "https://users.gog.com/users"
 OWNED_GAMES_URL = "https://www.gog.com/user/data/games"
 ACCOUNT_URL = "https://www.gog.com/account/getFilteredProducts"
 PRODUCTS_API_URL = "https://api.gog.com/products"
+
+
+def _is_patch_downlink(downlink: str) -> bool:
+    """True when a GOG download id marks a patch, not a full installer.
+
+    GOG structures download ids as <lang><n>installer<m> or
+    <lang><n>patch<m>; the "patch" marker is what distinguishes a
+    delta patch mixed into the platform download list.
+    """
+    segment = downlink.rsplit("/", 1)[-1] if downlink else ""
+    return "patch" in segment.lower()
 _PRODUCTS_EXPAND = "downloads,expanded_dlcs,description,screenshots,videos,related_products,changelog"
 
 # GOG language names → ISO 639-1 codes
@@ -72,9 +84,19 @@ class GogApiClient:
         self.plugin = plugin
         self._http = http_client
         self._request_times: List[float] = []
+        # Cookies rotate only per browser session, not per request. A
+        # library-scale audit scan calls has_cookies + _build_cookie_header
+        # for every game; without this cache each call hit the keyring
+        # three times, and a flaky secret service ("failed to create the
+        # collection") dropped enough of those to fail games. None = not
+        # yet read; {} = read and empty (no keyring re-hit).
+        self._cookie_cache: Optional[Dict[str, str]] = None
 
     def _get_cookies(self) -> Dict[str, str]:
-        """Get stored cookies"""
+        """Get stored cookies, reading the keyring at most once per session."""
+        if self._cookie_cache is not None:
+            return self._cookie_cache
+
         cookies = {}
 
         # Get the main auth cookie
@@ -87,7 +109,16 @@ class GogApiClient:
         if gog_lc:
             cookies["gog_lc"] = gog_lc
 
+        self._cookie_cache = cookies
         return cookies
+
+    def invalidate_cookie_cache(self) -> None:
+        """Force the next cookie read to hit the keyring again.
+
+        Called when the browser session may have rotated the token so a
+        long-lived client picks up fresh credentials.
+        """
+        self._cookie_cache = None
 
     def store_cookies(self, cookies: Dict[str, str]) -> None:
         """Store authentication cookies
@@ -104,6 +135,10 @@ class GogApiClient:
         # Store timestamp
         self.plugin.set_credential("cookies_stored", str(int(time.time())))
 
+        # Keep the cache coherent with what we just persisted
+        self._cookie_cache = {
+            k: v for k, v in cookies.items() if k in ("gog-al", "gog_lc")
+        }
         logger.info("Stored GOG cookies")
 
     def clear_cookies(self) -> None:
@@ -111,11 +146,12 @@ class GogApiClient:
         self.plugin.delete_credential("gog_al")
         self.plugin.delete_credential("gog_lc")
         self.plugin.delete_credential("cookies_stored")
+        self._cookie_cache = {}
         logger.info("Cleared GOG cookies")
 
     def has_cookies(self) -> bool:
         """Check if we have stored cookies"""
-        return bool(self.plugin.get_credential("gog_al"))
+        return bool(self._get_cookies().get("gog-al"))
 
     def _build_cookie_header(self) -> str:
         """Build Cookie header from stored cookies"""
@@ -137,12 +173,15 @@ class GogApiClient:
                 time.sleep(sleep_time)
         self._request_times.append(time.time())
 
-    async def get_user_data(self) -> Optional[Dict[str, Any]]:
-        """Get authenticated user's profile data
+    def get_user_data(self, user_id: str) -> Optional[Dict[str, Any]]:
+        """Fetch user profile from users.gog.com.
 
-        Returns:
-            User data dict or None if request fails
+        Args:
+            user_id: GOG numeric user ID.
         """
+        if not user_id:
+            logger.error("No user_id provided for user data request")
+            return None
         if not self.has_cookies():
             logger.error("No cookies available for user data request")
             return None
@@ -155,24 +194,51 @@ class GogApiClient:
         try:
             self._rate_limit()
             response = self._http.get(
-                USER_DATA_URL, headers=headers, timeout=_GOG_TIMEOUT
+                f"{_USER_PROFILE_URL}/{user_id}",
+                headers=headers, timeout=_GOG_TIMEOUT,
             )
 
             if response.status_code != 200:
-                logger.error(f"Failed to get user data: {response.status_code}")
+                logger.error("Failed to get user data: %s", response.status_code)
                 return None
 
             data = response.json()
-            if data.get("isLoggedIn"):
-                logger.info(f"Got user data for: {data.get('username', 'unknown')}")
+            if data.get("id"):
+                logger.info("Got user data for: %s", data.get("username", "unknown"))
                 return data
-            else:
-                logger.warning("User data response shows not logged in")
-                return None
+            logger.warning("User data response has no id field")
+            return None
 
         except Exception as e:
-            logger.error(f"Error fetching user data: {e}")
+            logger.error("Error fetching user data: %s", e)
             return None
+
+    def get_user_data_by_cookie(self) -> Optional[Dict[str, Any]]:
+        """Discover user profile using only cookies.
+
+        Uses the old userData.json endpoint which returns userId
+        without requiring it as input. Kept as a bootstrap path
+        for first-time login before a user_id is stored.
+        """
+        if not self.has_cookies():
+            return None
+
+        headers = {
+            "Cookie": self._build_cookie_header(),
+            "User-Agent": USER_AGENT,
+        }
+
+        try:
+            self._rate_limit()
+            response = self._http.get(
+                _USER_DATA_BOOTSTRAP_URL,
+                headers=headers, timeout=_GOG_TIMEOUT,
+            )
+            if response.status_code == 200:
+                return response.json()
+        except Exception as e:
+            logger.error("Error in cookie-based user data fetch: %s", e)
+        return None
 
     async def get_owned_games(
         self,
@@ -257,13 +323,13 @@ class GogApiClient:
             raise GogApiError(f"Network error: {e}") from e
 
     async def verify_login(self) -> bool:
-        """Verify that the stored cookies are still valid
+        """Verify that the stored cookies are still valid.
 
-        Returns:
-            True if logged in, False otherwise
+        Uses the old userData.json endpoint which does not need a
+        user_id - only checks that the session cookie is accepted.
         """
-        user_data = await self.get_user_data()
-        return user_data is not None and user_data.get("isLoggedIn", False)
+        data = self.get_user_data_by_cookie()
+        return data is not None and data.get("isLoggedIn", False)
 
     # Keep old methods for compatibility (they now do nothing)
     async def exchange_code(self, auth_code: str, redirect_uri: str = None) -> Dict[str, Any]:
@@ -323,6 +389,15 @@ class GogApiClient:
                 raise GogApiError(f"Failed to get game details: {response.status_code}")
 
             data = response.json()
+
+            # Unowned/revoked products answer 200 with an empty list
+            # instead of the details dict -- a legitimate "no data",
+            # not a malformed response.
+            if not isinstance(data, dict) or not data:
+                logger.debug(
+                    "No game details for %s (not licensed on this account)",
+                    product_id)
+                return None
 
             # Parse the response into a normalized structure
             result = self._parse_game_details(data)
@@ -387,7 +462,7 @@ class GogApiClient:
                         continue
                     seen_ids.add(dedup_key)
 
-                    result["downloads"][mapped].append({
+                    entry = {
                         "id": file_id,
                         "name": f.get("name", "Installer"),
                         "platform": mapped,
@@ -395,7 +470,16 @@ class GogApiClient:
                         "size": f.get("size"),
                         "downlink": dl_url,
                         "language": lang_code,
-                    })
+                    }
+                    # GOG mixes patch files into the per-language download
+                    # list for some games (manualUrl .../<lang>NpatchM).
+                    # They must land in the patches bucket, or the
+                    # download_patches setting never gates them and a
+                    # missing scan over-downloads them as installers.
+                    if _is_patch_downlink(dl_url):
+                        result["downloads"]["patches"].append(entry)
+                    else:
+                        result["downloads"][mapped].append(entry)
 
         # --- extras: [{manualUrl, name, type, size}, ...] ---
         self._parse_extras(data.get("extras", []), result["extras"])
@@ -435,7 +519,7 @@ class GogApiClient:
                         name = f.get("name", "")
                         if not name or name == "DLC":
                             name = dlc_title
-                        result["downloads"][mapped].append({
+                        entry = {
                             "id": file_id,
                             "name": name,
                             "platform": mapped,
@@ -444,7 +528,11 @@ class GogApiClient:
                             "downlink": dl_url,
                             "language": lang_code,
                             "dlc_title": dlc_title,
-                        })
+                        }
+                        if _is_patch_downlink(dl_url):
+                            result["downloads"]["patches"].append(entry)
+                        else:
+                            result["downloads"][mapped].append(entry)
 
             # DLC extras — prefix name with DLC title for clarity
             dlc_extras = dlc.get("extras", [])

@@ -52,6 +52,7 @@ from PySide6.QtGui import QDesktopServices
 
 from ...utils.icons import load_tinted_icon
 from ...core.config import Config
+from ...core.path_safety import contained_path
 from ...core.constants import (
     APP_NAME,
     APP_VERSION,
@@ -1051,8 +1052,12 @@ class PluginsSettingsTab(QWidget):
     # plugin.json descriptions -- N_() marks for pybabel extraction.
     # The actual _() call happens at render time in _build_plugin_list().
     _PLUGIN_DESCRIPTIONS = [
+        N_("Amazon Games library integration"),
         N_("Epic library integration"),
         N_("GOG.com game library integration"),
+        N_("JAST USA library integration"),
+        N_("MangaGamer library integration"),
+        N_("ZOOM Platform library integration"),
         N_("Import tags and favourites from Heroic"),
         N_("IGDB metadata provider - comprehensive game data with normalized database storage"),
         N_("Import tags, favourites, playtime and hidden status from Lutris"),
@@ -2732,7 +2737,7 @@ class BackupSettingsTab(QWidget):
 
             def progress_callback(message: str, current: int, total: int) -> None:
                 if message.startswith("Backing up "):
-                    archive = message.replace("Backing up ", "").rstrip("...")
+                    archive = message.replace("Backing up ", "").rstrip(".")
                     cat = _archive_to_category(archive)
                     if cat != _last_category[0]:
                         _last_category[0] = cat
@@ -3065,11 +3070,35 @@ class BackupSettingsTab(QWidget):
                         elif name == "trust-state.json":
                             target = data_dir / "trust-state.json"
                         elif name.startswith("plugins/"):
-                            target = config_dir / name
+                            try:
+                                target = contained_path(config_dir, name)
+                            except ValueError:
+                                logger.warning(
+                                    "Skipping backup entry with unsafe path: %s",
+                                    name)
+                                current += 1
+                                progress_dialog.set_progress(current)
+                                continue
                         elif name.startswith("plugins-data/"):
-                            target = data_dir / name
+                            try:
+                                target = contained_path(data_dir, name)
+                            except ValueError:
+                                logger.warning(
+                                    "Skipping backup entry with unsafe path: %s",
+                                    name)
+                                current += 1
+                                progress_dialog.set_progress(current)
+                                continue
                         elif name.startswith("themes/"):
-                            target = config_dir / name
+                            try:
+                                target = contained_path(config_dir, name)
+                            except ValueError:
+                                logger.warning(
+                                    "Skipping backup entry with unsafe path: %s",
+                                    name)
+                                current += 1
+                                progress_dialog.set_progress(current)
+                                continue
                         else:
                             current += 1
                             progress_dialog.set_progress(current)
@@ -3093,7 +3122,15 @@ class BackupSettingsTab(QWidget):
                         with zipfile.ZipFile(assets_path, 'r') as azf:
                             for aname in azf.namelist():
                                 progress_dialog.set_item(aname)
-                                target = cache_dir / aname
+                                try:
+                                    target = contained_path(cache_dir, aname)
+                                except ValueError:
+                                    logger.warning(
+                                        "Skipping asset with unsafe path: %s",
+                                        aname)
+                                    current += 1
+                                    progress_dialog.set_progress(current)
+                                    continue
                                 target.parent.mkdir(parents=True, exist_ok=True)
                                 with azf.open(aname) as src, \
                                         open(target, 'wb') as dst:
@@ -5096,12 +5133,33 @@ class DownloadsSettingsTab(QWidget):
         self.combo_organization.addItem(_("By store (compact)"), "store-slug")
         self.combo_organization.addItem(_("By store (readable)"), "store-title")
         self.combo_organization.addItem(_("Flat"), "flat")
+        self.combo_organization.addItem(_("Custom..."), "custom")
         self.combo_organization.currentIndexChanged.connect(
             self._update_folder_preview)
         org_layout.addWidget(self.combo_organization)
 
+        from luducat.core.archivist.volume import (
+            CUSTOM_LAYOUT_VARIABLES, DEFAULT_CUSTOM_LAYOUT,
+        )
+        self.edit_custom_layout = QLineEdit()
+        self.edit_custom_layout.setPlaceholderText(DEFAULT_CUSTOM_LAYOUT)
+        variable_lines = "\n".join(
+            f"{token}  -  {_(doc)}" for token, doc in
+            CUSTOM_LAYOUT_VARIABLES.items())
+        self.edit_custom_layout.setToolTip(
+            _("Folder template below the base folder; the filename is "
+              "appended automatically. Available variables:")
+            + "\n\n" + variable_lines)
+        self.edit_custom_layout.textChanged.connect(
+            self._update_folder_preview)
+        self.edit_custom_layout.hide()
+        org_layout.addWidget(self.edit_custom_layout)
+
         self.lbl_folder_preview = QLabel()
         self.lbl_folder_preview.setObjectName("hintLabel")
+        self.lbl_folder_preview.setToolTip(
+            _("Example path. The base folder is the download folder "
+              "configured above."))
         org_layout.addWidget(self.lbl_folder_preview)
 
         form.addRow(_("Folder layout:"), org_container)
@@ -5125,6 +5183,37 @@ class DownloadsSettingsTab(QWidget):
         self.spin_bandwidth.setSuffix(" MB/s")
         self.spin_bandwidth.setSpecialValueText(_("Unlimited"))
         form.addRow(_("Bandwidth limit:"), self.spin_bandwidth)
+
+        # Row 5: Release identity display in the archive review dialog
+        self._cb_build_numbers = QCheckBox(
+            _("Show build numbers instead of versions"))
+        self._cb_build_numbers.setToolTip(
+            _("Archive review dialog: identify releases by GOG build id "
+              "(e.g. 15215). Dotted versions without a known build are "
+              "converted to a comparable number."))
+        form.addRow("", self._cb_build_numbers)
+
+        # Row 6: Details cache TTL
+        cache_row = QHBoxLayout()
+        self._spin_details_ttl = QDoubleSpinBox()
+        self._spin_details_ttl.setRange(0.25, 14.0)
+        self._spin_details_ttl.setDecimals(1)
+        self._spin_details_ttl.setSingleStep(0.5)
+        self._spin_details_ttl.setSuffix(" " + _("days"))
+        self._spin_details_ttl.setToolTip(
+            _("How long cached game details are reused before "
+              "re-checking the store API. Lower values catch updates "
+              "sooner but scan slower."))
+        cache_row.addWidget(self._spin_details_ttl)
+
+        self._btn_clear_details_cache = QPushButton(_("Clear cache"))
+        self._btn_clear_details_cache.setToolTip(
+            _("Force the next scan to re-fetch all game details"))
+        self._btn_clear_details_cache.clicked.connect(
+            self._clear_details_cache)
+        cache_row.addWidget(self._btn_clear_details_cache)
+        cache_row.addStretch()
+        form.addRow(_("Re-check game details:"), cache_row)
 
         layout.addWidget(group)
 
@@ -5181,6 +5270,13 @@ class DownloadsSettingsTab(QWidget):
               "\"all\" for any language."))
         lang_hint.setObjectName("hintLabel")
         lang_box.addWidget(lang_hint)
+
+        self._cb_patches = QCheckBox(_("Download patches"))
+        self._cb_patches.setToolTip(
+            _("Include patch files when selecting downloads. When off, "
+              "patches are neither pre-selected nor offered by the "
+              "archive update scan."))
+        lang_box.addWidget(self._cb_patches)
         lang_box.addStretch()
         pref_layout.addLayout(lang_box)
 
@@ -5216,18 +5312,32 @@ class DownloadsSettingsTab(QWidget):
         if idx >= 0:
             self.combo_organization.setCurrentIndex(idx)
 
+        from luducat.core.archivist.volume import DEFAULT_CUSTOM_LAYOUT
+        self.edit_custom_layout.setText(
+            self.config.get("downloads.custom_layout", DEFAULT_CUSTOM_LAYOUT))
+
         self.spin_concurrent.setValue(
             self.config.get("downloads.max_concurrent", 3))
         self.spin_bandwidth.setValue(
             self.config.get("downloads.bandwidth_limit_mbps", 0))
 
+        # "macos" is the legacy spelling from earlier settings versions;
+        # the pipeline matches on "mac"
         preferred_os = self.config.get("downloads.preferred_os", ["windows"])
         self._cb_windows.setChecked("windows" in preferred_os)
         self._cb_linux.setChecked("linux" in preferred_os)
-        self._cb_macos.setChecked("macos" in preferred_os)
+        self._cb_macos.setChecked(
+            "mac" in preferred_os or "macos" in preferred_os)
 
         preferred_langs = self.config.get("downloads.preferred_languages", ["all"])
         self._lang_input.setText(", ".join(preferred_langs))
+
+        self._cb_patches.setChecked(
+            bool(self.config.get("downloads.download_patches", True)))
+        self._cb_build_numbers.setChecked(
+            bool(self.config.get("downloads.show_build_numbers", False)))
+        self._spin_details_ttl.setValue(
+            float(self.config.get("downloads.details_cache_ttl_days", 3.0)))
 
         self._update_folder_preview()
 
@@ -5238,8 +5348,20 @@ class DownloadsSettingsTab(QWidget):
         else:
             self.config.set("downloads.archive_path", current_path)
 
-        self.config.set("downloads.folder_organization",
-                        self.combo_organization.currentData())
+        from luducat.core.archivist.volume import validate_custom_layout
+        org = self.combo_organization.currentData()
+        template = self.edit_custom_layout.text().strip()
+        if org == "custom":
+            if validate_custom_layout(template) is None:
+                self.config.set("downloads.custom_layout", template)
+            else:
+                # Invalid template never reaches the config; keep the
+                # previous organization instead of breaking downloads
+                org = self.config.get(
+                    "downloads.folder_organization", "store-slug")
+                if org == "custom":
+                    org = "store-slug"
+        self.config.set("downloads.folder_organization", org)
         self.config.set("downloads.max_concurrent",
                         self.spin_concurrent.value())
         self.config.set("downloads.bandwidth_limit_mbps",
@@ -5251,7 +5373,7 @@ class DownloadsSettingsTab(QWidget):
         if self._cb_linux.isChecked():
             os_list.append("linux")
         if self._cb_macos.isChecked():
-            os_list.append("macos")
+            os_list.append("mac")
         self.config.set("downloads.preferred_os", os_list or ["windows"])
 
         raw_langs = self._lang_input.text().strip()
@@ -5263,6 +5385,12 @@ class DownloadsSettingsTab(QWidget):
                 if code.strip()
             ))
         self.config.set("downloads.preferred_languages", lang_list or ["all"])
+        self.config.set("downloads.download_patches",
+                        self._cb_patches.isChecked())
+        self.config.set("downloads.show_build_numbers",
+                        self._cb_build_numbers.isChecked())
+        self.config.set("downloads.details_cache_ttl_days",
+                        self._spin_details_ttl.value())
 
     def reset_to_defaults(self) -> None:
         self.path_edit.setText(self._default_archive_path)
@@ -5273,6 +5401,9 @@ class DownloadsSettingsTab(QWidget):
         self.spin_bandwidth.setValue(0)
         self._reset_os()
         self._reset_lang()
+        self._cb_patches.setChecked(True)
+        self._cb_build_numbers.setChecked(False)
+        self._spin_details_ttl.setValue(3.0)
         self._update_folder_preview()
 
     def _browse_folder(self) -> None:
@@ -5282,17 +5413,59 @@ class DownloadsSettingsTab(QWidget):
         if folder:
             self.path_edit.setText(folder)
 
+    def _clear_details_cache(self) -> None:
+        from ...core.config import get_data_dir
+        from sqlalchemy import create_engine, text
+        db_path = get_data_dir() / "games.db"
+        if not db_path.exists():
+            return
+        engine = create_engine(f"sqlite:///{db_path}")
+        try:
+            with engine.connect() as conn:
+                tables = {
+                    r[0] for r in conn.execute(
+                        text("SELECT name FROM sqlite_master "
+                             "WHERE type='table'")
+                    ).fetchall()
+                }
+                if "game_details_cache" in tables:
+                    conn.execute(text("DELETE FROM game_details_cache"))
+                    conn.commit()
+        finally:
+            engine.dispose()
+        self._btn_clear_details_cache.setText(_("Cleared"))
+        self._btn_clear_details_cache.setEnabled(False)
+
     def _reset_path(self) -> None:
         self.path_edit.setText(self._default_archive_path)
 
     def _update_folder_preview(self) -> None:
+        from luducat.core.archivist.volume import (
+            render_custom_layout, validate_custom_layout,
+        )
         org = self.combo_organization.currentData()
+        self.edit_custom_layout.setVisible(org == "custom")
+
+        base = "[" + _("base folder") + "]"
+        filename = "setup_baldurs_gate_3.exe"
         if org == "store-slug":
-            preview = "archive/gog/baldurs-gate-3/setup_baldurs_gate_3.exe"
+            preview = f"{base}/gog/baldurs_gate_3/{filename}"
         elif org == "store-title":
-            preview = "archive/gog/Baldur’s Gate 3/setup_baldurs_gate_3.exe"
+            preview = f"{base}/gog/Baldur’s Gate 3/{filename}"
+        elif org == "custom":
+            template = self.edit_custom_layout.text().strip()
+            error = validate_custom_layout(template)
+            if error:
+                self.lbl_folder_preview.setText(_("Invalid: {error}").format(
+                    error=error))
+                self.lbl_folder_preview.setStyleSheet("color: red;")
+                return
+            rendered = render_custom_layout(
+                template, "gog", "1456460669", "Baldur's Gate 3")
+            preview = f"{base}/{rendered}/{filename}"
         else:
-            preview = "archive/setup_baldurs_gate_3.exe"
+            preview = f"{base}/{filename}"
+        self.lbl_folder_preview.setStyleSheet("")
         self.lbl_folder_preview.setText(preview)
 
 

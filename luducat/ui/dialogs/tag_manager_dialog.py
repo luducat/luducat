@@ -885,7 +885,7 @@ class TagManagerDialog(QDialog):
     def _refresh_icons(self) -> None:
         """Load/reload SVG icons with current palette colors."""
         fallbacks = ["\u2212", "\u270e", "+", "\u25b2", "0", "\u25bc"]
-        for btn, svg_name, fb in zip(self._icon_buttons, self._ICON_NAMES, fallbacks):
+        for btn, svg_name, fb in zip(self._icon_buttons, self._ICON_NAMES, fallbacks, strict=True):
             icon = load_tinted_icon(svg_name)
             if icon.isNull():
                 btn.setText(fb)

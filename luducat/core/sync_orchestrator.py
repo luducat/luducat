@@ -393,7 +393,16 @@ class SyncOrchestrator:
             bulk_meta = plugin.get_games_metadata_bulk(new_ids)
         except Exception as e:
             logger.error(f"Skeleton bulk metadata failed for {store_name}: {e}")
-            return 0
+            bulk_meta = {}
+
+        # Gap-filler games may not be in the plugin DB yet. Pull names
+        # from the type cache so they still get a skeleton row and stop
+        # reappearing as "new" every sync.
+        missing = [aid for aid in new_ids if aid not in bulk_meta]
+        if missing and hasattr(plugin, "get_gap_filler_names"):
+            gap_names = plugin.get_gap_filler_names(missing)
+            for aid, title in gap_names.items():
+                bulk_meta[aid] = {"title": title}
 
         if not bulk_meta:
             return 0

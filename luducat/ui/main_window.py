@@ -28,6 +28,7 @@ from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
     QDialog,
+    QHBoxLayout,
     QMainWindow,
     QProgressDialog,
     QWidget,
@@ -75,6 +76,7 @@ from .filter_bar import FilterBar
 from .game_list import GameList
 from .content_area import ContentArea
 from .status_bar import StatusBar
+from .sidebar_handle import SidebarHandle
 from .sync_widget import SyncWidget
 from .dialogs import (
     AboutDialog, SettingsDialog, PluginConfigDialog,
@@ -337,6 +339,10 @@ class MainWindow(QMainWindow):
 
         layout.addWidget(self.nav_bar)
 
+        self._sidebar_handle = SidebarHandle()
+        self._sidebar_handle.setVisible(False)
+        self._sidebar_handle.double_clicked.connect(self._toggle_sidebar)
+
         # Main content area with splitter
         self.splitter = QSplitter(Qt.Orientation.Horizontal)
         self.splitter.setObjectName("mainSplitter")
@@ -366,8 +372,18 @@ class MainWindow(QMainWindow):
         self.splitter.setStretchFactor(1, 1)  # Content area stretches
         self.splitter.setCollapsible(0, False)  # Can't collapse game list
         self.splitter.setCollapsible(1, False)  # Can't collapse content
+        self.splitter.setHandleWidth(SidebarHandle.HANDLE_WIDTH)
+        self.splitter.handle(1).installEventFilter(self)
 
-        layout.addWidget(self.splitter, 1)  # Takes remaining space
+        content_wrapper = QWidget()
+        content_wrapper.setObjectName("contentWrapper")
+        content_hlayout = QHBoxLayout(content_wrapper)
+        content_hlayout.setContentsMargins(0, 0, 0, 0)
+        content_hlayout.setSpacing(0)
+        content_hlayout.addWidget(self._sidebar_handle)
+        content_hlayout.addWidget(self.splitter, 1)
+
+        layout.addWidget(content_wrapper, 1)
 
         # Sync widget (visible only during sync, above status bar)
         self._sync_widget = SyncWidget()
@@ -648,10 +664,12 @@ class MainWindow(QMainWindow):
 
         self.config.set("ui.window_maximized", self.isMaximized())
 
-        # Splitter position
-        sizes = self.splitter.sizes()
-        if sizes:
-            self.config.set("ui.list_panel_width", sizes[0])
+        # Splitter position (only when sidebar is visible - hidden panels
+        # report zero width, which would break restore)
+        if self.game_list.isVisible():
+            sizes = self.splitter.sizes()
+            if sizes and sizes[0] > 0:
+                self.config.set("ui.list_panel_width", sizes[0])
 
         # About splitter (metadata panel width)
         about_sizes = self.content_area.list_view.about_splitter.sizes()
@@ -694,8 +712,7 @@ class MainWindow(QMainWindow):
         # Update content area
         self.content_area.set_view_mode(mode)
 
-        # Detail view mode always shows game list
-        self.game_list.setVisible(True)
+        self._apply_sidebar_for_view(mode)
 
         # Show/hide density slider based on view mode (status bar always visible)
         if mode in (VIEW_MODE_COVER, VIEW_MODE_SCREENSHOT):
@@ -711,6 +728,41 @@ class MainWindow(QMainWindow):
 
         # Emit signal
         self.view_mode_changed.emit(mode)
+
+    def eventFilter(self, obj, event):
+        if (obj is self.splitter.handle(1)
+                and event.type() == event.Type.MouseButtonDblClick
+                and event.button() == Qt.MouseButton.LeftButton):
+            self._collapse_sidebar()
+            return True
+        return super().eventFilter(obj, event)
+
+    def _toggle_sidebar(self) -> None:
+        if self.game_list.isVisible():
+            self._collapse_sidebar()
+        else:
+            self._expand_sidebar()
+
+    def _collapse_sidebar(self) -> None:
+        self.game_list.setVisible(False)
+        self._sidebar_handle.setVisible(True)
+        mode = self.content_area.current_view_mode()
+        self.config.set(f"ui.sidebar_collapsed_{mode}", True)
+
+    def _expand_sidebar(self) -> None:
+        self._sidebar_handle.setVisible(False)
+        self.game_list.setVisible(True)
+        mode = self.content_area.current_view_mode()
+        self.config.set(f"ui.sidebar_collapsed_{mode}", False)
+
+    def _apply_sidebar_for_view(self, mode: str) -> None:
+        collapsed = self.config.get(f"ui.sidebar_collapsed_{mode}", False)
+        if collapsed:
+            self.game_list.setVisible(False)
+            self._sidebar_handle.setVisible(True)
+        else:
+            self._sidebar_handle.setVisible(False)
+            self.game_list.setVisible(True)
 
     def _on_density_changed(self, density: int) -> None:
         """Handle density slider change - save per-view and apply
@@ -1918,6 +1970,9 @@ class MainWindow(QMainWindow):
     def _register_download_handlers(self) -> None:
         """Register store download handlers for all active store plugins."""
         from luducat.core.download_handlers import register
+        from luducat.core.download_handlers.declarative import (
+            register_declarative_handlers,
+        )
         from luducat.core.download_handlers.gog import GogDownloadHandler
 
         gog = self.plugin_manager.get_plugin("gog")
@@ -1928,6 +1983,10 @@ class MainWindow(QMainWindow):
                 logger.debug("Registered GOG download handler")
             except ValueError:
                 pass  # Already registered (e.g. reload)
+
+        count = register_declarative_handlers(self.plugin_manager)
+        if count:
+            logger.debug("Registered %d declarative download handlers", count)
 
     def closeEvent(self, event) -> None:
         """Handle window close"""
@@ -2873,7 +2932,7 @@ class MainWindow(QMainWindow):
         def run_backup():
             def progress_cb(message, current, total):
                 if message.startswith("Backing up "):
-                    name = message.replace("Backing up ", "").rstrip("...")
+                    name = message.replace("Backing up ", "").rstrip(".")
                     progress.set_item(name)
                 elif message.startswith("Writing metadata"):
                     progress.set_item(_("Writing metadata..."))
@@ -3181,16 +3240,15 @@ class MainWindow(QMainWindow):
     # === Metadata-only sync ===
 
     def _update_store_sync_menu(self) -> None:
-        """Populate the toolbar sync menu with explicitly enabled stores."""
-        plugins_config = self.config.get("plugins", {})
-        all_stores = self.game_service.get_store_info()
+        """Populate the toolbar sync menu with enabled store plugins.
 
-        sync_stores = [
-            (name, display, auth)
-            for name, display, auth in all_stores
-            if plugins_config.get(name, {}).get("enabled", False)
-        ]
-        self.toolbar.update_sync_stores(sync_stores)
+        get_store_info() already filters by the plugin manager's enabled
+        state (missing config key = enabled, explicit false = disabled).
+        No second config check here: re-reading the raw key with the
+        opposite default made a store with a bare config section show as
+        enabled in the plugin manager yet vanish from this menu.
+        """
+        self.toolbar.update_sync_stores(self.game_service.get_store_info())
 
     def _update_metadata_sync_menu(self) -> None:
         """Populate the toolbar sync menu with active metadata plugins.
@@ -3556,8 +3614,9 @@ class MainWindow(QMainWindow):
             dict(PluginManager._badge_labels),
         )
         if self.theme_manager:
-            delegate.set_download_colors(
-                self.theme_manager.get_download_colors())
+            colors = self.theme_manager.get_download_colors()
+            delegate.set_download_colors(colors)
+            self._download_window.set_download_status_colors(colors)
 
     def _on_about_requested(self) -> None:
         """Handle about button click"""

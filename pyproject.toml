@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "luducat"
-version = "0.8.3"
+version = "0.8.5"
 description = "Cross-platform game catalogue browser"
 readme = "README.md"
 license = {text = "GPL-3.0-or-later"}
@@ -79,7 +79,7 @@ where = ["."]
 include = ["luducat*"]
 
 [tool.setuptools.package-data]
-"luducat" = ["assets/**/*.png", "assets/**/*.svg", "assets/**/*.ico", "assets/**/*.icns", "assets/**/*.qss", "assets/**/*.json", "assets/**/*.txt", "assets/locale/**/*.po", "assets/locale/**/*.mo", "assets/locale/**/*.pot"]
+"luducat" = ["assets/**/*.png", "assets/**/*.svg", "assets/**/*.ico", "assets/**/*.icns", "assets/**/*.qss", "assets/**/*.json", "assets/**/*.txt", "assets/**/*.luducat-theme", "assets/locale/**/*.po", "assets/locale/**/*.mo", "assets/locale/**/*.pot"]
 "luducat.plugins" = ["*/plugin.json", "*/icon.png"]
 "luducat.plugins.runners" = ["*/plugin.json"]
 "luducat.plugins.platforms" = ["*/plugin.json"]

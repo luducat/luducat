@@ -1242,6 +1242,19 @@ Portions of the Epic Games Store plugin (epic_api.py, epic_session.py, store.py)
 adapt OAuth session management and direct API client patterns from Legendary.
 Source files carry per-file attribution headers.
 
+--------------------------------------------------------------------------------
+Nile
+--------------------------------------------------------------------------------
+License: GPLv3
+Homepage: https://github.com/imLinguin/nile
+Author: imLinguin and Nile contributors
+License URL: https://raw.githubusercontent.com/imLinguin/nile/main/LICENSE
+
+The Amazon Games plugin implements the Amazon device-registration auth and
+Animus distribution protocol as documented from Nile (clean-room, from
+analysis notes). Endpoint constants and request field names are functional
+facts of the Amazon API. Source files carry per-file attribution headers.
+
 ================================================================================
 END OF THIRD PARTY LICENSES
 ================================================================================

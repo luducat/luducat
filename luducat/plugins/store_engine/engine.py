@@ -357,7 +357,7 @@ def absolutize_html_urls(html: str, base_url: str) -> str:
 
 
 def apply_field_spec(value: Any, spec: dict) -> Any:
-    """Apply field specification (filter, first, prefix, regex, transform, wrap_array).
+    """Apply field specification (filter, first, prefix, regex, transform, exclude, wrap_array).
 
     Args:
         value: Raw extracted value
@@ -403,6 +403,18 @@ def apply_field_spec(value: Any, spec: dict) -> Any:
     transform = spec.get("transform")
     if transform:
         value = apply_transform(value, transform)
+
+    # Exclude unwanted list values (case-insensitive) — e.g. language
+    # and platform taxons mixed into a store's genre taxonomy
+    exclude = spec.get("exclude")
+    if exclude and isinstance(value, list):
+        excluded = {str(e).lower() for e in exclude}
+        value = [
+            v for v in value
+            if not (isinstance(v, str) and v.lower() in excluded)
+        ]
+        if not value:
+            return None
 
     # Wrap scalar in array
     if spec.get("wrap_array") and not isinstance(value, list):

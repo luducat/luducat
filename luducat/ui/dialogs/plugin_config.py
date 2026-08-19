@@ -1121,7 +1121,7 @@ class PluginConfigDialog(QDialog):
             pjson_path = self.metadata.plugin_dir / "plugin.json"
             if pjson_path.exists():
                 try:
-                    with open(pjson_path, "r") as f:
+                    with open(pjson_path, "r", encoding="utf-8") as f:
                         pjson = json.load(f)
                     helper_tool = pjson.get("helper_tool")
                 except Exception:

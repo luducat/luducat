@@ -51,14 +51,27 @@ class ArchivistManager:
         engine: "Engine",
         base_path: Path,
         organization: str = "store-slug",
+        custom_layout: Optional[str] = None,
     ) -> None:
         from luducat.core.archivist.volume import VolumeManager
 
         self._engine = engine
-        self.volume = VolumeManager(base_path=base_path, organization=organization)
+        self.volume = VolumeManager(
+            base_path=base_path, organization=organization,
+            custom_layout=custom_layout)
 
     def add_entry(self, entry: ArchiveEntry) -> None:
         """Insert an archive entry into the manifest."""
+        self.add_entries([entry])
+
+    def add_entries(self, entries: list[ArchiveEntry]) -> None:
+        """Insert archive entries in one transaction.
+
+        Adoption commits tens of thousands of rows; per-row commits
+        would turn that into minutes of fsync traffic.
+        """
+        if not entries:
+            return
         with self._engine.connect() as conn:
             conn.execute(
                 text("""
@@ -74,22 +87,25 @@ class ArchivistManager:
                         :downloaded_at, :verified_at, :metadata_json
                     )
                 """),
-                {
-                    "id": entry.id,
-                    "archive_type": entry.archive_type.value,
-                    "store_name": entry.store_name,
-                    "store_app_id": entry.store_app_id,
-                    "filename": entry.filename,
-                    "relative_path": entry.relative_path,
-                    "size_bytes": entry.size_bytes,
-                    "checksum_sha256": entry.checksum_sha256,
-                    "version": entry.version,
-                    "original_download_url": entry.original_download_url,
-                    "remote_timestamp": _dt_to_str(entry.remote_timestamp),
-                    "downloaded_at": _dt_to_str(entry.downloaded_at),
-                    "verified_at": _dt_to_str(entry.verified_at),
-                    "metadata_json": json.dumps(entry.metadata) if entry.metadata else None,
-                },
+                [
+                    {
+                        "id": entry.id,
+                        "archive_type": entry.archive_type.value,
+                        "store_name": entry.store_name,
+                        "store_app_id": entry.store_app_id,
+                        "filename": entry.filename,
+                        "relative_path": entry.relative_path,
+                        "size_bytes": entry.size_bytes,
+                        "checksum_sha256": entry.checksum_sha256,
+                        "version": entry.version,
+                        "original_download_url": entry.original_download_url,
+                        "remote_timestamp": _dt_to_str(entry.remote_timestamp),
+                        "downloaded_at": _dt_to_str(entry.downloaded_at),
+                        "verified_at": _dt_to_str(entry.verified_at),
+                        "metadata_json": json.dumps(entry.metadata) if entry.metadata else None,
+                    }
+                    for entry in entries
+                ],
             )
             conn.commit()
 

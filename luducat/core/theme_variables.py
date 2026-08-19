@@ -73,6 +73,7 @@ THEME_VARIABLES: List[Tuple[str, str, str]] = [
     ("download_completed", "Download progress bar color for completed status", "#4caf50"),
     ("download_failed", "Download progress bar color for failed status", "#f44336"),
     ("download_paused", "Download progress bar color for paused status", "#ff9800"),
+    ("download_outdated", "Outdated-installer row color in the archive audit review", "#2196f3"),
 
     # === Score Colors (tag score, author score dialogs) ===
     ("score_positive", "Positive score tint color (green)", "#28b43c"),

@@ -32,8 +32,10 @@ from PySide6.QtWidgets import (
     QListView,
     QMenu,
     QMessageBox,
+    QProgressBar,
     QPushButton,
     QStyle,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -52,8 +54,10 @@ logger = logging.getLogger(__name__)
 
 try:
     _("")
+    ngettext("", "", 1)
 except NameError:
     def _(s): return s
+    def ngettext(s, p, n): return s if n == 1 else p
 
 
 POLL_INTERVAL_MS = 500
@@ -232,6 +236,8 @@ class DownloadWindow(QWidget):
         super().__init__(parent, Qt.WindowType.Window)
         self._config = config
         self._resolve_worker = None
+        self._audit_worker = None
+        self._status_colors: dict = {}
 
         self.setWindowTitle(_("{app} Downloader").format(app=APP_NAME))
         self.setMinimumWidth(380)
@@ -336,6 +342,81 @@ class DownloadWindow(QWidget):
         ctrl.addWidget(self._btn_pin)
         content.addLayout(ctrl)
 
+        # 2b. Archive audit row: scan buttons, inline progress, results badge
+        audit_row = QHBoxLayout()
+        audit_row.setSpacing(6)
+        audit_row.setContentsMargins(0, 0, 0, 0)
+
+        self._btn_check_updates = QPushButton(_("Check updates"))
+        self._btn_check_updates.setToolTip(
+            _("Compare archived GOG installers against current versions"))
+        self._btn_check_updates.clicked.connect(
+            lambda: self._start_audit_scan("update"))
+        audit_row.addWidget(self._btn_check_updates)
+
+        self._btn_find_missing = QPushButton(_("Find missing"))
+        self._btn_find_missing.setToolTip(
+            _("List owned GOG games with nothing in the archive yet"))
+        self._btn_find_missing.clicked.connect(
+            lambda: self._start_audit_scan("missing"))
+        audit_row.addWidget(self._btn_find_missing)
+
+        self._btn_adopt_archive = QPushButton(_("Adopt archive..."))
+        self._btn_adopt_archive.setToolTip(
+            _("Index installers already in your archive folder so the "
+              "scans know about them"))
+        self._btn_adopt_archive.clicked.connect(self._open_adoption_dialog)
+        audit_row.addWidget(self._btn_adopt_archive)
+
+        # Bar text carries the per-game status; done/total drive the bar
+        # itself, so QProgressBar's own % placeholders are never used.
+        self._audit_progress = QProgressBar()
+        self._audit_progress.setTextVisible(True)
+        self._audit_progress.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        btn_h = self._btn_check_updates.sizeHint().height()
+        self._audit_progress.setFixedHeight(btn_h)
+        self._audit_progress.hide()
+        audit_row.addWidget(self._audit_progress, 1)
+
+        # Results badges: icon + count, themed via tinted icons instead of
+        # rich-text links (link color does not follow theme switches).
+        # The stretchable progress bar before them keeps both badges
+        # right-justified in the row.
+        self._badge_updates = QToolButton()
+        self._badge_updates.setObjectName("auditBadge")
+        self._badge_updates.setAutoRaise(True)
+        self._badge_updates.setToolButtonStyle(
+            Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        self._badge_updates.setToolTip(
+            _("Archived games with updated installers on GOG. "
+              "Click to review and download."))
+        self._badge_updates.clicked.connect(
+            lambda: self._open_audit_results("update"))
+        self._badge_updates.hide()
+        audit_row.addWidget(self._badge_updates)
+
+        self._badge_missing = QToolButton()
+        self._badge_missing.setObjectName("auditBadge")
+        self._badge_missing.setAutoRaise(True)
+        self._badge_missing.setToolButtonStyle(
+            Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        self._badge_missing.setToolTip(
+            _("Owned GOG games with nothing in the archive yet. "
+              "Click to review and download."))
+        self._badge_missing.clicked.connect(
+            lambda: self._open_audit_results("missing"))
+        self._badge_missing.hide()
+        audit_row.addWidget(self._badge_missing)
+
+        self._btn_audit_cancel = QPushButton(_("Cancel"))
+        self._btn_audit_cancel.setToolTip(
+            _("Stop the running scan (partial results are kept)"))
+        self._btn_audit_cancel.clicked.connect(self._on_audit_cancel)
+        self._btn_audit_cancel.hide()
+        audit_row.addWidget(self._btn_audit_cancel)
+
+        content.addLayout(audit_row)
+
         # 3. Download list
         self._model = DownloadListModel()
         self._delegate = GameRowDelegate()
@@ -393,6 +474,8 @@ class DownloadWindow(QWidget):
         self._list_view.selectionModel().currentChanged.connect(
             self._update_button_states)
         self._update_button_states()
+        self._update_audit_buttons()
+        self._refresh_audit_badge()
 
     # -- Geometry persistence --
 
@@ -441,12 +524,276 @@ class DownloadWindow(QWidget):
         self.show()
         self._config.set("downloads.window_on_top", checked)
 
+    # -- Archive audit scans --
+
+    def _audit_handler(self):
+        """First registered handler that supports audit scans, or None."""
+        from luducat.core.download_handlers import get_all_handlers
+        for handler in get_all_handlers():
+            if getattr(handler, "supports_audit", False):
+                return handler
+        return None
+
+    def _update_audit_buttons(self) -> None:
+        available = self._audit_handler() is not None
+        scanning = self._audit_worker is not None
+        for btn in (self._btn_check_updates, self._btn_find_missing):
+            btn.setVisible(available)
+            btn.setEnabled(available and not scanning)
+        adoptable = self._adoption_handler() is not None
+        self._btn_adopt_archive.setVisible(adoptable)
+        self._btn_adopt_archive.setEnabled(adoptable and not scanning)
+
+    def _adoption_handler(self):
+        """First registered handler that supports archive adoption, or None."""
+        from luducat.core.download_handlers import get_all_handlers
+        for handler in get_all_handlers():
+            if getattr(handler, "supports_adoption", False):
+                return handler
+        return None
+
+    def _open_adoption_dialog(self) -> None:
+        handler = self._adoption_handler()
+        if handler is None:
+            return
+        try:
+            dm = get_download_manager()
+        except RuntimeError:
+            return
+
+        from luducat.ui.dialogs.archive_adoption import ArchiveAdoptionDialog
+        dialog = ArchiveAdoptionDialog(
+            config=self._config, engine=dm.engine, handler=handler,
+            parent=self)
+        # Freshly adopted rows change what both scans would report;
+        # stored results keep their badge but a rescan is the honest
+        # next step, so at least recompute the badge counts.
+        dialog.adopted.connect(lambda _n: self._refresh_audit_badge())
+        dialog.exec()
+
+    def _start_audit_scan(self, kind: str) -> None:
+        if self._audit_worker is not None:
+            return
+        handler = self._audit_handler()
+        if handler is None:
+            return
+        try:
+            dm = get_download_manager()
+        except RuntimeError:
+            return
+
+        from luducat.ui.workers.audit_worker import AuditWorker
+        worker = AuditWorker(
+            kind=kind, engine=dm.engine, handler=handler,
+            config=self._config, parent=self)
+        worker.progress.connect(self._on_audit_progress)
+        worker.completed.connect(self._on_audit_completed)
+        worker.failed.connect(self._on_audit_failed)
+        worker.finished.connect(self._on_audit_done)
+        worker.finished.connect(worker.deleteLater)
+        self._audit_worker = worker
+
+        self._badge_updates.hide()
+        self._badge_missing.hide()
+        # 0/1 keeps the bar empty but the text visible; the first
+        # progress signal brings the real total
+        self._audit_progress.setRange(0, 1)
+        self._audit_progress.setValue(0)
+        self._audit_progress.setFormat(_("Preparing scan..."))
+        self._audit_progress.show()
+        self._btn_audit_cancel.show()
+        self._btn_audit_cancel.setEnabled(True)
+        self._update_audit_buttons()
+        worker.start()
+
+    def _on_audit_cancel(self) -> None:
+        if self._audit_worker is not None:
+            self._audit_worker.cancel()
+            self._btn_audit_cancel.setEnabled(False)
+            self._audit_progress.setFormat(_("Cancelling..."))
+
+    def _on_audit_progress(self, done: int, total: int, title: str) -> None:
+        if self._audit_progress.maximum() != total:
+            self._audit_progress.setRange(0, max(total, 1))
+        self._audit_progress.setValue(done)
+        # done/total are baked into the text; QProgressBar's own %v/%m
+        # placeholders stay out of the format (no %% escape exists, so a
+        # "%" in a game title must pass through untouched). Long titles
+        # are elided to the bar width -- QProgressBar wraps overflowing
+        # text instead of clipping it.
+        text = _("Checking {done}/{total}: {title}").format(
+            done=done, total=total, title=title)
+        metrics = self._audit_progress.fontMetrics()
+        avail = max(200, self._audit_progress.width() - 8)
+        self._audit_progress.setFormat(
+            metrics.elidedText(text, Qt.TextElideMode.ElideRight, avail))
+
+    def _on_audit_completed(self, candidates: list, errors: list) -> None:
+        kind = self._audit_worker.kind if self._audit_worker else "update"
+        cancelled = (self._audit_worker.is_cancelled()
+                     if self._audit_worker else False)
+        self._refresh_audit_badge()
+
+        if cancelled:
+            # A cancelled scan must not surprise with dialogs -- partial
+            # results stay reachable through the badge.
+            return
+
+        if errors:
+            shown = "\n".join(errors[:10])
+            if len(errors) > 10:
+                shown += "\n" + _("... and {n} more").format(n=len(errors) - 10)
+            QMessageBox.warning(
+                self,
+                _("Archive scan"),
+                ngettext("{n} game could not be checked:",
+                         "{n} games could not be checked:",
+                         len(errors)).format(n=len(errors)) + "\n\n" + shown,
+            )
+
+        if candidates:
+            self._show_audit_review(candidates, kind)
+        elif not errors:
+            if kind == "update":
+                msg = _("All archived GOG installers are up to date.")
+            else:
+                msg = _("Every owned GOG game already has files in the archive.")
+            QMessageBox.information(self, _("Archive scan"), msg)
+
+    def _on_audit_failed(self, message: str) -> None:
+        QMessageBox.warning(self, _("Archive scan"), message)
+
+    def _on_audit_done(self) -> None:
+        self._audit_worker = None
+        self._audit_progress.hide()
+        self._btn_audit_cancel.hide()
+        self._update_audit_buttons()
+
+    def _refresh_audit_badge(self) -> None:
+        handler = self._audit_handler()
+        if handler is None:
+            self._badge_updates.hide()
+            self._badge_missing.hide()
+            return
+        try:
+            dm = get_download_manager()
+        except RuntimeError:
+            self._badge_updates.hide()
+            self._badge_missing.hide()
+            return
+
+        from luducat.core.archivist.audit import (
+            load_results,
+            prune_stale_results,
+            scan_preferences_stale,
+        )
+
+        # Files downloaded since the scan drop out of the counts here --
+        # a DB-only recheck against the manifest, no store traffic
+        for kind in ("update", "missing"):
+            prune_stale_results(dm.engine, handler.store_name, kind)
+
+        stale_hint = _("Scanned with different download settings - "
+                       "rescan to refresh.")
+
+        n_updates = len(load_results(dm.engine, handler.store_name, "update"))
+        if n_updates:
+            self._badge_updates.setIcon(load_tinted_icon("reload.svg", size=16))
+            self._badge_updates.setText(str(n_updates))
+            tooltip = ngettext(
+                "{n} archived game has an updated installer on GOG."
+                " Click to review and download.",
+                "{n} archived games have updated installers on GOG."
+                " Click to review and download.",
+                n_updates).format(n=n_updates)
+            if scan_preferences_stale(
+                    dm.engine, handler.store_name, "update", self._config):
+                tooltip += "\n" + stale_hint
+            self._badge_updates.setToolTip(tooltip)
+            self._badge_updates.show()
+        else:
+            self._badge_updates.hide()
+
+        n_missing = len(load_results(dm.engine, handler.store_name, "missing"))
+        if n_missing:
+            self._badge_missing.setIcon(
+                load_tinted_icon("folder-move.svg", size=16))
+            self._badge_missing.setText(str(n_missing))
+            tooltip = ngettext(
+                "{n} owned game has nothing in the archive yet."
+                " Click to review and download.",
+                "{n} owned games have nothing in the archive yet."
+                " Click to review and download.",
+                n_missing).format(n=n_missing)
+            if scan_preferences_stale(
+                    dm.engine, handler.store_name, "missing", self._config):
+                tooltip += "\n" + stale_hint
+            self._badge_missing.setToolTip(tooltip)
+            self._badge_missing.show()
+        else:
+            self._badge_missing.hide()
+
+    def _open_audit_results(self, kind: str) -> None:
+        if kind not in ("update", "missing"):
+            return
+        handler = self._audit_handler()
+        if handler is None:
+            return
+        try:
+            dm = get_download_manager()
+        except RuntimeError:
+            return
+        from luducat.core.archivist.audit import load_results
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            candidates = load_results(dm.engine, handler.store_name, kind)
+        finally:
+            QApplication.restoreOverrideCursor()
+        if candidates:
+            self._show_audit_review(candidates, kind)
+
+    def set_download_status_colors(self, colors: dict) -> None:
+        """Theme status colors, pushed alongside the list delegate's."""
+        self._status_colors = dict(colors or {})
+
+    def _show_audit_review(self, candidates: list, kind: str) -> None:
+        from PySide6.QtWidgets import QDialog
+        from luducat.core.archivist.audit import scan_preferences_stale
+        from luducat.ui.dialogs.download_audit_review import (
+            DownloadAuditReviewDialog,
+        )
+        handler = self._audit_handler()
+        settings_stale = False
+        if handler is not None:
+            try:
+                dm = get_download_manager()
+            except RuntimeError:
+                dm = None
+            if dm is not None:
+                settings_stale = scan_preferences_stale(
+                    dm.engine, handler.store_name, kind, self._config)
+        # Building the tree for a library-scale result set takes a moment
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            dialog = DownloadAuditReviewDialog(
+                candidates, mode=kind, config=self._config,
+                status_colors=self._status_colors,
+                settings_stale=settings_stale, parent=self)
+        finally:
+            QApplication.restoreOverrideCursor()
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            self._poll()
+        elif dialog.rescan_requested:
+            self._start_audit_scan(kind)
+
     # -- Lifecycle --
 
     def showEvent(self, event) -> None:  # noqa: N802
         super().showEvent(event)
         self._poll()
         self._poll_timer.start()
+        self._update_audit_buttons()
+        self._refresh_audit_badge()
 
     def hideEvent(self, event) -> None:  # noqa: N802
         super().hideEvent(event)
@@ -455,6 +802,15 @@ class DownloadWindow(QWidget):
     def closeEvent(self, event: QCloseEvent) -> None:  # noqa: N802
         self._save_geometry()
         self._poll_timer.stop()
+        # A scan worker is parented to this window; letting Qt destroy
+        # it mid-run aborts the whole process ("QThread: Destroyed
+        # while thread is still running"). Cancel and wait -- the scan
+        # checks cancellation between games, and partial results are
+        # persisted, same as the Cancel button.
+        if self._audit_worker is not None:
+            self._audit_worker.cancel()
+            self._audit_worker.wait()
+            self._audit_worker = None
         event.accept()
 
     def resizeEvent(self, event) -> None:  # noqa: N802
@@ -500,30 +856,13 @@ class DownloadWindow(QWidget):
 
     # -- Polling --
 
-    _poll_seq = 0
-
     def _poll(self) -> None:
-        # import sys
-        # DownloadWindow._poll_seq += 1
-        # seq = DownloadWindow._poll_seq
-        # timer_active = self._poll_timer.isActive()
-        # print(f"TICK #{seq} timer={timer_active}", file=sys.stderr, flush=True)
         try:
             dm = get_download_manager()
         except RuntimeError:
             return
 
         groups = dm.get_queue()
-        # active = [g for g in groups if g.get("status") not in ("COMPLETED", "CANCELLED")]
-        # if active:
-        #     for g in active:
-        #         print(
-        #             f"POLL {g.get('id', '?')[:8]}: "
-        #             f"dl_bytes={g.get('downloaded_bytes')} "
-        #             f"total={g.get('total_bytes')} "
-        #             f"status={g.get('status')}",
-        #             file=sys.stderr, flush=True,
-        #         )
 
         selected_gid = None
         idx = self._list_view.currentIndex()
@@ -547,6 +886,12 @@ class DownloadWindow(QWidget):
         self._list_view.setVisible(len(groups) > 0)
 
         self._update_button_states()
+
+        # Newly completed downloads shrink the audit badge counts
+        completed = sum(1 for g in groups if g.get("status") == "COMPLETED")
+        if completed != getattr(self, "_completed_seen", 0):
+            self._completed_seen = completed
+            self._refresh_audit_badge()
 
     # -- URL handling --
 
@@ -809,17 +1154,9 @@ class DownloadWindow(QWidget):
         from PySide6.QtCore import QUrl
         from PySide6.QtGui import QDesktopServices
         try:
-            from luducat.core.archivist.volume import VolumeManager
-            from luducat.core.config import get_default_archive_path
-            archive_path = Path(
-                self._config.get(
-                    "downloads.archive_path",
-                    str(get_default_archive_path()),
-                )
-            )
-            org = self._config.get("downloads.folder_organization",
-                                   "store-slug")
-            vm = VolumeManager(archive_path, org)
+            from luducat.core.archivist.volume import volume_manager_from_config
+            vm = volume_manager_from_config(self._config)
+            archive_path = vm.base_path
             rel = vm.relative_path(
                 group.get("store_name", ""),
                 group.get("store_app_id", ""),

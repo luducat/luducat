@@ -223,9 +223,6 @@ class DownloadListModel(QAbstractListModel):
         }
         self._last_refresh = now
 
-        old_ids = [g["id"] for g in self._groups]
-        new_ids = [g["id"] for g in groups]
-
         self.beginResetModel()
         self._groups = list(groups)
         self.endResetModel()
@@ -362,7 +359,6 @@ class GameRowDelegate(QStyledItemDelegate):
 
         x = rect.x() + LEFT_BORDER_W + PADDING
         y = rect.y()
-        w = rect.width() - LEFT_BORDER_W - PADDING * 2
 
         # -- Store badge (wider rect to avoid text clipping) --
         badge_y = y + (ROW_HEIGHT - BADGE_DRAW_SIZE) // 2

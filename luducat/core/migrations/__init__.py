@@ -178,6 +178,9 @@ def verify_required_tables(engine: Engine) -> None:
         "game_installations": (7, 8),
         "downloads": (21, 22),
         "archives": (21, 22),
+        "download_groups": (22, 23),
+        "download_audit_results": (27, 28),
+        "download_audit_scans": (28, 29),
     }
 
     inspector = inspect(engine)

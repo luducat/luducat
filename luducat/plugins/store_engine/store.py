@@ -277,7 +277,12 @@ class VirtualStore(AbstractGameStore):
             return bool(self.get_credential("bearer_token"))
 
         if auth_type == "form_login":
-            return bool(self.get_credential("session_cookies"))
+            if self.get_credential("session_cookies"):
+                return True
+            domain = auth.get("domain", "")
+            if domain and self.has_local_data_consent():
+                return self._check_browser_cookies(auth)
+            return False
 
         if auth_type == "api_token":
             return bool(self.get_credential("api_token"))
@@ -340,7 +345,20 @@ class VirtualStore(AbstractGameStore):
                 prefix = auth.get("token_prefix", "Bearer ")
                 headers[header_name] = f"{prefix}{token}"
 
-        # Custom headers from ruleset
+        if auth_type == "browser_cookies":
+            token_cookie = auth.get("token_cookie")
+            if token_cookie:
+                cookies = self._get_auth_cookies()
+                if cookies:
+                    from urllib.parse import unquote
+                    raw = cookies.get(token_cookie, "")
+                    if raw:
+                        decoded = unquote(str(raw))
+                        if decoded.startswith("Bearer "):
+                            headers["Authorization"] = decoded
+                        elif decoded:
+                            headers["Authorization"] = f"Bearer {decoded}"
+
         for k, v in auth.get("headers", {}).items():
             headers[k] = v
 
@@ -370,6 +388,20 @@ class VirtualStore(AbstractGameStore):
                     return parsed
                 except Exception as e:
                     logger.error("[%s] failed to parse session_cookies: %s", self.store_name, e)
+            # form_login without stored session: try browser cookies
+            # as fallback when the ruleset declares a domain
+            domain = auth.get("domain", "")
+            if auth_type == "form_login" and domain and self.has_local_data_consent():
+                try:
+                    cm = get_browser_cookie_manager()
+                    cookies, _ = cm.get_cookies_for_domain(domain, "")
+                    if cookies:
+                        logger.info("[%s] form_login fallback to browser cookies",
+                                    self.store_name)
+                        return cookies
+                except Exception as e:
+                    logger.debug("[%s] browser cookie fallback failed: %s",
+                                 self.store_name, e)
             return None
 
         if auth_type not in ("browser_cookies", "api_token"):
@@ -549,8 +581,6 @@ class VirtualStore(AbstractGameStore):
         headers = {"Accept": "application/json"}
         headers.update(self._get_auth_headers())
 
-        # Cookie-based auth (JAST pattern: cookie JWT → Bearer header)
-        # Also send session cookies for authenticated requests
         auth = self._ruleset.auth
         cookies = None
         if auth.get("type") in ("browser_cookies", "bearer_redirect", "form_login"):
@@ -559,18 +589,6 @@ class VirtualStore(AbstractGameStore):
                         self.store_name,
                         "yes" if cookies else "no",
                         list(cookies.keys()) if cookies else [])
-            # JAST pattern: extract Bearer token from cookie value
-            token_cookie = auth.get("token_cookie")
-            if token_cookie and cookies:
-                from urllib.parse import unquote
-                raw = cookies.get(token_cookie, "")
-                if raw:
-                    # URL-decode and use as Authorization header
-                    decoded = unquote(str(raw))
-                    if decoded.startswith("Bearer "):
-                        headers["Authorization"] = decoded
-                    elif decoded:
-                        headers["Authorization"] = f"Bearer {decoded}"
 
         logger.info("[%s] request headers: %s", self.store_name,
                     {k: (v[:20] + "..." if len(str(v)) > 20 else v) for k, v in headers.items()})
@@ -735,16 +753,6 @@ class VirtualStore(AbstractGameStore):
             cookies = self._get_auth_cookies()
             if cookies:
                 kwargs["cookies"] = cookies
-                token_cookie = auth.get("token_cookie")
-                if token_cookie:
-                    from urllib.parse import unquote
-                    raw = cookies.get(token_cookie, "")
-                    if raw:
-                        decoded = unquote(str(raw))
-                        if decoded.startswith("Bearer "):
-                            kwargs["headers"]["Authorization"] = decoded
-                        elif decoded:
-                            kwargs["headers"]["Authorization"] = f"Bearer {decoded}"
 
         # Try primary URL, then fallback if redirected away
         urls_to_try = [url]
@@ -767,30 +775,58 @@ class VirtualStore(AbstractGameStore):
                         logger.debug("[%s] detail redirected for %s, trying fallback",
                                      self.store_name, app_id)
                         continue
-                    else:
-                        logger.debug("[%s] detail redirected for %s (no more fallbacks)",
-                                     self.store_name, app_id)
-                        return None
+                    # Opt-in: redirect = product page gone = delisted.
+                    # NOT for auth-gated stores (session expiry != delisted).
+                    if detail.get("redirect_means_delisted"):
+                        logger.info("[%s] detail page gone for %s — marking delisted",
+                                    self.store_name, app_id)
+                        return {"delisted": True}
+                    logger.debug("[%s] detail redirected for %s (no more fallbacks)",
+                                 self.store_name, app_id)
+                    return None
 
                 if backend_type == "api":
                     data = resp.json()
-                    return api_backend.extract_detail(data, fields)
+                    result = api_backend.extract_detail(data, fields)
+                else:
+                    # HTML detail extraction
+                    from bs4 import BeautifulSoup
+                    soup = BeautifulSoup(resp.text, "html.parser")
+                    result = {}
+                    for field_name, spec in fields.items():
+                        value = html_backend._extract_field(soup, spec)
+                        value = apply_field_spec(value, spec)
+                        if value is not None:
+                            # Absolutize relative URLs in HTML content
+                            if spec.get("html") and isinstance(value, str):
+                                value = absolutize_html_urls(value, self._ruleset.homepage)
+                            result[field_name] = value
 
-                # HTML detail extraction
-                from bs4 import BeautifulSoup
-                soup = BeautifulSoup(resp.text, "html.parser")
-                result = {}
-                for field_name, spec in fields.items():
-                    value = html_backend._extract_field(soup, spec)
-                    value = apply_field_spec(value, spec)
-                    if value is not None:
-                        # Absolutize relative URLs in HTML content
-                        if spec.get("html") and isinstance(value, str):
-                            value = absolutize_html_urls(value, self._ruleset.homepage)
-                        result[field_name] = value
+                # Success on the primary URL can itself be adult evidence
+                # (e.g. MangaGamer serves the product on its r18 shelf;
+                # all-ages titles only resolve via the fallback URL)
+                if (
+                    try_url == urls_to_try[0]
+                    and self._ruleset.content_filter.get("primary_url_confirms_adult")
+                ):
+                    result["store_adult_flag"] = True
+
                 return result
 
             except Exception as e:
+                # HTTP 404 on the LAST candidate URL with ruleset opt-in
+                # means the store dropped the product (API-store analogue
+                # of redirect_means_delisted).  Other errors are treated
+                # as transient and retried on the next sync.
+                status = getattr(getattr(e, "response", None), "status_code", None)
+                if (
+                    status == 404
+                    and try_url == urls_to_try[-1]
+                    and detail.get("not_found_means_delisted")
+                ):
+                    logger.info("[%s] detail 404 for %s — marking delisted",
+                                self.store_name, app_id)
+                    return {"delisted": True}
                 logger.debug("Detail fetch failed for %s/%s: %s", self.store_name, app_id, e)
 
         return None
@@ -870,6 +906,7 @@ class VirtualStore(AbstractGameStore):
             developers=developers,
             publishers=publishers,
             genres=genres,
+            is_delisted=1 if data.get("delisted") else 0,
             extra_metadata=extra if extra else {},
         )
 
@@ -924,6 +961,15 @@ class VirtualStore(AbstractGameStore):
         adult_base = self._ruleset.content_filter.get("adult_base_confidence")
         if adult_base:
             out["store_adult_baseline"] = float(adult_base)
+
+        # Declarative per-game adult flag: the store marks this specific
+        # product adult (e.g. a mature-content field extracted at detail
+        # time).  Condition: {"field": <canonical name>, "equals": <value>}
+        flag_spec = self._ruleset.content_filter.get("adult_flag")
+        if flag_spec and not out.get("store_adult_flag"):
+            field = flag_spec.get("field")
+            if field and out.get(field) == flag_spec.get("equals", True):
+                out["store_adult_flag"] = True
 
         return out
 

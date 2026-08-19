@@ -141,7 +141,7 @@ class GalaxyRunner(AbstractRunnerPlugin):
                     arguments=[
                         "/command=runGame",
                         f"/gameId={app_id}",
-                        f'/path="{params["executable_path"]}"',
+                        f'/path={params["executable_path"]}',
                     ],
                 )
 

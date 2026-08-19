@@ -38,10 +38,10 @@ ProgressCallback = Optional[Callable[[str, int, int], None]]
 
 SGDB_API_BASE = "https://www.steamgriddb.com/api/v2"
 
-# Rate limiting: 5 requests per second (429 retry handler as safety net)
-RATE_LIMIT_REQUESTS = 5
+# Rate limiting: 3 requests per second (429 retry handler as safety net)
+RATE_LIMIT_REQUESTS = 3
 RATE_LIMIT_PERIOD = 1.0  # seconds
-RATE_LIMIT_RETRY_DELAY = 3.0  # seconds to wait after 429
+RATE_LIMIT_RETRY_DELAY = 5.0  # seconds to wait after 429
 MAX_RATE_LIMIT_RETRIES = 3
 
 # =============================================================================
@@ -142,7 +142,7 @@ class SgdbApi:
     # =========================================================================
 
     def _rate_limit(self, status_callback: ProgressCallback = None) -> None:
-        """Enforce rate limiting (5 requests/second)"""
+        """Enforce rate limiting (3 requests/second)"""
         now = time.time()
 
         # Remove old timestamps outside the window

@@ -162,7 +162,7 @@ class IgdbProvider(AbstractMetadataProvider):
             return
 
         try:
-            with open(token_file) as f:
+            with open(token_file, encoding="utf-8") as f:
                 data = json.load(f)
 
             access_token = data.get("access_token")

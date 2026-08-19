@@ -10,6 +10,7 @@ Provides GOG.com game library integration via:
 """
 
 import logging
+import re
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple, TYPE_CHECKING
 
@@ -48,7 +49,6 @@ def _fix_gog_cdn_url(url: Optional[str]) -> Optional[str]:
 # Regex matching numbered-CDN product image URLs: images-N.gog-statics.com/HASH.jpg
 # These are horizontal banners (1600x740) from getFilteredProducts.
 # GOGdb boxart uses the non-numbered images.gog-statics.com and is already vertical.
-import re
 _NUMBERED_CDN_RE = re.compile(
     r'^(https?://images-\d+\.gog-statics\.com/[a-f0-9]+)\.jpg$'
 )
@@ -117,6 +117,7 @@ class GogStore(StorePlugin):
         self._api_client: Optional["GogApiClient"] = None
         self._browser_cookies_checked = False
         self._title_index: Optional[Dict[str, int]] = None
+        self._cached_catalog: Optional[Dict] = None
 
     @property
     def store_name(self) -> str:
@@ -241,8 +242,8 @@ class GogStore(StorePlugin):
         """Return a stable GOG user ID for account change detection.
 
         The gog_al cookie rotates on every browser session so it cannot
-        be compared across syncs.  We fetch the userId via a cheap
-        userData call on first use and cache it as a plugin setting.
+        be compared across syncs. On first use, discovers the user ID
+        via the bootstrap endpoint and caches it as a plugin setting.
         """
         stored = self.get_setting("gog_user_id")
         if stored:
@@ -251,23 +252,14 @@ class GogStore(StorePlugin):
             return None
         try:
             api = self._get_api_client()
-            from luducat.plugins.sdk.constants import USER_AGENT
-            resp = api._http.get(
-                "https://www.gog.com/userData.json",
-                headers={
-                    "Cookie": api._build_cookie_header(),
-                    "User-Agent": USER_AGENT,
-                },
-                timeout=10,
-            )
-            if resp.status_code == 200:
-                data = resp.json()
-                uid = data.get("userId")
+            data = api.get_user_data_by_cookie()
+            if data:
+                uid = data.get("id") or data.get("userId")
                 if uid:
                     self.set_setting("gog_user_id", str(uid))
                     return str(uid)
         except Exception as e:
-            logger.debug(f"Could not fetch GOG user ID: {e}")
+            logger.debug("Could not fetch GOG user ID: %s", e)
         return None
 
     def get_auth_status(self) -> tuple:
@@ -431,6 +423,7 @@ class GogStore(StorePlugin):
                         status_callback=status_callback,
                         cancel_check=cancel_check,
                     )
+                    self._cached_catalog = catalog
                     if not catalog:
                         logger.warning("Empty catalog — skipping delisted detection")
                     else:
@@ -533,7 +526,8 @@ class GogStore(StorePlugin):
                     mac=works_on.get("Mac", False),
                     linux=works_on.get("Linux", False),
                     release_date=release_date,
-                    is_free=product.get("price", 0) == 0,
+                    is_free=product.get("price") is not None
+                    and product["price"] == 0,
                     data_source="gog_api_basic",
                     gogdb_imported=False,
                     enriched=False,
@@ -667,14 +661,17 @@ class GogStore(StorePlugin):
         Returns:
             Stats dict with catalog_fetched, enriched, errors counts
         """
-        api = self._get_api_client()
         db = self._get_db()
 
-        # Phase 1: Fetch full catalog
-        catalog = await api.fetch_full_catalog(
-            status_callback=status_callback,
-            cancel_check=cancel_check,
-        )
+        # Reuse catalog from delisted detection if available
+        catalog = getattr(self, "_cached_catalog", None)
+        self._cached_catalog = None
+        if not catalog:
+            api = self._get_api_client()
+            catalog = await api.fetch_full_catalog(
+                status_callback=status_callback,
+                cancel_check=cancel_check,
+            )
 
         if cancel_check and cancel_check():
             return {"catalog_fetched": len(catalog), "enriched": 0, "errors": 0}

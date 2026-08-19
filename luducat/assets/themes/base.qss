@@ -519,6 +519,13 @@ QFrame#metadataSeparator {
     color: {{border}};
 }
 
+#mainSplitter::handle {
+    background: {{border}};
+}
+#mainSplitter::handle:hover {
+    background: {{accent}};
+}
+
 /* About splitter */
 #aboutSplitter {
     background: transparent;
@@ -1316,12 +1323,54 @@ QDialog QLineEdit:focus {
     border-color: {{accent}};
 }
 
-QDialog QSpinBox {
+/* Styling the spin box frame switches the widget to stylesheet drawing,
+   which loses the native arrows unless the sub-controls are defined.
+   QDoubleSpinBox is a sibling class, not a QSpinBox subclass, so it is
+   listed explicitly. Arrows are pure-QSS triangles (no image assets). */
+QDialog QSpinBox, QDialog QDoubleSpinBox {
     background-color: {{bg_input}};
     border: 1px solid {{border}};
     border-radius: 4px;
     padding: 4px 8px;
     color: {{text_primary}};
+}
+
+QDialog QSpinBox::up-button, QDialog QDoubleSpinBox::up-button {
+    subcontrol-origin: border;
+    subcontrol-position: top right;
+    width: 18px;
+    border-left: 1px solid {{border}};
+    border-bottom: 1px solid {{border}};
+    background: transparent;
+}
+
+QDialog QSpinBox::down-button, QDialog QDoubleSpinBox::down-button {
+    subcontrol-origin: border;
+    subcontrol-position: bottom right;
+    width: 18px;
+    border-left: 1px solid {{border}};
+    background: transparent;
+}
+
+QDialog QSpinBox::up-button:hover, QDialog QSpinBox::down-button:hover,
+QDialog QDoubleSpinBox::up-button:hover, QDialog QDoubleSpinBox::down-button:hover {
+    background-color: {{bg_hover}};
+}
+
+QDialog QSpinBox::up-arrow, QDialog QDoubleSpinBox::up-arrow {
+    width: 0;
+    height: 0;
+    border-left: 4px solid transparent;
+    border-right: 4px solid transparent;
+    border-bottom: 5px solid {{text_secondary}};
+}
+
+QDialog QSpinBox::down-arrow, QDialog QDoubleSpinBox::down-arrow {
+    width: 0;
+    height: 0;
+    border-left: 4px solid transparent;
+    border-right: 4px solid transparent;
+    border-top: 5px solid {{text_secondary}};
 }
 
 /* Separator lines */

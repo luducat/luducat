@@ -18,6 +18,29 @@ from typing import Any, Dict, List, Optional
 # Each item has optional "section" prefix and required "text"
 NEWS_ENTRIES: List[Dict[str, Any]] = [
     {
+        "version": "0.8.5",
+        "date": "2026-08-18",
+        "items": [
+            {"section": "Downloader", "text":
+             "GOG game details are cached locally so repeated archive "
+             "scans start in seconds instead of re-fetching every game"},
+            {"section": "Downloader", "text":
+             "Cache TTL and clear button available in Settings"},
+            {"section": "UI", "text":
+             "Sidebar can be collapsed and restored with a double-click "
+             "on the splitter handle"},
+            {"section": "UI", "text":
+             "Wider splitter handle between game list and content area"},
+            {"section": "Steam", "text":
+             "Free games no longer reappear as new after browser "
+             "cookies expire"},
+            {"section": "", "text":
+             "File encoding hardened for non-UTF-8 Windows locales"},
+            {"section": "GOG", "text":
+             "Updated to current GOG user data endpoint"},
+        ],
+    },
+    {
         "version": "0.8.3",
         "date": "2026-06-23",
         "items": [
@@ -221,6 +244,20 @@ def get_news_html() -> str:
 #   "improved" — Enhancements to things that already existed
 #   "fixed"    — User-impacting bugfixes
 UPDATE_SUMMARIES: Dict[str, Dict[str, List[str]]] = {
+    "0.8.5": {
+        "new": [
+            "GOG game details cache for archive scans",
+            "Collapsible sidebar with double-click fold/unfold",
+        ],
+        "improved": [
+            "Wider main splitter handle with theme support",
+            "GOG user data endpoint updated",
+        ],
+        "fixed": [
+            "Steam free games cycling as new on cookie expiry",
+            "File encoding on non-UTF-8 Windows locales",
+        ],
+    },
     "0.8.3": {
         "new": [
             "Ginger Max theme (two warm color variants)",

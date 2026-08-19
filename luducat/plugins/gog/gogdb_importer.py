@@ -17,19 +17,20 @@ Import Process:
 5. Cleanup temporary files
 """
 
-from luducat.plugins.sdk.json import json
 import logging
 import lzma
-import os
 import re
 import shutil
 import tarfile
 import tempfile
+from collections.abc import Callable
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any
 
+from luducat.core.path_safety import safe_tar_extract
 from luducat.plugins.sdk.datetime import utc_now
+from luducat.plugins.sdk.json import json
 
 from .database import GogDatabase, GogGame
 
@@ -57,10 +58,10 @@ class PreflightResult:
 
     def __init__(self):
         self.success = True
-        self.errors: List[str] = []
-        self.warnings: List[str] = []
-        self.dump_url: Optional[str] = None
-        self.dump_date: Optional[str] = None
+        self.errors: list[str] = []
+        self.warnings: list[str] = []
+        self.dump_url: str | None = None
+        self.dump_date: str | None = None
         self.dump_size_bytes: int = 0
         self.available_space_bytes: int = 0
         self.required_space_bytes: int = 0
@@ -109,7 +110,7 @@ class PreflightResult:
 class ImportProgress:
     """Progress tracking for GOGdb import"""
 
-    def __init__(self, callback: Optional[Callable[[str, int, int], None]] = None):
+    def __init__(self, callback: Callable[[str, int, int], None] | None = None):
         """Initialize progress tracker
 
         Args:
@@ -159,7 +160,7 @@ class GogdbImporter:
         self.data_dir = data_dir
         self.cache_dir = cache_dir
         self._http = http_client
-        self.db: Optional[GogDatabase] = None
+        self.db: GogDatabase | None = None
 
     def _get_db(self) -> GogDatabase:
         """Get or create database connection"""
@@ -254,7 +255,7 @@ class GogdbImporter:
 
         return result
 
-    def _check_dump_availability(self) -> Optional[Dict[str, Any]]:
+    def _check_dump_availability(self) -> dict[str, Any] | None:
         """Check if GOGdb dump is available for download
 
         Tries HEAD requests for current day and up to 3 days back.
@@ -312,9 +313,9 @@ class GogdbImporter:
 
     def import_from_gogdb(
         self,
-        progress_callback: Optional[Callable[[str, int, int], None]] = None,
+        progress_callback: Callable[[str, int, int], None] | None = None,
         skip_preflight: bool = False
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Import GOGdb dump into catalog
 
         Downloads the latest GOGdb dump, extracts it, and imports
@@ -432,7 +433,7 @@ class GogdbImporter:
 
     def _download_dump(
         self, progress: ImportProgress
-    ) -> Tuple[Optional[Path], str]:
+    ) -> tuple[Path | None, str]:
         """Download GOGdb dump file
 
         Tries current day, then falls back up to 3 days.
@@ -492,7 +493,7 @@ class GogdbImporter:
 
     def _extract_dump(
         self, dump_path: Path, progress: ImportProgress
-    ) -> Optional[Path]:
+    ) -> Path | None:
         """Extract .tar.xz dump to temporary directory
 
         Returns:
@@ -506,15 +507,11 @@ class GogdbImporter:
             # Open .tar.xz file
             with lzma.open(dump_path, "rb") as xz_file:
                 with tarfile.open(fileobj=xz_file) as tar:
-                    # Count members for progress
-                    members = tar.getmembers()
-                    total = len(members)
-                    progress.update("Extracting files...", 0, total)
+                    def _progress(current: int, total: int) -> None:
+                        progress.update("Extracting files...", current, total)
 
-                    for i, member in enumerate(members):
-                        tar.extract(member, temp_dir)
-                        if i % 100 == 0:  # Update every 100 files
-                            progress.update("Extracting files...", i, total)
+                    progress.update("Extracting files...", 0, 0)
+                    safe_tar_extract(tar, temp_dir, progress_callback=_progress)
 
             logger.info(f"Extracted dump to: {temp_dir}")
             return temp_dir
@@ -525,7 +522,7 @@ class GogdbImporter:
                 shutil.rmtree(temp_dir)
             return None
 
-    def _find_product_files(self, extract_dir: Path) -> Tuple[List[Path], set]:
+    def _find_product_files(self, extract_dir: Path) -> tuple[list[Path], set]:
         """Find all product.json files in extracted dump
 
         Uses ids.json at root level to identify products, then locates
@@ -539,7 +536,7 @@ class GogdbImporter:
         ids_json = extract_dir / "ids.json"
         if ids_json.exists():
             try:
-                with open(ids_json, "r", encoding="utf-8") as f:
+                with open(ids_json, encoding="utf-8") as f:
                     ids_data = json.load(f)
                     if isinstance(ids_data, list):
                         all_ids = set(ids_data)
@@ -565,8 +562,8 @@ class GogdbImporter:
         return product_files, all_ids
 
     def _import_products(
-        self, product_files: List[Path], progress: ImportProgress
-    ) -> Dict[str, int]:
+        self, product_files: list[Path], progress: ImportProgress
+    ) -> dict[str, int]:
         """Import product files into database
 
         Only imports products where type == "game".
@@ -586,7 +583,7 @@ class GogdbImporter:
 
         for i, product_file in enumerate(product_files):
             try:
-                with open(product_file, "r", encoding="utf-8") as f:
+                with open(product_file, encoding="utf-8") as f:
                     data = json.load(f)
 
                 gogid = data.get("id")
@@ -612,7 +609,7 @@ class GogdbImporter:
                 price_data = None
                 if prices_file.exists():
                     try:
-                        with open(prices_file, "r", encoding="utf-8") as pf:
+                        with open(prices_file, encoding="utf-8") as pf:
                             price_data = json.load(pf)
                     except Exception:
                         pass  # Price data is optional
@@ -652,8 +649,8 @@ class GogdbImporter:
         return stats
 
     def _parse_product(
-        self, data: Dict[str, Any], price_data: Optional[Dict[str, Any]] = None
-    ) -> Optional[GogGame]:
+        self, data: dict[str, Any], price_data: dict[str, Any] | None = None
+    ) -> GogGame | None:
         """Parse GOGdb product.json into GogGame model
 
         GOGdb dump structure (actual format):
@@ -898,7 +895,7 @@ class GogdbImporter:
             logger.debug(f"Error parsing product {data.get('id')}: {e}")
             return None
 
-    def _build_image_url(self, image_id: Optional[str]) -> Optional[str]:
+    def _build_image_url(self, image_id: str | None) -> str | None:
         """Build GOG CDN URL from image ID
 
         Args:
@@ -913,7 +910,7 @@ class GogdbImporter:
         # GOG CDN URL pattern
         return f"https://images.gog-statics.com/{image_id}.jpg"
 
-    def _extract_price(self, price_data: Dict[str, Any]) -> Optional[int]:
+    def _extract_price(self, price_data: dict[str, Any]) -> int | None:
         """Extract price_base from prices.json data
 
         prices.json structure:
@@ -955,7 +952,7 @@ class GogdbImporter:
         except Exception:
             return None
 
-    def fetch_product_from_api(self, gogid: int) -> Optional[GogGame]:
+    def fetch_product_from_api(self, gogid: int) -> GogGame | None:
         """Fetch a single product from GOGdb API
 
         Used for cache misses - when a game isn't in the local catalog but
@@ -1008,7 +1005,7 @@ class GogdbImporter:
             logger.warning(f"Failed to fetch product {gogid} from GOGdb API: {e}")
             return None
 
-    def fetch_and_cache_product(self, gogid: int) -> Optional[GogGame]:
+    def fetch_and_cache_product(self, gogid: int) -> GogGame | None:
         """Fetch a product from API and save to local cache DB
 
         Convenience method that fetches from API and persists to catalog.db.

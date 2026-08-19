@@ -7,9 +7,7 @@ or extras (soundtracks, manuals, etc.).
 
 from __future__ import annotations
 
-import os
-import platform as _platform
-import re
+import shutil
 from pathlib import Path
 from typing import Optional
 
@@ -26,6 +24,12 @@ from PySide6.QtWidgets import (
 )
 
 from luducat.core.archivist.types import GameDownloadInfo
+from luducat.core.download_selection import (
+    _auto_select_indices,
+    _detect_platform,
+    _parse_size_bytes,
+    normalize_preferred_os,
+)
 
 try:
     _("")
@@ -154,137 +158,6 @@ def _build_picker_rows(info: GameDownloadInfo) -> list[dict]:
     return rows
 
 
-_LANG_NAME_TO_CODE: dict[str, str] = {
-    "english": "en", "german": "de", "deutsch": "de",
-    "french": "fr", "français": "fr", "francais": "fr",
-    "spanish": "es", "español": "es", "espanol": "es",
-    "italian": "it", "italiano": "it",
-    "portuguese": "pt", "brazilian": "br",
-    "russian": "ru", "русский": "ru",
-    "polish": "pl", "polski": "pl",
-    "japanese": "ja", "chinese": "zh",
-    "korean": "ko", "dutch": "nl", "czech": "cs",
-    "hungarian": "hu", "romanian": "ro", "turkish": "tr",
-    "arabic": "ar", "thai": "th", "swedish": "sv",
-    "norwegian": "no", "danish": "da", "finnish": "fi",
-}
-
-_LANG_CODES = {
-    "en", "de", "fr", "es", "it", "pt", "br", "ru", "pl", "ja", "jp",
-    "zh", "ko", "nl", "cs", "hu", "ro", "tr", "ar", "th", "sv", "no",
-    "da", "fi",
-}
-
-_LANG_WORD_RE = re.compile(
-    r"\b(" + "|".join(re.escape(k) for k in sorted(
-        list(_LANG_NAME_TO_CODE.keys()) + list(_LANG_CODES),
-        key=len, reverse=True,
-    )) + r")\b",
-    re.IGNORECASE,
-)
-
-
-def _detect_extra_language(name: str) -> Optional[str]:
-    """Detect language from an extra's display name.
-
-    Returns ISO code if a language is found, None if language-neutral.
-    """
-    m = _LANG_WORD_RE.search(name.lower())
-    if not m:
-        return None
-    token = m.group(1).lower()
-    if token in _LANG_NAME_TO_CODE:
-        return _LANG_NAME_TO_CODE[token]
-    if token in _LANG_CODES:
-        if token == "jp":
-            return "ja"
-        return token
-    return None
-
-
-def _auto_select_indices(
-    rows: list[dict],
-    preferred_os: Optional[list[str]] = None,
-    preferred_languages: Optional[list[str]] = None,
-) -> tuple[list[int], bool]:
-    """Pre-select rows matching OS/language preferences + all extras/patches.
-
-    Returns (selected_indices, had_fallback).
-    had_fallback is True if no installer matched the preferred OS.
-    Extras with a detected language are only selected if the language
-    matches the user's preferences; language-neutral extras are always selected.
-    """
-    if preferred_os is None:
-        preferred_os = [_detect_platform()]
-    if preferred_languages is None:
-        preferred_languages = ["all"]
-
-    all_lang = "all" in preferred_languages
-
-    installer_sections = {"installers", "dlc"}
-
-    os_match = [
-        i for i, r in enumerate(rows)
-        if r["section"] in installer_sections
-        and r["item"].get("platform") in preferred_os
-    ]
-
-    if os_match and not all_lang:
-        lang_match = [
-            i for i in os_match
-            if not rows[i]["item"].get("language")
-            or rows[i]["item"].get("language", "").lower() in preferred_languages
-        ]
-        if lang_match:
-            os_match = lang_match
-
-    all_installers = [
-        i for i, r in enumerate(rows) if r["section"] in installer_sections
-    ]
-
-    non_installers = []
-    for i, r in enumerate(rows):
-        if r["section"] in installer_sections:
-            continue
-        if all_lang:
-            non_installers.append(i)
-            continue
-        detected = _detect_extra_language(r["label"])
-        if detected is None or detected in preferred_languages:
-            non_installers.append(i)
-
-    if os_match:
-        return os_match + non_installers, False
-    return all_installers + non_installers, True
-
-
-def _detect_platform() -> str:
-    system = _platform.system()
-    if system == "Linux":
-        return "linux"
-    elif system == "Darwin":
-        return "mac"
-    return "windows"
-
-
-def _parse_size_bytes(size_str: str) -> int:
-    """Best-effort parse of a human-readable size string to bytes."""
-    if not size_str:
-        return 0
-    s = size_str.strip().upper()
-    multipliers = {"KB": 1024, "MB": 1024**2, "GB": 1024**3, "TB": 1024**4}
-    for suffix, mult in multipliers.items():
-        if s.endswith(suffix):
-            try:
-                return int(float(s[:-len(suffix)].strip()) * mult)
-            except ValueError:
-                return 0
-    try:
-        return int(s)
-    except ValueError:
-        return 0
-
-
 # -- Dialog --
 
 
@@ -342,7 +215,7 @@ class InstallerPickerDialog(QDialog):
         scroll_layout.setSpacing(4)
 
         current_section = ""
-        for i, row in enumerate(self._rows):
+        for row in self._rows:
             if row["section"] != current_section:
                 current_section = row["section"]
                 header_text = section_names.get(
@@ -447,9 +320,13 @@ class InstallerPickerDialog(QDialog):
         pref_os, pref_lang = self._load_preferences()
         self._pref_os = pref_os
         self._pref_lang = pref_lang
+        self._pref_patches = (
+            bool(self._config.get("downloads.download_patches", True))
+            if self._config else True)
 
         auto, had_fallback = _auto_select_indices(
-            self._rows, preferred_os=pref_os, preferred_languages=pref_lang)
+            self._rows, preferred_os=pref_os, preferred_languages=pref_lang,
+            include_patches=self._pref_patches)
 
         if had_fallback:
             os_label = ", ".join(n.capitalize() for n in pref_os)
@@ -472,7 +349,7 @@ class InstallerPickerDialog(QDialog):
         else:
             pref_os = [_detect_platform()]
             pref_lang = ["all"]
-        return pref_os, pref_lang
+        return normalize_preferred_os(pref_os), pref_lang
 
     def _on_selection_changed(self) -> None:
         self._update_size_label()
@@ -500,8 +377,8 @@ class InstallerPickerDialog(QDialog):
         try:
             dl_dir = self._get_download_dir()
             if dl_dir and dl_dir.exists():
-                free = os.statvfs(dl_dir)
-                free_bytes = free.f_bavail * free.f_frsize
+                # shutil.disk_usage is portable; os.statvfs is POSIX-only
+                free_bytes = shutil.disk_usage(dl_dir).free
                 if total > free_bytes:
                     self._size_label.setStyleSheet("color: red;")
                     ok_enabled = False
@@ -538,8 +415,7 @@ class InstallerPickerDialog(QDialog):
             return
 
         try:
-            stat = os.statvfs(dl_dir)
-            free_bytes = stat.f_bavail * stat.f_frsize
+            free_bytes = shutil.disk_usage(dl_dir).free
             if free_bytes >= 1024**3:
                 free_str = f"{free_bytes / 1024**3:.1f} GB"
             else:
@@ -571,7 +447,8 @@ class InstallerPickerDialog(QDialog):
             cb.setChecked(False)
         auto, _ = _auto_select_indices(
             self._rows, preferred_os=self._pref_os,
-            preferred_languages=self._pref_lang)
+            preferred_languages=self._pref_lang,
+            include_patches=self._pref_patches)
         for idx in auto:
             self._checkboxes[idx].setChecked(True)
 

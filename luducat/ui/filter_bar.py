@@ -13,7 +13,7 @@ import logging
 from typing import Dict, List, Optional, Set
 
 from PySide6.QtCore import QSize, Qt, Signal
-from PySide6.QtGui import QAction, QActionGroup, QColor, QIcon
+from PySide6.QtGui import QAction, QActionGroup, QColor
 from PySide6.QtWidgets import (
     QWidget,
     QHBoxLayout,

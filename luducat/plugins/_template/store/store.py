@@ -177,22 +177,6 @@ class TemplateStore(AbstractGameStore):
         Returns:
             List of Game objects with metadata
         """
-        # TODO: Fetch metadata for the given app IDs
-        # Return Game objects (from luducat.plugins.base)
-
-        games = []
-        for app_id in app_ids:
-            # Example: fetch from API or database
-            # metadata = await self._api.get_game_details(app_id)
-            # game = Game(
-            #     store_name=self.store_name,
-            #     store_app_id=app_id,
-            #     title=metadata["title"],
-            #     ...
-            # )
-            # games.append(game)
-            pass
-
         raise NotImplementedError("fetch_game_metadata must be implemented")
 
     def launch_game(self, app_id: str) -> bool:

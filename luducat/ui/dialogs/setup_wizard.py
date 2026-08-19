@@ -434,7 +434,7 @@ class DataAccessConsentPage(QWizardPage):
               "in Settings \u2192 Privacy.").format(app_name=APP_NAME)
         )
         for label, (_icon, heading, body) in zip(
-            self._section_labels, self._privacy_sections()
+            self._section_labels, self._privacy_sections(), strict=True
         ):
             label.setText(f"<b>{heading}</b><br>{body}")
         self.chk_content_filter.setText(_("Hide adult-rated games from library"))
@@ -986,6 +986,8 @@ class CredentialsPage(QWizardPage):
         """Route to the correct auth flow for each store."""
         if plugin_id == "epic":
             self._on_epic_login()
+        elif plugin_id == "amazon":
+            self._on_amazon_login()
         elif plugin_id == "gog":
             self._on_gog_login()
         elif plugin_id == "steam":
@@ -1066,6 +1068,68 @@ class CredentialsPage(QWizardPage):
             self._set_status("epic", True, message)
         else:
             self._set_status("epic", False,
+                             _("Authentication failed: {message}").format(message=message))
+
+    # ── Amazon auth flow ─────────────────────────────────────────────
+
+    def _on_amazon_login(self) -> None:
+        """Amazon device registration via sign-in URL + redirect paste."""
+        store = self._get_plugin_instance("amazon")
+        if not store:
+            self._set_status("amazon", False, _("Plugin not loaded"))
+            return
+
+        instructions = (
+            "<b>" + _("Amazon Games Authentication") + "</b><br><br>"
+            + _("To connect your Amazon account:") + "<br><br>"
+            "<b>1.</b> " + _("Click OK to open the Amazon sign-in page") + "<br><br>"
+            "<b>2.</b> " + _("Sign in with your Amazon account. Amazon asks for "
+                             "your password and possibly a one-time code — this "
+                             "full sign-in is required once to register this "
+                             "computer.") + "<br><br>"
+            "<b>3.</b> " + _("After the final approval step the browser lands on "
+                             "the Amazon home page. Copy the COMPLETE address "
+                             "from the browser's address bar right away.") + "<br><br>"
+            "<b>4.</b> " + _("Paste that address in the next dialog.") + "<br><br>"
+            + _("The address contains a one-time code — if the browser "
+                "navigates away, restart the sign-in.")
+        )
+
+        reply = QMessageBox.question(
+            self,
+            _("Amazon Sign-in"),
+            instructions,
+            QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel,
+        )
+        if reply != QMessageBox.StandardButton.Ok:
+            return
+
+        signin_url = store.build_signin_url()
+        from ...utils.browser import open_url
+        open_url(signin_url)
+
+        redirect_url, ok = QInputDialog.getText(
+            self,
+            _("Paste the Address"),
+            _("Paste the full address the browser shows after you "
+              "completed the Amazon sign-in:"),
+            QLineEdit.EchoMode.Normal,
+            ""
+        )
+
+        if not ok or not redirect_url.strip():
+            return
+
+        self._set_status("amazon", None, _("Registering this computer..."))
+        QApplication.processEvents()
+
+        success, message = store.authenticate_with_redirect_url(
+            redirect_url.strip()
+        )
+        if success:
+            self._set_status("amazon", True, message)
+        else:
+            self._set_status("amazon", False,
                              _("Authentication failed: {message}").format(message=message))
 
     # ── GOG auth flow ────────────────────────────────────────────────

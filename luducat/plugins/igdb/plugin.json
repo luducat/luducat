@@ -1,7 +1,7 @@
 {
   "name": "igdb",
   "display_name": "IGDB",
-  "version": "2.7.3",
+  "version": "2.7.4",
   "author": "luducat",
   "description": "IGDB metadata provider - comprehensive game data with normalized database storage",
   "min_luducat_version": "0.2.9.24",

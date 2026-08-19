@@ -931,24 +931,34 @@ class SgdbProvider(AbstractMetadataProvider):
                     )
 
                 search_results = api.search_game(title)
+                sgdb_id = None
                 if search_results:
                     best = search_results[0]
                     sgdb_id = best.get("id")
-                    if sgdb_id:
-                        game_to_sgdb[game.store_app_id] = sgdb_id
-                        db.save_game(
-                            sgdb_id=sgdb_id,
-                            name=best.get("name", ""),
-                            release_date=best.get("release_date"),
-                            verified=best.get("verified", False),
-                        )
-                        db.save_store_match(
-                            store_name=game.store_name,
-                            store_app_id=game.store_app_id,
-                            sgdb_game_id=sgdb_id,
-                            match_method="title_search",
-                            confidence=0.8,
-                        )
+                if sgdb_id:
+                    game_to_sgdb[game.store_app_id] = sgdb_id
+                    db.save_game(
+                        sgdb_id=sgdb_id,
+                        name=best.get("name", ""),
+                        release_date=best.get("release_date"),
+                        verified=best.get("verified", False),
+                    )
+                    db.save_store_match(
+                        store_name=game.store_name,
+                        store_app_id=game.store_app_id,
+                        sgdb_game_id=sgdb_id,
+                        match_method="title_search",
+                        confidence=0.8,
+                    )
+                else:
+                    # Refresh updated_at so it doesn't re-search every sync.
+                    db.save_store_match(
+                        store_name=game.store_name,
+                        store_app_id=game.store_app_id,
+                        sgdb_game_id=None,
+                        match_method="no_match",
+                        confidence=0.0,
+                    )
 
         # Phase 3: Fetch heroes and grids for all matched games
         if _check_cancelled():

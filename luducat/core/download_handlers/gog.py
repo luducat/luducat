@@ -12,7 +12,6 @@ import inspect
 import logging
 import re
 from typing import Optional, Sequence
-from urllib.parse import urlparse, unquote
 
 from luducat.core.archivist.types import (
     ArchiveRequest,
@@ -20,7 +19,12 @@ from luducat.core.archivist.types import (
     DownloadTarget,
     GameDownloadInfo,
 )
-from luducat.core.download_handlers.base import AbstractDownloadHandler, AuthStatus
+from luducat.core.download_handlers.base import (
+    AbstractDownloadHandler,
+    AuthStatus,
+    extract_filename_from_cdn_url,
+)
+from luducat.core.download_selection import _parse_size_string
 
 logger = logging.getLogger(__name__)
 
@@ -28,28 +32,6 @@ try:
     _("")
 except NameError:
     def _(s): return s
-
-
-def extract_filename_from_cdn_url(cdn_url: str) -> str:
-    """Extract the real filename from a GOG CDN URL.
-
-    GOG's API returns obfuscated downlink slugs (e.g. 'en1installer0').
-    After resolving the downlink, the CDN URL path contains the real
-    filename (e.g. 'setup_teenagent_2.1.0.5_(15215).exe').
-
-    Args:
-        cdn_url: Resolved CDN URL with or without query params.
-
-    Returns:
-        Decoded filename, or empty string if extraction fails.
-    """
-    parsed = urlparse(cdn_url)
-    path = unquote(parsed.path)
-    if not path or path == "/":
-        return ""
-    if path.endswith("/"):
-        path = path[:-1]
-    return path.rsplit("/", 1)[-1]
 
 
 # URL parsing patterns
@@ -60,28 +42,6 @@ _DOWNLINK_RE = re.compile(r"gog\.com/downlink/file/(\d+)/([\w]+)")
 _GOG_BASE_URL = "https://www.gog.com"
 
 _DOWNLOADS_PAGE_RE = re.compile(r"gog\.com/(?:\w{2}/)?downloads/([\w-]+)")
-
-_SIZE_UNITS = {"b": 1, "kb": 1024, "mb": 1024**2, "gb": 1024**3, "tb": 1024**4}
-
-
-def _parse_size_string(s: str) -> Optional[int]:
-    """Parse GOG human-readable sizes ("15 MB", "1.2 GB") into bytes."""
-    if not s:
-        return None
-    s = s.strip()
-    parts = s.split()
-    if len(parts) != 2:
-        return None
-    try:
-        value = float(parts[0])
-    except ValueError:
-        return None
-    unit = parts[1].lower()
-    multiplier = _SIZE_UNITS.get(unit)
-    if multiplier is None:
-        return None
-    return int(value * multiplier)
-
 
 class GogDownloadHandler(AbstractDownloadHandler):
     """Download handler for GOG.com.
@@ -112,6 +72,38 @@ class GogDownloadHandler(AbstractDownloadHandler):
         return self._URL_PATTERNS
 
     @property
+    def supports_audit(self) -> bool:
+        return True
+
+    @property
+    def supports_adoption(self) -> bool:
+        return True
+
+    def adoption_slug_resolver(self, allow_network: bool = False):
+        """Slug -> app id resolver for the adoption scanner.
+
+        Backed by the plugin's catalog cache; the optional network
+        fallback asks the public products API, which needs no auth.
+        """
+        def resolve(slug: str):
+            db = self._plugin._get_db()
+            game = db.get_game_by_slug(slug)
+            if game:
+                return str(game.gogid)
+            if not allow_network:
+                return None
+            api = self._plugin._get_api_client()
+            try:
+                meta = self._run_async(api.get_product_metadata(slug))
+            except Exception:
+                return None
+            if meta and meta.get("id"):
+                return str(meta["id"])
+            return None
+
+        return resolve
+
+    @property
     def auth_failure_message(self) -> str:
         return "Please log in to GOG.com in your browser first."
 
@@ -138,18 +130,30 @@ class GogDownloadHandler(AbstractDownloadHandler):
 
         raise ValueError(f"Could not resolve GOG URL: {url}")
 
-    def get_available_downloads(self, store_app_id: str) -> GameDownloadInfo:
-        api = self._plugin._get_api_client()
-        try:
-            details = self._run_async(api.get_game_details(store_app_id))
-        except Exception as e:
-            err_msg = str(e).lower()
-            if "auth" in err_msg or "cookie" in err_msg:
-                raise PermissionError(self.auth_failure_message) from e
-            raise ValueError(f"Failed to fetch game details: {e}") from e
+    def get_available_downloads(
+        self, store_app_id: str, details_cache=None,
+    ) -> GameDownloadInfo:
+        cached = details_cache.get(store_app_id) if details_cache else None
+        if cached is not None:
+            details = cached
+        else:
+            api = self._plugin._get_api_client()
+            try:
+                details = self._run_async(
+                    api.get_game_details(store_app_id))
+            except Exception as e:
+                err_msg = str(e).lower()
+                if "auth" in err_msg or "cookie" in err_msg:
+                    raise PermissionError(self.auth_failure_message) from e
+                raise ValueError(
+                    f"Failed to fetch game details: {e}") from e
 
-        if details is None:
-            raise ValueError(f"GOG product {store_app_id} not found")
+            if details is None:
+                raise ValueError(
+                    f"GOG product {store_app_id} not found")
+
+            if details_cache is not None:
+                details_cache.put(store_app_id, details)
 
         downloads = details.get("downloads", {})
         installers = []
@@ -230,6 +234,15 @@ class GogDownloadHandler(AbstractDownloadHandler):
                 filename=filename,
                 expected_size=_parse_size_string(item.get("size", "")),
                 cookies=cookies,
+                version=item.get("version"),
+                # Stable references for the manifest: the downlink survives
+                # CDN token expiry and is what update detection matches on
+                # (gog-update-check-and-bulk-queue-plan.md, Phase A).
+                metadata={
+                    "downlink": full_downlink,
+                    "language": item.get("language", ""),
+                    "file_id": item.get("id", ""),
+                },
             ))
 
         if not files and skipped:
@@ -257,6 +270,32 @@ class GogDownloadHandler(AbstractDownloadHandler):
         if gog_lc:
             cookies["gog_lc"] = gog_lc
         return cookies
+
+    def refresh_download_url(
+        self, metadata: dict,
+    ) -> Optional[tuple[str, dict[str, str]]]:
+        """Resolve the stored downlink to a fresh CDN URL + cookies.
+
+        Never raises — the manager marks the download FAILED with its
+        auth-failure message when this returns None.
+        """
+        downlink = (metadata or {}).get("downlink")
+        if not downlink:
+            return None
+
+        full_downlink = self._to_full_url(downlink)
+        api = self._plugin._get_api_client()
+        try:
+            cdn_url = self._run_async(api.resolve_download_link(full_downlink))
+        except Exception as e:
+            logger.warning("Could not refresh download URL %s: %s",
+                           full_downlink, e)
+            return None
+        if not cdn_url:
+            logger.warning("Downlink did not resolve to a CDN URL: %s",
+                           full_downlink)
+            return None
+        return cdn_url, self._get_download_cookies()
 
     def get_icon_url(self, store_app_id: str) -> Optional[str]:
         db = self._plugin._get_db()

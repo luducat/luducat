@@ -49,6 +49,7 @@
   "detail": {
     "backend": "api",
     "url_template": "https://app.jaststore.com/api/v2/shop/products/{id}",
+    "not_found_means_delisted": true,
     "fields": {
       "description": {"path": "translations.en_US.description"},
       "short_description": {"path": "translations.en_US.shortDescription"},
@@ -66,8 +67,52 @@
         "prefix": "https://app.jaststore.com/media/image/",
         "first": true
       },
-      "videos": {"path": "trailers[].url"}
+      "videos": {"path": "trailers[].url"},
+      "genres": {
+        "path": "productTaxons[].taxon.name",
+        "exclude": [
+          "Games", "English", "Japanese", "French", "German", "Spanish",
+          "Italian", "Portuguese", "Russian", "Korean", "Chinese",
+          "Simplified Chinese", "Traditional Chinese",
+          "Windows", "Mac", "Linux"
+        ]
+      },
+      "mature_content": {"path": "productESRB.matureContent"}
     }
+  },
+
+  "content_filter": {
+    "adult_base_confidence": 0.5,
+    "adult_flag": {"field": "mature_content", "equals": true}
+  },
+
+  "downloads": {
+    "backend": "api",
+    "files_url_template": "https://app.jaststore.com/api/v2/shop/account/game-translations/{translation_id}",
+    "download_url_template": "https://app.jaststore.com/api/v2/shop/account/user-games/generate-link?gameId={game_id}&gameLinkId={file_id}",
+    "fields": {
+      "file_id": {"path": "gameLinkId"},
+      "game_id": {"path": "gameId"},
+      "name": {"path": "label"},
+      "size": {"path": "fileSize"},
+      "version": {"path": "version"},
+      "platform": {"path": "platforms", "first": true, "transform": "lowercase"}
+    },
+    "buckets": {
+      "gamePathLinks": {"bucket": "installers"},
+      "gameExtraLinks": {"bucket": "extras"},
+      "gamePatchLinks": {"bucket": "patches"}
+    },
+    "link_request": {
+      "method": "POST",
+      "url": "https://app.jaststore.com/api/v2/shop/account/user-games/generate-link",
+      "body_fields": {"gameId": "game_id", "gameLinkId": "file_id"},
+      "body_extra": {"downloaded": false, "type": "default"},
+      "url_field": "url"
+    },
+    "url_page_patterns": [
+      "https?://(?:www\\.)?jaststore\\.com/games/([\\w-]+)"
+    ]
   },
 
   "launch": {

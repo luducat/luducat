@@ -14,8 +14,48 @@ from __future__ import annotations
 import re
 from abc import ABC, abstractmethod
 from typing import Optional, Sequence
+from urllib.parse import unquote, urlparse
 
 from luducat.core.archivist.types import DownloadTarget, GameDownloadInfo
+
+
+def detect_platform() -> str:
+    """Map the current OS to the store platform vocabulary.
+
+    Store file lists use windows/linux/mac; handlers use this for
+    drop-path auto-selection of the native installer.
+    """
+    import platform as _platform
+    system = _platform.system()
+    if system == "Linux":
+        return "linux"
+    if system == "Darwin":
+        return "mac"
+    return "windows"
+
+
+def extract_filename_from_cdn_url(cdn_url: str) -> str:
+    """Extract the real filename from a resolved CDN URL.
+
+    Stores return obfuscated downlink slugs (e.g. GOG's 'en1installer0');
+    only the resolved CDN URL path carries the real filename
+    (e.g. 'setup_teenagent_2.1.0.5_(15215).exe'). Used by handlers when
+    resolving eagerly and by the download manager to adopt the real name
+    at lazy resolve time.
+
+    Args:
+        cdn_url: Resolved CDN URL with or without query params.
+
+    Returns:
+        Decoded filename, or empty string if extraction fails.
+    """
+    parsed = urlparse(cdn_url)
+    path = unquote(parsed.path)
+    if not path or path == "/":
+        return ""
+    if path.endswith("/"):
+        path = path[:-1]
+    return path.rsplit("/", 1)[-1]
 
 
 class AuthStatus:
@@ -73,6 +113,38 @@ class AbstractDownloadHandler(ABC):
         """
 
     @property
+    def supports_audit(self) -> bool:
+        """Whether the archive auditor can scan this store.
+
+        Requires get_available_downloads() by app id plus stable
+        downlink metadata on resolved files, so the auditor can diff
+        offerings against the manifest and enqueue lazily. Default:
+        not supported.
+        """
+        return False
+
+    @property
+    def supports_adoption(self) -> bool:
+        """Whether a pre-existing on-disk archive can be adopted for this store.
+
+        Requires adoption_slug_resolver() to return a resolver backed by
+        the store's local catalog cache, so the adoption scanner can
+        attribute game directories offline. Default: not supported.
+        """
+        return False
+
+    def adoption_slug_resolver(self, allow_network: bool = False):
+        """Build a callable mapping a store slug to an app id string.
+
+        The resolver returns None for unknown slugs. allow_network
+        permits store API lookups for slugs missing from the local
+        catalog cache; the default stays offline so adopting a large
+        archive needs no connection. Returns None when the handler does
+        not support adoption.
+        """
+        return None
+
+    @property
     def auth_required(self) -> bool:
         """Whether this handler needs authentication to download.
 
@@ -125,7 +197,9 @@ class AbstractDownloadHandler(ABC):
         """
 
     @abstractmethod
-    def get_available_downloads(self, store_app_id: str) -> GameDownloadInfo:
+    def get_available_downloads(
+        self, store_app_id: str, details_cache=None,
+    ) -> GameDownloadInfo:
         """Fetch available downloads for a game from the store.
 
         Called from the library click path. Returns structured info about
@@ -161,6 +235,20 @@ class AbstractDownloadHandler(ABC):
             ValueError: If selections reference unknown items.
             PermissionError: If authentication expired between fetch and resolve.
         """
+
+    def refresh_download_url(
+        self, metadata: dict,
+    ) -> Optional[tuple[str, dict[str, str]]]:
+        """Re-resolve a stable store reference to a fresh CDN URL.
+
+        Called by the download manager when a stored URL is empty (lazy
+        bulk enqueue) or rejected with 403/410 (expired token). Handlers
+        that support it read their stable reference from the download's
+        metadata. Returns (cdn_url, cookies) — cookies are re-fetched so
+        lazy downloads never carry stale session data. Default: not
+        supported.
+        """
+        return None
 
     def get_icon_url(self, store_app_id: str) -> Optional[str]:
         """Get a cover/icon URL for the game (for download row thumbnail).

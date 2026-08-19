@@ -84,8 +84,30 @@
   },
 
   "downloads": {
+    "backend": "api",
     "files_url_template": "https://www.zoom-platform.com/li/game/{id}/files",
-    "download_url_template": "https://www.zoom-platform.com/li/download/{file_id}"
+    "download_url_template": "https://www.zoom-platform.com/li/download/{file_id}",
+    "fields": {
+      "file_id": {"path": "id"},
+      "name": {"path": "name"},
+      "size": {"path": "size"},
+      "version": {"path": "version"},
+      "language": {"path": "lang"},
+      "part": {"path": "part"}
+    },
+    "buckets": {
+      "windows":    {"bucket": "installers", "platform": "windows"},
+      "mac":        {"bucket": "installers", "platform": "mac"},
+      "linux":      {"bucket": "installers", "platform": "linux"},
+      "misc":       {"bucket": "extras", "platform": ""},
+      "manual":     {"bucket": "extras", "platform": ""},
+      "soundtrack": {"bucket": "extras", "platform": ""},
+      "dlc":        {"bucket": "installers", "platform": ""}
+    },
+    "link_envelope": {"url_field": "url"},
+    "url_page_patterns": [
+      "https?://(?:www\\.)?zoom-platform\\.com/(?:games?|product)/([\\w-]+)"
+    ]
   },
 
   "launch": {

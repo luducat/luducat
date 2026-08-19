@@ -113,6 +113,9 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "sort_reverse": False,
         "favorites_first": False,
         "grid_scroll_rows": 0,  # 0 = system default (page scroll)
+        "sidebar_collapsed_cover": True,
+        "sidebar_collapsed_screenshot": True,
+        "sidebar_collapsed_list": False,
     },
     "appearance": {
         "ui_zoom": 100,
@@ -178,13 +181,19 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     },
     "downloads": {
         "archive_path": "",              # Empty = default (XDG data dir / archive)
-        "folder_organization": "store-slug",  # flat, store-slug, store-title
+        "folder_organization": "store-slug",  # flat, store-slug, store-title, custom
+        "custom_layout": "%library%/%slug%",  # template for "custom" organization
         "max_concurrent": 3,             # Max parallel downloads
         "max_connections_per_download": 4,  # Parallel range chunks per file
         "chunk_threshold_mb": 50,        # Files below this use single stream
         "bandwidth_limit_mbps": 0,       # 0 = unlimited
+        "resolve_retry_delay_sec": 15,   # one-shot retry after lazy resolve failure
         "preferred_os": ["windows"],
         "preferred_languages": ["all"],
+        "download_patches": True,        # auto-select/queue patch files
+        "show_build_numbers": False,     # review dialog: builds instead of versions
+        "build_cache_ttl_days": 7,       # update-check build cache TTL, min 1
+        "details_cache_ttl_days": 3.0,   # gameDetails response cache TTL, min 0.25 (6h)
     },
     "runtime_manager": {
         "auto_detect_platforms": True,  # Auto-detect installed platforms

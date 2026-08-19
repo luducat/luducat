@@ -3115,9 +3115,6 @@ class ListView(QWidget):
 
     def _update_files_tab(self, game: Dict[str, Any]) -> None:
         """Update Files tab with installation and archive info"""
-        stores = game.get("stores", [])
-        store_app_ids = game.get("store_app_ids", {})
-
         # Installation status from game cache (install_info in DETAIL_FIELDS)
         install_info = game.get("install_info", {})
         is_installed = game.get("is_installed", False)

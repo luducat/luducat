@@ -76,6 +76,10 @@ _IGDB_RATING_WEIGHTS: Dict[str, float] = {
 # required_age field weight (scaled by age value)
 _REQUIRED_AGE_18_WEIGHT: float = 0.35  # required_age >= 18
 
+# Per-game adult flag from the store (JAST matureContent, MangaGamer r18).
+# Below threshold alone (0.35); with store baseline 0.5 it reaches 0.675.
+_STORE_ADULT_FLAG_WEIGHT: float = 0.35
+
 # ── File-based keyword scoring ───────────────────────────────────────
 
 _keyword_rules: Optional[Dict[tuple, float]] = None
@@ -223,6 +227,10 @@ def adult_confidence(metadata: dict) -> float:
     if isinstance(store_baseline, (int, float)) and store_baseline > 0:
         weights.append(min(float(store_baseline), 1.0))
 
+    # ── Store-side per-game adult flag ────────────────────────────
+    if metadata.get("store_adult_flag"):
+        weights.append(_STORE_ADULT_FLAG_WEIGHT)
+
     # ── Steam content descriptors ─────────────────────────────────
     _collect_steam_descriptor_weights(metadata, weights)
 
@@ -308,6 +316,7 @@ def adult_confidence_from_sources(
     weights: List[float] = []
 
     seen_store_baseline = False
+    seen_store_adult_flag = False
 
     for _store, metadata in metadata_by_store.items():
         if not isinstance(metadata, dict):
@@ -322,6 +331,12 @@ def adult_confidence_from_sources(
         ):
             seen_store_baseline = True
             weights.append(min(float(store_baseline), 1.0))
+
+        # Store-side per-game adult flag (same evidence from two
+        # stores is not independent confirmation)
+        if metadata.get("store_adult_flag") and not seen_store_adult_flag:
+            seen_store_adult_flag = True
+            weights.append(_STORE_ADULT_FLAG_WEIGHT)
 
         # Content descriptors (Steam-specific but could come via enrichment)
         _collect_descriptor_weights_dedup(metadata, weights, seen_descriptor_ids)

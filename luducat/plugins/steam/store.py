@@ -496,6 +496,7 @@ class SteamStore(AbstractGameStore):
             if cancel_check and cancel_check():
                 return app_ids
 
+            gap_cache_path = Path(self.cache_dir) / "gap_games.json"
             userdata_ids = self._fetch_userdata_owned_apps()
             if userdata_ids:
                 api_ints = {int(a) for a in owned_app_ids}
@@ -520,8 +521,25 @@ class SteamStore(AbstractGameStore):
                                 "Gap-filler added %d games (total: %d)",
                                 len(gap_games), len(app_ids),
                             )
+                        self._save_gap_cache(gap_cache_path, gap_games)
                     finally:
                         cache.close()
+                else:
+                    self._save_gap_cache(gap_cache_path, [])
+            else:
+                # Cookies expired - reuse last successful gap-filler
+                # results so stale removal doesn't kill them
+                cached = self._load_gap_cache(gap_cache_path)
+                if cached:
+                    known = set(app_ids)
+                    restored = [g for g in cached if g not in known]
+                    if restored:
+                        app_ids.extend(restored)
+                        logger.info(
+                            "Gap-filler cookies unavailable, "
+                            "restored %d cached games (total: %d)",
+                            len(restored), len(app_ids),
+                        )
 
             return app_ids
 
@@ -685,6 +703,27 @@ class SteamStore(AbstractGameStore):
             str(appid) for appid, app_type in cached.items()
             if app_type == "game"
         ]
+
+    @staticmethod
+    def _save_gap_cache(path: Path, gap_games: List[str]) -> None:
+        """Persist gap-filler results so they survive cookie expiry."""
+        try:
+            path.write_text(json.dumps(gap_games), encoding="utf-8")
+        except OSError as e:
+            logger.debug("Could not save gap-filler cache: %s", e)
+
+    @staticmethod
+    def _load_gap_cache(path: Path) -> List[str]:
+        """Load previously saved gap-filler results."""
+        try:
+            if not path.exists():
+                return []
+            data = json.loads(path.read_text(encoding="utf-8"))
+            if isinstance(data, list):
+                return data
+        except (OSError, json.JSONDecodeError) as e:
+            logger.debug("Could not load gap-filler cache: %s", e)
+        return []
 
     def _fetch_private_app_list(self, access_token: str) -> Set[str]:
         """Fetch app IDs marked private on user's Steam profile."""
@@ -1973,6 +2012,22 @@ class SteamStore(AbstractGameStore):
 
         except Exception as e:
             logger.error(f"Failed to get bulk metadata: {e}")
+            return {}
+
+    def get_gap_filler_names(self, app_ids: List[str]) -> Dict[str, str]:
+        """Return {app_id: title} for gap-filler games from the type cache."""
+        cache_path = Path(self.cache_dir) / "app_types.db"
+        if not cache_path.exists():
+            return {}
+        try:
+            cache = AppTypeCache(cache_path)
+            try:
+                names = cache.get_names({int(a) for a in app_ids})
+                return {str(k): v for k, v in names.items()}
+            finally:
+                cache.close()
+        except Exception as e:
+            logger.debug("gap-filler name lookup failed: %s", e)
             return {}
 
     def _scraper_game_to_metadata(self, game, include_description: bool = False) -> Dict[str, Any]:

@@ -17,6 +17,16 @@ from typing import Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
+
+def _is_contained(child: Path, parent: Path) -> bool:
+    """Check that child resolves to a location under parent."""
+    try:
+        child.resolve().relative_to(parent.resolve())
+        return True
+    except ValueError:
+        return False
+
+
 # Executables matching these patterns are excluded from detection
 _EXCLUSION_PATTERNS = re.compile(
     r"(?i)^("
@@ -125,12 +135,12 @@ def _detect_gog_manifest(
 
         try:
             for info_file in search_dir.rglob("goggame-*.info"):
-                _parse_gog_info(info_file, add_fn)
+                _parse_gog_info(info_file, prefix, add_fn)
         except OSError:
             continue
 
 
-def _parse_gog_info(info_file: Path, add_fn) -> None:
+def _parse_gog_info(info_file: Path, prefix, add_fn) -> None:
     """Parse a single GOG game info file."""
     import json
 
@@ -152,8 +162,12 @@ def _parse_gog_info(info_file: Path, add_fn) -> None:
         if not exe_path:
             continue
 
-        # Resolve relative to install directory
         full_path = install_dir / exe_path
+        if not _is_contained(full_path, prefix.prefix_path):
+            logger.warning(
+                "GOG manifest path escapes prefix, skipped: %s", exe_path,
+            )
+            continue
         if full_path.is_file() and full_path.suffix.lower() == ".exe":
             task_name = task.get("name", "")
             is_primary = task.get("isPrimary", False)
@@ -180,12 +194,12 @@ def _detect_epic_manifest(
 
         try:
             for item_file in manifest_dir.glob("*.item"):
-                _parse_epic_item(item_file, drive_c, add_fn)
+                _parse_epic_item(item_file, drive_c, prefix, add_fn)
         except OSError:
             continue
 
 
-def _parse_epic_item(item_file: Path, drive_c: Path, add_fn) -> None:
+def _parse_epic_item(item_file: Path, drive_c: Path, prefix, add_fn) -> None:
     """Parse a single Epic .item manifest file."""
     import json
 
@@ -199,12 +213,17 @@ def _parse_epic_item(item_file: Path, drive_c: Path, add_fn) -> None:
     if not launch_exe or not install_location:
         return
 
-    # Install location inside the prefix
     install_path = Path(install_location)
     if not install_path.is_absolute():
         install_path = drive_c / install_location
 
     full_path = install_path / launch_exe
+    if not _is_contained(full_path, prefix.prefix_path):
+        logger.warning(
+            "Epic manifest path escapes prefix, skipped: %s / %s",
+            install_location, launch_exe,
+        )
+        return
     if full_path.is_file() and full_path.suffix.lower() == ".exe":
         display_name = data.get("DisplayName", "")
         add_fn(ExeCandidate(

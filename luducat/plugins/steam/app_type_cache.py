@@ -92,6 +92,24 @@ class AppTypeCache:
                 results[appid] = app_type
         return results
 
+    def get_names(self, appids: Set[int]) -> Dict[int, Optional[str]]:
+        """Bulk lookup: return {appid: name} for cached entries that have a name."""
+        if not appids:
+            return {}
+        results = {}
+        batch = sorted(appids)
+        for i in range(0, len(batch), 500):
+            chunk = batch[i:i + 500]
+            placeholders = ",".join("?" * len(chunk))
+            rows = self._conn.execute(
+                f"SELECT appid, name FROM apps WHERE appid IN ({placeholders})"
+                " AND name IS NOT NULL",
+                chunk,
+            ).fetchall()
+            for appid, name in rows:
+                results[appid] = name
+        return results
+
     def get_uncached(self, appids: Set[int]) -> Set[int]:
         """Return app IDs that are NOT in the cache."""
         cached = self.get_cached_types(appids)

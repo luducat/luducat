@@ -14,6 +14,7 @@
 
   "auth": {
     "type": "form_login",
+    "domain": "mangagamer.com",
     "login_url": "https://www.mangagamer.com/login_exe.php",
     "fail_indicator": "account_login",
     "form_fields": [
@@ -51,6 +52,7 @@
     "backend": "html",
     "url_template": "https://www.mangagamer.com/r18/detail.php?goods_type={goods_type}&product_code={id}",
     "fallback_url_template": "https://www.mangagamer.com/detail.php?goods_type={goods_type}&product_code={id}",
+    "redirect_means_delisted": true,
     "fields": {
       "description": {"selector": "#story, #characters", "html": true, "multiple": true, "transform": "join_html"},
       "developers": {"selector": ".title_content a[href*='company=']", "text": true, "multiple": true},
@@ -60,12 +62,38 @@
     }
   },
 
+  "downloads": {
+    "backend": "html",
+    "files_url_template": "https://www.mangagamer.com/mypage_index.php?page={page}",
+    "item_selector": "input[onclick*='S3_download']",
+    "id_field": "product_code",
+    "download_url_base": "https://www.mangagamer.com/",
+    "default_bucket": "installers",
+    "fields": {
+      "product_code": {"attr": "onclick", "regex": "product_code=(\\d+)"},
+      "series": {"attr": "onclick", "regex": "series=(\\d+)"},
+      "name": {"attr": "value"},
+      "downlink": {"attr": "onclick", "regex": "location\\.href='([^']+)'"}
+    },
+    "pagination": {
+      "type": "page_param",
+      "param": "page",
+      "start": 1,
+      "max_pages": 25
+    },
+    "link_redirect": {},
+    "url_page_patterns": [
+      "https?://(?:www\\.)?mangagamer\\.com/.*product_code=(\\d+)"
+    ]
+  },
+
   "launch": {
     "url_template": "https://www.mangagamer.com/detail.php?product_code={id}"
   },
 
   "content_filter": {
-    "adult_base_confidence": 0.50
+    "adult_base_confidence": 0.50,
+    "primary_url_confirms_adult": true
   },
 
   "rate_limit": {
