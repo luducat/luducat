@@ -512,7 +512,9 @@ _DEFAULT_DOMAIN_LIMITS: Dict[str, Dict[str, Any]] = {
     "cdn2.steamgriddb.com": {"requests": 20, "window": 1},
     "api.igdb.com": {"requests": 10, "window": 1},
     "images.igdb.com": {"requests": 20, "window": 1},
-    "www.pcgamingwiki.com": {"requests": 5, "window": 1},
+    # PCGamingWiki API page, Requirements (2026-11): 60 requests/minute per IP,
+    # shared by the plugin and the image cache; a 429 blocks the IP for 60 s.
+    "www.pcgamingwiki.com": {"requests": 50, "window": 60, "pause_on_429": 60},
     "www.protondb.com": {"requests": 15, "window": 1},
     "api.gog.com": {"requests": 15, "window": 1},
     "embed.gog.com": {"requests": 15, "window": 1},
@@ -530,50 +532,119 @@ _DEFAULT_DOMAIN_LIMITS: Dict[str, Dict[str, Any]] = {
 # Fallback rate limit for unknown domains
 _FALLBACK_RATE_LIMIT = {"requests": 10, "window": 1}
 
+# After a 429: half the budget for this long, one slot at a time instead of a burst.
+SLOW_AFTER_429_SECONDS = 300
+# Every further 429 inside this window doubles the pause, capped.
+STRIKE_WINDOW_SECONDS = 600
+MAX_PAUSE_MULTIPLIER = 8
+# A Retry-After beyond this is a misconfigured server, not an instruction.
+MAX_RETRY_AFTER_SECONDS = 900
+
 
 # ── Domain rate limiter ──────────────────────────────────────────────
 
 class _DomainRateLimiter:
     """Thread-safe sliding-window rate limiter for a single domain."""
 
-    __slots__ = ("max_requests", "window_seconds", "_request_times", "_lock")
+    __slots__ = ("max_requests", "window_seconds", "_request_times", "_lock",
+                 "_paused_until", "_slow_until", "_ramp_pending", "_strikes",
+                 "_last_strike")
 
     def __init__(self, max_requests: int, window_seconds: float):
         self.max_requests = max_requests
         self.window_seconds = window_seconds
         self._request_times: List[float] = []
         self._lock = threading.Lock()
+        self._paused_until = 0.0
+        self._slow_until = 0.0
+        self._ramp_pending = False
+        self._strikes = 0
+        self._last_strike = 0.0
 
-    def wait(self) -> float:
-        """Block until a request slot is available.
+    @property
+    def strikes(self) -> int:
+        return self._strikes
 
-        Returns the number of seconds waited (0.0 if no wait needed).
-        """
+    def pause_after_429(self, base_seconds: float, at_least: float = 0.0) -> float:
+        """Pause for the base, doubled per further 429 inside the strike window,
+        never below at_least. Returns 0.0 when a pause is already running."""
         with self._lock:
             now = time.monotonic()
-            # Prune expired timestamps
-            cutoff = now - self.window_seconds
+            if self._paused_until > now:
+                return 0.0
+            if now - self._last_strike > STRIKE_WINDOW_SECONDS:
+                self._strikes = 0
+            self._strikes += 1
+            self._last_strike = now
+            multiplier = min(2 ** (self._strikes - 1), MAX_PAUSE_MULTIPLIER)
+            seconds = max(base_seconds * multiplier, at_least)
+            self._start_pause(now, seconds)
+            return seconds
+
+    def _start_pause(self, now: float, seconds: float) -> None:
+        self._paused_until = now + seconds
+        self._slow_until = self._paused_until + SLOW_AFTER_429_SECONDS
+        self._ramp_pending = True
+
+    def _effective_max(self, at: float) -> int:
+        if at < self._slow_until:
+            return max(1, self.max_requests // 2)
+        return self.max_requests
+
+    def _prune(self, now: float) -> None:
+        """Drop expired timestamps; on the first call after a pause, seed the
+        window so slots open one at a time from the resume on, no burst."""
+        if self._ramp_pending and now >= self._paused_until:
+            self._ramp_pending = False
+            resume = self._paused_until
+            cap = self._effective_max(resume)
+            spacing = self.window_seconds / cap
             self._request_times = [
-                t for t in self._request_times if t > cutoff
+                resume - self.window_seconds + spacing * (i + 1) for i in range(cap)
             ]
+        cutoff = now - self.window_seconds
+        self._request_times = [t for t in self._request_times if t > cutoff]
 
-            if len(self._request_times) < self.max_requests:
-                self._request_times.append(now)
-                return 0.0
-
-            # Must wait — oldest request defines when a slot opens
-            oldest = self._request_times[0]
-            wait_time = self.window_seconds - (now - oldest)
-            if wait_time <= 0:
-                self._request_times.append(now)
-                return 0.0
-
-        # Sleep outside the lock
-        time.sleep(wait_time)
-
+    def pause_remaining(self) -> float:
         with self._lock:
-            self._request_times.append(time.monotonic())
-        return wait_time
+            return max(0.0, self._paused_until - time.monotonic())
+
+    def wait(self) -> float:
+        """Block until a request slot is available; returns the seconds waited."""
+        return self._acquire(None) or 0.0
+
+    def acquire_within(self, max_wait: float) -> bool:
+        """Take a slot if one opens within max_wait seconds; False leaves no mark."""
+        return self._acquire(max_wait) is not None
+
+    def _acquire(self, max_wait: Optional[float]) -> Optional[float]:
+        # Re-checked under the lock after every sleep: waiters that all wake at
+        # the same instant must not each take a slot, and a pause set meanwhile counts.
+        waited = 0.0
+        while True:
+            with self._lock:
+                now = time.monotonic()
+                if self._paused_until > now:
+                    delay = self._paused_until - now
+                else:
+                    self._prune(now)
+                    if len(self._request_times) < self._effective_max(now):
+                        self._request_times.append(now)
+                        return waited
+                    delay = max(self._request_times[0] + self.window_seconds - now, 0.001)
+            if max_wait is not None and waited + delay > max_wait:
+                return None
+            time.sleep(delay)
+            waited += delay
+
+    def pending_wait(self) -> float:
+        """Seconds the next wait() would block right now, without taking a slot."""
+        with self._lock:
+            now = time.monotonic()
+            self._prune(now)
+            if len(self._request_times) < self._effective_max(now):
+                return 0.0
+            return max(0.0, self.window_seconds - (now - self._request_times[0]))
 
 
 # ── Request statistics ───────────────────────────────────────────────
@@ -787,6 +858,38 @@ class NetworkManager:
         limiter = self._get_rate_limiter(domain)
         return limiter.wait()
 
+    def acquire_request_slot(self, domain: str, max_wait: float) -> bool:
+        return self._get_rate_limiter(domain).acquire_within(max_wait)
+
+    def rate_limit_wait(self, domain: str) -> float:
+        """Seconds a request to the domain would block right now; 0.0 if none.
+
+        Lets a caller skip an optional request instead of stalling on it.
+        """
+        limiter = self._get_rate_limiter(domain)
+        return limiter.pause_remaining() + limiter.pending_wait()
+
+    def shares_request_budget(self, domain: str) -> bool:
+        """True if callers outside execute_request() must use this domain's budget too."""
+        return _DEFAULT_DOMAIN_LIMITS.get(domain, {}).get("pause_on_429", 0) > 0
+
+    def domain_pause_remaining(self, domain: str) -> float:
+        """Seconds left of a pause set after a 429; 0.0 if none."""
+        return self._get_rate_limiter(domain).pause_remaining()
+
+    def note_response(self, domain: str, response: requests.Response) -> None:
+        base = _DEFAULT_DOMAIN_LIMITS.get(domain, {}).get("pause_on_429", 0)
+        if not base or response.status_code != 429:
+            return
+        limiter = self._get_rate_limiter(domain)
+        retry_after = response.headers.get("Retry-After", "")
+        at_least = min(float(retry_after), MAX_RETRY_AFTER_SECONDS) if retry_after.isdigit() else 0.0
+        seconds = limiter.pause_after_429(float(base), at_least=at_least)
+        if seconds:
+            logger.warning("%s answered 429, pausing requests for %.0fs (strike %d), "
+                           "then half budget for %ds", domain, seconds,
+                           limiter.strikes, SLOW_AFTER_429_SECONDS)
+
     # ── Domain validation ────────────────────────────────────────────
 
     def _check_domain(self, plugin_name: str, url: str) -> str:
@@ -895,6 +998,7 @@ class NetworkManager:
 
         try:
             response = session.request(method, url, **kwargs)
+            self.note_response(domain, response)
             # Record stats — use Content-Length header for streaming
             # requests to avoid forcing the full body into memory.
             if kwargs.get("stream"):

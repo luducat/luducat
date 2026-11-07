@@ -23,10 +23,13 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
-from luducat.plugins.base import AbstractGameStore, Game, PluginError
+from luducat.plugins.base import AbstractGameStore, Game, Lookup, PluginError
+from luducat.plugins.sdk.datetime import utc_now
+from luducat.plugins.sdk.lookup import ON_MISS_MAX_WAIT_SECONDS
+from luducat.plugins.sdk.network import is_online
 
 from .database import EpicDatabase, EpicGame
-from .epic_api import EpicAPI
+from .epic_api import STORE_CONTENT_HOST, EpicAPI, EpicCatalogUnavailable
 from .epic_session import EpicSession
 
 logger = logging.getLogger(__name__)
@@ -43,6 +46,11 @@ class EpicStore(AbstractGameStore):
     Game launching is handled by runner plugins (HeroicRunner,
     EpicLauncherRunner) via the RuntimeManager three-tier system.
     """
+
+    # Owned app names from the last fetch_user_games(); the sync asks
+    # get_ids_needing_refetch() right after. Class-level so partially built
+    # instances (tests) have it.
+    _synced_app_names: set[str] | None = None
 
     def __init__(self, config_dir: Path, cache_dir: Path, data_dir: Path):
         """Initialize Epic store plugin
@@ -170,6 +178,37 @@ class EpicStore(AbstractGameStore):
     # =========================================================================
 
     async def fetch_user_games(
+        self,
+        status_callback: Optional[Callable[[str], None]] = None,
+        cancel_check: Optional[Callable[[], bool]] = None,
+    ) -> List[str]:
+        """Owned app names (see _fetch_user_games), remembered as the owned set;
+        a failed fetch leaves nothing behind."""
+        self._synced_app_names = None
+        app_names = await self._fetch_user_games(
+            status_callback=status_callback, cancel_check=cancel_check,
+        )
+        self._synced_app_names = set(app_names)
+        return app_names
+
+    def get_ids_needing_refetch(self) -> list[str]:
+        """Every owned row that still lacks its catalog fill and has a namespace
+        to ask the product page with."""
+        owned = self._synced_app_names
+        if not owned:
+            return []
+        db = self._get_db()
+        rows = db.session.query(EpicGame).filter(
+            EpicGame.enriched_at.is_(None),
+            EpicGame.namespace.isnot(None),
+            EpicGame.app_name.in_(sorted(owned)),
+        ).all()
+        pending = sorted(g.app_name for g in rows if not g.is_metadata_complete)
+        if pending:
+            logger.info("Epic: %d unfilled catalog rows re-queued", len(pending))
+        return pending
+
+    async def _fetch_user_games(
         self,
         status_callback: Optional[Callable[[str], None]] = None,
         cancel_check: Optional[Callable[[], bool]] = None,
@@ -408,7 +447,6 @@ class EpicStore(AbstractGameStore):
         """
         games = []
         db = self._get_db()
-        api = self._get_api()
 
         for app_name in app_ids:
             try:
@@ -417,25 +455,14 @@ class EpicStore(AbstractGameStore):
                     logger.warning("Game not in catalog.db: %s", app_name)
                     continue
 
-                needs_enrichment = not db_game.is_metadata_complete
-
-                if needs_enrichment and db_game.namespace:
-                    catalog_data = await asyncio.to_thread(
-                        api.get_product_data, db_game.namespace
-                    )
-                    if catalog_data:
-                        enriched = api.extract_metadata(catalog_data)
-                        self._apply_enrichment(
-                            db_game, enriched, api=api
-                        )
-                        db.upsert_game(db_game)
-                        db.commit()
-                    else:
-                        logger.debug(
-                            "No catalog data for %s (ns: %s)",
-                            app_name, db_game.namespace,
-                        )
-                elif needs_enrichment and not db_game.namespace:
+                if db_game.needs_catalog_fill and db_game.namespace:
+                    try:
+                        await asyncio.to_thread(self._fill_from_catalog, app_name)
+                        db_game = db.get_game(app_name)
+                    except EpicCatalogUnavailable as e:
+                        logger.warning("Epic catalog fill for %s skipped: %s",
+                                       app_name, e.reason)
+                elif db_game.needs_catalog_fill:
                     logger.warning(
                         "Game %s needs enrichment but has no namespace",
                         app_name,
@@ -527,31 +554,57 @@ class EpicStore(AbstractGameStore):
         store_name: str,
         store_id: str,
         normalized_title: str = "",
-    ) -> Optional[Dict[str, Any]]:
-        """Resolve a game in Epic's catalog and return standardized metadata.
-
-        Resolution strategy:
-        1. If store_name == "epic" -> direct ID lookup
-        2. Otherwise -> title-based search in Epic catalog
-
-        Args:
-            store_name: Store identifier
-            store_id: Store's app ID
-            normalized_title: Optional normalized title for cross-store search
-
-        Returns:
-            Standardized metadata dict, or None
-        """
-        app_name = None
+    ) -> Lookup:
+        """Resolve a game against the Epic catalog cache; a missing own-store row
+        has no per-id fetch, the product page needs the sync's namespace."""
         if store_name == self.store_name:
-            app_name = store_id
-        elif normalized_title:
-            app_name = self._find_app_name_by_title(normalized_title)
+            return self._lookup_own_store(store_id)
 
-        if not app_name:
-            return None
+        if not normalized_title:
+            return Lookup.not_found("no title")
+        metadata = self._find_game_by_title(normalized_title)
+        if metadata:
+            return Lookup.found(metadata)
+        return Lookup.not_found("no title match")
+    def _lookup_own_store(self, store_id: str) -> Lookup:
+        """Own-store lookup. A row without catalog data gets one product page
+        attempt first; a page that does not exist stamps the row for good."""
+        db = self._get_db()
+        game = db.get_game(store_id)
+        if game is None:
+            return Lookup.not_found("no catalog row")
+        if not game.needs_catalog_fill or not game.namespace:
+            return Lookup.found(self.get_game_metadata(store_id))
 
-        return self.get_game_metadata(app_name)
+        if not is_online():
+            return Lookup.unavailable("offline")
+        pending = self.http.rate_limit_wait(f"{STORE_CONTENT_HOST}/api/content/products")
+        if pending > ON_MISS_MAX_WAIT_SECONDS:
+            logger.debug("Epic catalog fill for %s skipped: limiter busy for %.1fs",
+                         store_id, pending)
+            return Lookup.unavailable("rate_limited")
+
+        try:
+            self._fill_from_catalog(store_id)
+        except EpicCatalogUnavailable as e:
+            return Lookup.unavailable(e.reason)
+        return Lookup.found(self.get_game_metadata(store_id))
+
+    def _fill_from_catalog(self, app_name: str) -> None:
+        """Ask the public product page once and stamp the row, loaded in the
+        calling thread's own session. Raises EpicCatalogUnavailable unstamped."""
+        api = self._get_api()
+        db = self._get_db()
+        db_game = db.get_game(app_name)
+        if db_game is None or not db_game.namespace:
+            return
+        catalog_data = api.get_product_data(db_game.namespace)
+        if catalog_data:
+            self._apply_enrichment(db_game, api.extract_metadata(catalog_data))
+        else:
+            logger.debug("No catalog data for %s (ns: %s)", app_name, db_game.namespace)
+        db_game.enriched_at = utc_now()
+        db.commit()
 
     def _find_game_by_title(self, normalized_title: str) -> Optional[Dict[str, Any]]:
         """Search Epic catalog by normalized title."""

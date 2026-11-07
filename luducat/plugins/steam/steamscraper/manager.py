@@ -12,6 +12,8 @@ from typing import Optional, Dict, Any, Union
 from datetime import datetime
 from urllib.parse import urlparse, urlunparse
 
+from sqlalchemy.exc import IntegrityError
+
 from luducat.plugins.sdk.datetime import utc_now
 from luducat.plugins.sdk.json import json
 from .database import Database, Game, Image
@@ -19,6 +21,25 @@ from .steam_api import SteamAPIClient
 from .steam_scraper import SteamScraper
 from .config import STEAMSPY_MIN_REVIEWS
 from .exceptions import AppNotFoundError, RateLimitExceededError, SteamScraperException
+
+# Library asset names as IStoreBrowseService reports them; the database
+# columns carry the same names.
+LIBRARY_ASSET_FIELDS = (
+    'library_capsule',
+    'library_capsule_2x',
+    'library_hero',
+    'library_logo',
+    'main_capsule',
+    'small_capsule',
+)
+
+# CDN bases in probe order. The first serves practically every asset
+# (14338 of 14345 rows in a live catalog); the others are probe fallbacks.
+ASSET_CDN_BASES = (
+    "https://shared.steamstatic.com/store_item_assets",
+    "https://shared.akamai.steamstatic.com/store_item_assets",
+    "https://cdn.cloudflare.steamstatic.com",
+)
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +58,9 @@ class SteamGameManager:
         """
         self.database = Database(db_path)
         self.api_client = SteamAPIClient(api_key, http_client=http_client)
+        # App ids the last get_games_bulk() got success=false for; the
+        # store remembers them so the sync refetch stops asking
+        self.not_found_appids: list[int] = []
         self.scraper = SteamScraper(cache_dir, http_client=http_client)
 
     @staticmethod
@@ -164,7 +188,7 @@ class SteamGameManager:
                 game = self._create_game_from_api(appid, api_data)
                 session.add(game)
 
-            # Update timestamp
+            game.partial = False
             game.last_updated = utc_now()
 
             session.commit()
@@ -230,6 +254,77 @@ class SteamGameManager:
             raise
         finally:
             session.close()
+
+    def fetch_game_light(self, appid: int) -> Game:
+        """Two-request fetch for a catalog miss on the lazy path.
+
+        appdetails for the record, IStoreBrowseService for the asset
+        names; no SteamSpy, no CDN probes. The row is marked partial so
+        the next sync runs the full scrape over it.
+
+        Raises:
+            AppNotFoundError: appdetails answered success=false
+            RateLimitExceededError: 429/403 or cooldown
+            SteamAPIError: request failed
+        """
+        api_data = self.api_client.get_app_details(appid)
+
+        session = self.database.get_session()
+        try:
+            game = session.query(Game).filter_by(appid=appid).first()
+            if game is None:
+                game = self._create_game_from_api(appid, api_data)
+                session.add(game)
+            else:
+                self._update_game_from_api(game, api_data)
+            game.partial = True
+            game.last_updated = utc_now()
+            try:
+                session.commit()
+            except IntegrityError:
+                # Concurrent light fetch inserted the row first
+                session.rollback()
+                game = session.query(Game).filter_by(appid=appid).first()
+                if game is None:
+                    raise
+                self._update_game_from_api(game, api_data)
+                game.partial = True
+                game.last_updated = utc_now()
+                session.commit()
+
+            self._scrape_and_store_screenshots(
+                appid, api_data.get('screenshots', []), session, download_images=False
+            )
+
+            assets = self._asset_urls_from_api(self.api_client.get_store_assets(appid))
+            if assets:
+                for field, url in assets.items():
+                    setattr(game, field, url)
+                session.commit()
+
+            session.refresh(game)
+            _ = game.images
+            session.expunge(game)
+            return game
+
+        except Exception:
+            session.rollback()
+            raise
+        finally:
+            session.close()
+
+    def _asset_urls_from_api(self, assets: dict) -> dict:
+        """Asset URLs on the primary CDN from IStoreBrowseService names, unprobed."""
+        url_format = assets.get('asset_url_format', '') if assets else ''
+        if not url_format:
+            return {}
+        urls = {}
+        for field in LIBRARY_ASSET_FIELDS:
+            filename = assets.get(field)
+            if filename:
+                path = url_format.replace('${FILENAME}', filename)
+                urls[field] = self._strip_query_params(f"{ASSET_CDN_BASES[0]}/{path}")
+        return urls
 
     def _create_game_from_api(self, appid: int, data: Dict[str, Any]) -> Game:
         """Create Game object from Steam API data.
@@ -603,22 +698,8 @@ class SteamGameManager:
             # Get asset_url_format and CDN base
             asset_url_format = assets.get('asset_url_format', '')
 
-            # Modern CDN bases (in priority order)
-            cdn_bases = [
-                "https://shared.steamstatic.com/store_item_assets",
-                "https://shared.akamai.steamstatic.com/store_item_assets",
-                "https://cdn.cloudflare.steamstatic.com"
-            ]
-
-            # Map API asset names to database fields
-            asset_mapping = {
-                'library_capsule': 'library_capsule',
-                'library_capsule_2x': 'library_capsule_2x',
-                'library_hero': 'library_hero',
-                'library_logo': 'library_logo',
-                'main_capsule': 'main_capsule',
-                'small_capsule': 'small_capsule',
-            }
+            cdn_bases = list(ASSET_CDN_BASES)
+            asset_mapping = {field: field for field in LIBRARY_ASSET_FIELDS}
 
             missing_from_api = []
 
@@ -868,7 +949,8 @@ class SteamGameManager:
                 print(f"{game.name}: {game.developers}")
         """
         session = self.database.get_session()
-        
+        self.not_found_appids = []
+
         try:
             # Bulk query for existing games (eager load images)
             # Note: Use selectinload instead of joinedload to avoid duplicate parent objects
@@ -912,6 +994,9 @@ class SteamGameManager:
                     result[appid] = game
                 except RateLimitExceededError:
                     raise  # Must propagate for proper backoff
+                except AppNotFoundError:
+                    logger.info("App %s is delisted or unavailable on Steam", appid)
+                    self.not_found_appids.append(appid)
                 except Exception as e:
                     logger.error(f"Failed to fetch game {appid}: {e}")
                     # Don't include in result if fetch fails
@@ -926,6 +1011,9 @@ class SteamGameManager:
                     result[game.appid] = updated_game
                 except RateLimitExceededError:
                     raise  # Must propagate for proper backoff
+                except AppNotFoundError:
+                    logger.info("App %s is delisted or unavailable on Steam", game.appid)
+                    self.not_found_appids.append(game.appid)
                 except Exception as e:
                     logger.error(f"Failed to update game {game.appid}: {e}")
                     # Keep existing incomplete game in result

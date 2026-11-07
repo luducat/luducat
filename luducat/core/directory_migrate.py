@@ -1,132 +1,166 @@
 # This file is part of luducat. License: GPL-3.0-or-later. Contact: luducat@trinity2k.net
 # directory_migrate.py
 
-"""Directory migration logic for luducat
-
-Handles moving data and cache directories to new locations with:
-- File-by-file copy with progress reporting
-- Verification (file count + total size)
-- Config update on success
-- Rollback on failure (delete partial copy, revert config)
-"""
+"""Copy a luducat directory for a move, rolling back on failure."""
 
 import logging
+import os
 import shutil
 from pathlib import Path
-from typing import List, Tuple
 
 from PySide6.QtCore import QObject, Signal
+
+from .config import is_case_insensitive_platform, path_contains
 
 logger = logging.getLogger(__name__)
 
 
+def _raise_walk_error(error: OSError) -> None:
+    # os.walk skips unreadable folders silently; a move must not.
+    raise error
+
+
+class DirectoryMoveError(RuntimeError):
+    """The copy failed or was cancelled; migrate() removed the partial copy."""
+
+
 class DirectoryMigration(QObject):
-    """Migrate a luducat directory to a new location.
+    """Emits progress per copied entry; cancel() is safe to call from another thread."""
 
-    Signals:
-        progress(current, total, filename): File copy progress
-        finished(success, message): Migration result
-    """
+    progress = Signal(int, int, str)
 
-    progress = Signal(int, int, str)  # current, total, filename
-    finished = Signal(bool, str)      # success, message
-
-    def __init__(self, parent=None):
+    def __init__(self, parent: QObject | None = None):
         super().__init__(parent)
         self._cancelled = False
 
     def cancel(self) -> None:
-        """Request cancellation of the migration."""
+        """Request cancellation; migrate() raises after rolling back."""
         self._cancelled = True
 
-    def migrate(self, source: Path, target: Path, config_key: str) -> None:
-        """Copy files from source to target, update config on success.
+    def migrate(self, source: Path, target: Path) -> list[Path]:
+        """Copy source to target; return the copied entries relative to source.
 
-        Args:
-            source: Current directory (e.g. ~/.local/share/luducat)
-            target: New directory to move to
-            config_key: Config key to update (e.g. "app.custom_data_dir")
+        Raises DirectoryMoveError after removing the partial copy.
         """
         self._cancelled = False
+        created_target = not target.exists()
 
-        # 1. Enumerate files
         try:
             files = self._enumerate_files(source)
+            dirs = self._enumerate_dirs(source)
         except OSError as e:
-            self.finished.emit(False, f"Failed to enumerate source: {e}")
-            return
+            raise DirectoryMoveError(f"Failed to enumerate source: {e}") from e
+        if not files and not dirs:
+            raise DirectoryMoveError("Source directory is empty.")
+        try:
+            bad_links = self._links_that_would_break(source, files)
+        except OSError as e:
+            raise DirectoryMoveError(f"Failed to read links in source: {e}") from e
+        if bad_links:
+            raise DirectoryMoveError(
+                "These links would point somewhere else after the move: "
+                + ", ".join(str(p) for p in bad_links)
+            )
 
         total = len(files)
-        if total == 0:
-            self.finished.emit(False, "Source directory is empty.")
-            return
-
-        # 2. Copy each file
-        copied: List[Path] = []
+        copied: list[Path] = []
         rel_path = Path()
         try:
+            # Empty folders too: plugins expect their cache dirs to exist
+            target.mkdir(parents=True, exist_ok=True)
+            for rel_dir in dirs:
+                (target / rel_dir).mkdir(parents=True, exist_ok=True)
             for i, rel_path in enumerate(files):
                 if self._cancelled:
-                    self._rollback(target, copied)
-                    self.finished.emit(False, "Migration cancelled by user.")
-                    return
-
-                src_file = source / rel_path
+                    self._rollback(target, copied, remove_root=created_target)
+                    raise DirectoryMoveError("Move cancelled by user.")
                 dst_file = target / rel_path
-
-                dst_file.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(str(src_file), str(dst_file))
+                # Links are copied as links; following them would copy their
+                # target, and a linked folder would arrive empty.
+                shutil.copy2(str(source / rel_path), str(dst_file), follow_symlinks=False)
                 copied.append(dst_file)
-
                 self.progress.emit(i + 1, total, rel_path.name)
-
         except OSError as e:
-            logger.error(f"Migration copy failed at {rel_path}: {e}")
-            self._rollback(target, copied)
-            self.finished.emit(False, f"Copy failed: {e}")
-            return
+            logger.error("Directory move copy failed at %s: %s", rel_path, e)
+            self._rollback(target, copied, remove_root=created_target)
+            raise DirectoryMoveError(f"Copy failed: {e}") from e
 
-        # 3. Verify
-        ok, verify_msg = self._verify(source, target, files)
-        if not ok:
-            self._rollback(target, copied)
-            self.finished.emit(False, f"Verification failed: {verify_msg}")
-            return
-
-        # 4. Update config
         try:
-            from .config import Config  # noqa: E402 - deferred import
-            config = Config()
-            config.set(config_key, str(target))
-            config.save()
-        except Exception as e:
-            logger.error(f"Failed to update config: {e}")
-            self._rollback(target, copied)
-            self.finished.emit(False, f"Config update failed: {e}")
-            return
+            self._copy_dir_timestamps(source, target, dirs)
+            ok, verify_msg = self._verify(source, target, files)
+        except OSError as e:
+            logger.error("Directory move could not finish the copy: %s", e)
+            self._rollback(target, copied, remove_root=created_target)
+            raise DirectoryMoveError(f"Finishing the copy failed: {e}") from e
+        if not ok:
+            self._rollback(target, copied, remove_root=created_target)
+            raise DirectoryMoveError(f"Verification failed: {verify_msg}")
 
-        self.finished.emit(
-            True,
-            f"Successfully migrated {total} files to {target}"
-        )
-
-    def _enumerate_files(self, directory: Path) -> List[Path]:
-        """Get list of all files relative to directory."""
-        files = []
-        for f in sorted(directory.rglob("*")):
-            if f.is_file():
-                files.append(f.relative_to(directory))
         return files
 
+    def _enumerate_files(self, directory: Path) -> list[Path]:
+        """Files and links (to files or folders) below directory, relative to it."""
+        entries = []
+        for dirpath, dirnames, filenames in os.walk(
+            directory, onerror=_raise_walk_error, followlinks=False
+        ):
+            base = Path(dirpath)
+            entries.extend(base / name for name in filenames)
+            entries.extend(base / name for name in dirnames if (base / name).is_symlink())
+        return sorted(e.relative_to(directory) for e in entries)
+
+    def _enumerate_dirs(self, directory: Path) -> list[Path]:
+        """Real folders below directory, relative to it, empty ones included."""
+        dirs = []
+        for dirpath, dirnames, _filenames in os.walk(
+            directory, onerror=_raise_walk_error, followlinks=False
+        ):
+            base = Path(dirpath)
+            dirs.extend(base / name for name in dirnames if not (base / name).is_symlink())
+        return sorted(d.relative_to(directory) for d in dirs)
+
+    def _links_that_would_break(self, source: Path, entries: list[Path]) -> list[Path]:
+        """Relative links must stay inside the tree; absolute links into it would still point at the old place."""
+        ci = is_case_insensitive_platform()
+        root = os.path.normpath(str(source.absolute()))
+        if ci:
+            root = root.casefold()
+        bad = []
+        for rel in entries:
+            path = source / rel
+            if not path.is_symlink():
+                continue
+            link = os.readlink(path)
+            if os.path.isabs(link):
+                if path_contains(source, Path(link), ci):
+                    bad.append(rel)
+                continue
+            landing = os.path.normpath(os.path.join(str(path.parent.absolute()), link))
+            if ci:
+                landing = landing.casefold()
+            if landing != root and not landing.startswith(root + os.sep):
+                bad.append(rel)
+        return bad
+
+    def _copy_dir_timestamps(self, source: Path, target: Path, dirs: list[Path]) -> None:
+        # After all files exist: creating them bumped every folder's mtime.
+        for rel_dir in sorted(dirs, key=lambda d: len(d.parts), reverse=True):
+            shutil.copystat(source / rel_dir, target / rel_dir)
+        shutil.copystat(source, target)
+
     def _verify(
-        self, source: Path, target: Path, files: List[Path]
-    ) -> Tuple[bool, str]:
-        """Verify that target matches source by file count and sizes."""
+        self, source: Path, target: Path, files: list[Path]
+    ) -> tuple[bool, str]:
+        """Every entry exists in target; links point to the same place, files have the same size."""
         for rel_path in files:
             src_file = source / rel_path
             dst_file = target / rel_path
-            if not dst_file.exists():
+            if not os.path.lexists(dst_file):
                 return False, f"Missing file: {rel_path}"
+            if src_file.is_symlink():
+                if not dst_file.is_symlink() or os.readlink(dst_file) != os.readlink(src_file):
+                    return False, f"Link not recreated: {rel_path}"
+                continue
             try:
                 src_size = src_file.stat().st_size
                 dst_size = dst_file.stat().st_size
@@ -136,21 +170,29 @@ class DirectoryMigration(QObject):
                 return False, f"Stat failed: {rel_path}: {e}"
         return True, ""
 
-    def _rollback(self, target: Path, copied: List[Path]) -> None:
-        """Remove partially copied files from target."""
-        logger.info(f"Rolling back migration: removing {len(copied)} files from {target}")
+    def _rollback(self, target: Path, copied: list[Path], remove_root: bool = False) -> None:
+        """Remove partially copied files and now-empty folders from target.
+
+        remove_root also removes target itself when the move created it.
+        """
+        logger.info("Rolling back directory move: removing %d files from %s",
+                    len(copied), target)
         for f in reversed(copied):
             try:
                 f.unlink(missing_ok=True)
-            except OSError:
-                pass
-        # Clean up empty directories
+            except OSError as e:
+                logger.warning("Rollback could not remove %s: %s", f, e)
         try:
             for d in sorted(target.rglob("*"), reverse=True):
                 if d.is_dir():
                     try:
                         d.rmdir()  # Only removes empty dirs
                     except OSError:
-                        pass
-        except OSError:
-            pass
+                        logger.debug("Rollback kept non-empty dir %s", d)
+        except OSError as e:
+            logger.warning("Rollback could not scan %s: %s", target, e)
+        if remove_root:
+            try:
+                target.rmdir()
+            except OSError as e:
+                logger.warning("Rollback kept %s: %s", target, e)

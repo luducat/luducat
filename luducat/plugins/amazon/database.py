@@ -21,13 +21,26 @@ from sqlalchemy import (
     String,
     Text,
     create_engine,
+    event,
 )
-from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
+from sqlalchemy.orm import DeclarativeBase, Session, scoped_session, sessionmaker
+from sqlalchemy.pool import NullPool
 
 from luducat.plugins.sdk.datetime import utc_now
 from luducat.plugins.sdk.json import json
 
 logger = logging.getLogger(__name__)
+
+
+def _sqlite_connect_pragmas(dbapi_connection, _record) -> None:
+    """Same connection setup as the main database: WAL so readers do not
+    wait on the sync's writes, busy timeout for the rest, no mmap (FUSE)."""
+    cursor = dbapi_connection.cursor()
+    cursor.execute("PRAGMA journal_mode=WAL")
+    cursor.execute("PRAGMA busy_timeout=30000")
+    cursor.execute("PRAGMA synchronous=NORMAL")
+    cursor.execute("PRAGMA mmap_size=0")
+    cursor.close()
 
 
 class Base(DeclarativeBase):
@@ -232,9 +245,15 @@ class AmazonDatabase:
 
     def __init__(self, db_path: Path):
         self.db_path = db_path
-        self.engine = create_engine(f"sqlite:///{db_path}", echo=False)
-        self._session_factory = sessionmaker(bind=self.engine)
-        self._session: Optional[Session] = None
+        self.engine = create_engine(
+            f"sqlite:///{db_path}",
+            echo=False,
+            poolclass=NullPool,
+            connect_args={"check_same_thread": False, "timeout": 30},
+        )
+        event.listen(self.engine, "connect", _sqlite_connect_pragmas)
+        # One session per thread (cover workers, GUI, sync); never shared
+        self._scoped = scoped_session(sessionmaker(bind=self.engine))
 
     def initialize(self) -> None:
         """Create tables if they don't exist."""
@@ -242,14 +261,12 @@ class AmazonDatabase:
 
     @property
     def session(self) -> Session:
-        if self._session is None:
-            self._session = self._session_factory()
-        return self._session
+        """The calling thread's session (created on first use)."""
+        return self._scoped()
 
     def close(self) -> None:
-        if self._session:
-            self._session.close()
-            self._session = None
+        """Release the calling thread's session and pooled connections."""
+        self._scoped.remove()
         self.engine.dispose()
 
     def commit(self) -> None:
@@ -261,7 +278,7 @@ class AmazonDatabase:
     # ── Games ────────────────────────────────────────────────────
 
     def get_game(self, product_id: str) -> Optional[AmazonGame]:
-        return self.session.query(AmazonGame).filter(
+        return self.session.query(AmazonGame).populate_existing().filter(
             AmazonGame.product_id == product_id
         ).first()
 

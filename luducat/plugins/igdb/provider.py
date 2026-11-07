@@ -29,6 +29,7 @@ from luducat.plugins.base import (
     AuthenticationError,
     EnrichmentData,
     Game,
+    Lookup,
     MetadataSearchResult,
 )
 
@@ -553,54 +554,59 @@ class IgdbProvider(AbstractMetadataProvider):
 
             # Cached "no_match" - check if we should retry
             if match.match_method == "no_match":
-                # Check TTL - retry if the failed match is old enough
-                match_age = (
-                    utc_now() - match.updated_at
-                    if match.updated_at else timedelta(days=999)
+                from luducat.plugins.sdk.lookup import miss_is_valid
+                ttl_valid = miss_is_valid(match.updated_at, self.FAILED_MATCH_TTL)
+                title_not_yet_searched = (
+                    bool(normalized_title) and not match.title_searched
                 )
-                should_retry = match_age > self.FAILED_MATCH_TTL
 
-                # Also retry if we have a title and haven't tried title search yet
-                if should_retry or normalized_title:
+                if not ttl_valid or title_not_yet_searched:
                     logger.debug(
-                        f"IGDB cache no_match (age={match_age.days}d), "
-                        f"retrying: {store_name}:{store_app_id}"
+                        "IGDB cache no_match (ttl_expired=%s, title_unsearched=%s), "
+                        "retrying: %s:%s",
+                        not ttl_valid, title_not_yet_searched,
+                        store_name, store_app_id,
                     )
                     api = self._get_api()
 
-                    # Try external_games first if TTL expired
                     igdb_id = None
-                    if should_retry and store_name != "epic":
+                    if not ttl_valid and store_name != "epic":
                         igdb_id = api.lookup_by_store_id(
                             store_name, str(store_app_id),
                             status_callback,
                         )
 
-                    # Then try title search if we have a title
+                    tried_title = False
                     if igdb_id is None and normalized_title:
-                        igdb_id = api.search_game_by_title(normalized_title, status_callback)
+                        igdb_id = api.search_game_by_title(
+                            normalized_title, status_callback,
+                        )
+                        tried_title = True
 
                     if igdb_id:
-                        # Update cache with successful match
                         db.save_store_match(
                             store_name=store_name,
                             store_app_id=str(store_app_id),
                             igdb_id=igdb_id,
-                            match_method="title_search" if normalized_title else "external_games",
+                            match_method="title_search" if tried_title else "external_games",
                             confidence=0.9,
-                            normalized_title=normalized_title
+                            normalized_title=normalized_title,
+                            title_searched=tried_title,
                         )
                         return igdb_id
-                    elif should_retry:
-                        # Update timestamp so we don't retry again immediately
+
+                    if not ttl_valid:
                         db.save_store_match(
                             store_name=store_name,
                             store_app_id=str(store_app_id),
                             igdb_id=None,
                             match_method="no_match",
                             confidence=0.0,
-                            normalized_title=normalized_title
+                            normalized_title=normalized_title,
+                            title_searched=tried_title or match.title_searched,
                         )
+                    elif tried_title:
+                        db.mark_title_searched(store_name, str(store_app_id))
 
             # True no_match (not expired and already tried available methods)
             return None
@@ -616,23 +622,23 @@ class IgdbProvider(AbstractMetadataProvider):
         else:
             igdb_id = api.lookup_by_store_id(store_name, str(store_app_id), status_callback)
 
-        # Determine match method for caching
         match_method = "external_games" if igdb_id else "no_match"
+        tried_title = False
 
-        # If not found and we have a title, try search
         if igdb_id is None and normalized_title:
             igdb_id = api.search_game_by_title(normalized_title, status_callback)
+            tried_title = True
             if igdb_id:
                 match_method = "title_search"
 
-        # Cache result (even if None - to avoid repeated lookups)
         db.save_store_match(
             store_name=store_name,
             store_app_id=str(store_app_id),
             igdb_id=igdb_id,
             match_method=match_method,
             confidence=1.0 if match_method == "external_games" else (0.9 if igdb_id else 0.0),
-            normalized_title=normalized_title
+            normalized_title=normalized_title,
+            title_searched=tried_title,
         )
 
         return igdb_id
@@ -1428,42 +1434,38 @@ class IgdbProvider(AbstractMetadataProvider):
         self,
         store_name: str,
         store_id: str,
-        normalized_title: str = ""
-    ) -> Optional[Dict[str, Any]]:
-        """Get metadata for a game on-demand using store info
+        normalized_title: str = "",
+    ) -> Dict[str, Any] | Lookup | None:
+        """Resolve a game against IGDB on demand.
 
-        Implementation of the generic AbstractMetadataProvider interface.
-        Called by MetadataResolver when store plugins don't have the data.
-
-        Args:
-            store_name: Store identifier ("steam", "gog", "epic")
-            store_id: Store's app ID
-            normalized_title: Optional normalized title for fallback search
-
-        Returns:
-            Dict with metadata or None if game not found
+        Looks up the IGDB id from the store match cache or the API,
+        then returns the cached or freshly fetched metadata.
         """
         try:
-            # Reset cancel state — a previous sync/close may have set it,
-            # but on-demand requests are independent operations.
             api = self._get_api()
             api.reset_cancel()
 
-            # Look up IGDB ID from store info
             igdb_id = self.lookup_igdb_id(
                 store_name, store_id,
-                normalized_title=normalized_title
+                normalized_title=normalized_title,
             )
 
             if igdb_id:
-                # Get full metadata
-                return self.get_game_metadata(str(igdb_id))
+                result = self.get_game_metadata(str(igdb_id))
+                return Lookup.found(result) if result else Lookup.not_found("no metadata")
 
-            return None
+            return Lookup.not_found()
 
+        except IgdbRateLimitError:
+            # Covers the open circuit breaker too; both clear by themselves
+            return Lookup.unavailable("rate_limited")
+        except IgdbCancelledError:
+            return Lookup.unavailable("cancelled")
+        except AuthenticationError:
+            return Lookup.unavailable("auth")
         except Exception as e:
-            logger.debug(f"IGDB on-demand lookup failed for {store_name}:{store_id}: {e}")
-            return None
+            logger.debug("IGDB on-demand lookup failed for %s:%s: %s", store_name, store_id, e)
+            return Lookup.unavailable(f"error: {type(e).__name__}")
 
     # =========================================================================
     # BULK GAME MODE QUERY

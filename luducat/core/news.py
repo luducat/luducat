@@ -18,6 +18,46 @@ from typing import Any, Dict, List, Optional
 # Each item has optional "section" prefix and required "text"
 NEWS_ENTRIES: List[Dict[str, Any]] = [
     {
+        "version": "0.8.6",
+        "date": "2026-11-07",
+        "items": [
+            {"section": "", "text":
+             "Config, data and cache live in separate folders on every "
+             "platform; existing Windows and macOS installs are migrated once"},
+            {"section": "", "text":
+             "Data and cache folders can be moved from Settings; the app "
+             "restarts into the new location"},
+            {"section": "", "text":
+             "Only one luducat runs at a time"},
+            {"section": "Covers", "text":
+             "Covers load for what is on screen first and no longer go "
+             "missing when a source is busy"},
+            {"section": "Covers", "text":
+             "Games without store details yet get them when you scroll to "
+             "them; the next sync completes the rest"},
+            {"section": "Sync", "text":
+             "A cancelled store sync no longer removes games from the library"},
+            {"section": "Sync", "text":
+             "Games the store API missed are reported separately and no "
+             "longer show up as a wave of new games"},
+            {"section": "Sync", "text":
+             "Metadata shared between a game's stores is kept"},
+            {"section": "Steam", "text":
+             "Games that never received their store details are fetched again"},
+            {"section": "Steam", "text":
+             "Install knows when a game is already installed"},
+            {"section": "Filters", "text":
+             "Filter by platform"},
+            {"section": "", "text":
+             "PCGamingWiki and IGDB are asked more carefully: fewer pauses, "
+             "no hour-long stalls"},
+            {"section": "UI", "text":
+             "Theme fonts follow the system font size; several theme fixes"},
+            {"section": "", "text":
+             "Duplicate translations removed in all languages"},
+        ],
+    },
+    {
         "version": "0.8.5",
         "date": "2026-08-18",
         "items": [
@@ -182,7 +222,7 @@ NEWS_ENTRIES: List[Dict[str, Any]] = [
              "Enables remote launching of Playnite-managed games from luducat over "
              "the local network. Browse your catalogue on Linux (or a second Windows "
              "machine) and launch games on the Windows PC where Playnite is running. "
-             "Requires installing the Luducat Bridge plugin in Playnite — a one-time "
+             "Requires installing the Luducat Bridge plugin in Playnite, a one-time "
              "setup that pairs both sides securely. Combined with Sunshine and "
              "Moonlight, you can stream the game back to your screen for a seamless "
              "couch gaming experience."},
@@ -235,15 +275,29 @@ def get_news_html() -> str:
     return '\n'.join(html_parts)
 
 
-# Curated update summaries — terse, 3-category, written during version bump.
-# Keys match version strings in NEWS_ENTRIES. Only the latest entry matters
-# for the proxy endpoint; older entries are kept for reference.
-#
-# Categories:
-#   "new"      — New UX features, new stores/plugins, non-obvious additions
-#   "improved" — Enhancements to things that already existed
-#   "fixed"    — User-impacting bugfixes
+# Written at version bump, keyed like NEWS_ENTRIES; only the latest feeds the proxy.
+# new: UX features, stores, plugins. improved: changes to existing things. fixed: bugfixes.
 UPDATE_SUMMARIES: Dict[str, Dict[str, List[str]]] = {
+    "0.8.6": {
+        "new": [
+            "Platform filter",
+            "Data and cache folders movable from Settings",
+            "Install detects already installed Steam games",
+        ],
+        "improved": [
+            "Config, data and cache in separate folders, migrated once",
+            "Covers load viewport-first and fill in on demand",
+            "Gentler PCGamingWiki and IGDB requests",
+            "Theme fonts follow the system font size",
+        ],
+        "fixed": [
+            "Cancelled store sync removed games as unowned",
+            "Store API gaps reported as a wave of new games",
+            "Shared metadata between a game's stores was lost",
+            "Steam games never received their store details",
+            "Duplicate translations",
+        ],
+    },
     "0.8.5": {
         "new": [
             "GOG game details cache for archive scans",

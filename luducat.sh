@@ -523,7 +523,7 @@ launch_app() {
     log_info "Starting $APP_NAME..."
     echo
 
-    cd "$SCRIPT_DIR"
+    cd "$SCRIPT_DIR" || { log_error "Cannot enter $SCRIPT_DIR"; exit 1; }
 
     # The venv should already be activated from check_and_install_packages
     # But activate again just to be safe
@@ -533,6 +533,10 @@ launch_app() {
     # Limit glibc memory arenas to reduce fragmentation from multi-threaded
     # QPixmap allocation/deallocation (worker threads vs main thread).
     export MALLOC_ARENA_MAX=2
+
+    # The at-spi bridge warns about every list item the virtual views
+    # recycle under it; mute that category, keep the user's own rules.
+    export QT_LOGGING_RULES="${QT_LOGGING_RULES:+$QT_LOGGING_RULES;}qt.accessibility.atspi.warning=false"
 
     # Launch the application
     # Pass through any command line arguments
@@ -570,7 +574,7 @@ main() {
     done
 
     # Change to script directory
-    cd "$SCRIPT_DIR"
+    cd "$SCRIPT_DIR" || { log_error "Cannot enter $SCRIPT_DIR"; exit 1; }
 
     echo
     echo "${BOLD}$APP_NAME${RESET}"

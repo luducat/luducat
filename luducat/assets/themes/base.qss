@@ -1177,6 +1177,11 @@ QDialog QGroupBox::title {
     background: {{bg_secondary}};
 }
 
+QGroupBox#wizardStoreGroup {
+    margin-top: 4px;
+    padding-top: 8px;
+}
+
 QDialog QComboBox {
     background-color: {{bg_input}};
     border: 1px solid {{border}};

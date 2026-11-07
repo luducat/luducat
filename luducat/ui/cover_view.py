@@ -10,58 +10,74 @@ Uses QListView in IconMode with custom delegate for virtual scrolling.
 import html
 import logging
 import time
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set
+from collections.abc import Callable
+from typing import Any
 
 from PySide6.QtCore import (
-    Qt,
-    Signal,
-    QSize,
-    QRect,
-    QModelIndex,
     QAbstractListModel,
-    QTimer,
-    QThread,
-    QObject,
     QEvent,
+    QModelIndex,
+    QObject,
+    QRect,
+    QSize,
+    Qt,
+    QThread,
+    QTimer,
+    Signal,
 )
 from PySide6.QtGui import (
-    QPainter,
-    QPalette,
+    QColor,
     QFont,
     QFontMetrics,
-    QColor,
+    QHelpEvent,
+    QPainter,
+    QPalette,
     QPen,
     QPixmap,
-    QHelpEvent,
 )
 from PySide6.QtWidgets import (
-    QWidget,
-    QVBoxLayout,
-    QListView,
-    QStyledItemDelegate,
-    QStyleOptionViewItem,
-    QStyle,
     QAbstractItemView,
     QApplication,
+    QListView,
+    QStyle,
+    QStyledItemDelegate,
+    QStyleOptionViewItem,
     QToolTip,
+    QVBoxLayout,
+    QWidget,
 )
 
 from ..core.constants import (
     CORNER_DEMO_COLORS,
     CORNER_FREE_COLORS,
     CORNER_TRIANGLE_SIZE,
+    DEFAULT_IMAGE_FADE_MS,
     GAME_MODE_LABELS,
     INSTALLED_BADGE_COLOR,
     INSTALLED_BADGE_LABEL,
-    PROTONDB_TIER_LABELS,
     PROTONDB_TIER_COLORS,
-    STEAM_DECK_LABELS,
+    PROTONDB_TIER_LABELS,
     STEAM_DECK_COLORS,
-    DEFAULT_IMAGE_FADE_MS,
+    STEAM_DECK_LABELS,
 )
-from ..core.plugin_manager import PluginManager, _DEFAULT_BRAND_COLORS
-from ..utils.image_cache import get_cover_cache, ImageCache
-from .badge_painter import draw_badge, draw_icon_badge, draw_store_icon_badge, draw_license_circle, draw_corner_triangle, draw_overflow_pill, draw_status_dot, get_player_count, game_mode_badge_width, store_badge_width, STATUS_DOT_PRIVATE, STATUS_DOT_DELISTED
+from ..core.lazy_metadata import CoverLookup
+from ..core.plugin_manager import _DEFAULT_BRAND_COLORS, PluginManager
+from ..utils.image_cache import ImageCache, get_cover_cache
+from .badge_painter import (
+    STATUS_DOT_DELISTED,
+    STATUS_DOT_PRIVATE,
+    draw_badge,
+    draw_corner_triangle,
+    draw_icon_badge,
+    draw_license_circle,
+    draw_overflow_pill,
+    draw_status_dot,
+    draw_store_icon_badge,
+    game_mode_badge_width,
+    get_player_count,
+    store_badge_width,
+)
+from .grid_lazy_load import visible_row_range
 
 logger = logging.getLogger(__name__)
 
@@ -79,13 +95,15 @@ def _corner_tooltip(title: str) -> str:
 class CoverFetchWorker(QThread):
     """Worker thread for fetching covers from fallback sources."""
 
-    cover_fetched = Signal(str, str)  # game_id, cover_url (empty string if not found)
+    # game_id, cover_url ("" if none), retry_later (an empty answer that
+    # is not final: a source was paused, offline, or the lookup failed)
+    cover_fetched = Signal(str, str, bool)
 
     def __init__(
         self,
         game_id: str,
-        callback: Callable[[str], str],
-        parent: Optional[QObject] = None
+        callback: Callable[[str], CoverLookup],
+        parent: QObject | None = None
     ):
         super().__init__(parent)
         self._game_id = game_id
@@ -94,11 +112,11 @@ class CoverFetchWorker(QThread):
     def run(self) -> None:
         """Fetch cover in background thread."""
         try:
-            cover_url = self._callback(self._game_id)
-            self.cover_fetched.emit(self._game_id, cover_url or "")
+            lookup = self._callback(self._game_id)
+            self.cover_fetched.emit(self._game_id, lookup.url or "", lookup.retry_later)
         except Exception as e:
             logger.debug(f"Failed to fetch cover for {self._game_id}: {e}")
-            self.cover_fetched.emit(self._game_id, "")
+            self.cover_fetched.emit(self._game_id, "", True)
 
 
 # Custom roles for game data
@@ -119,12 +137,12 @@ class CoverRoles:
 class CoverListModel(QAbstractListModel):
     """Model for cover grid with virtual scrolling support"""
 
-    def __init__(self, parent: Optional[QWidget] = None):
+    def __init__(self, parent: QWidget | None = None):
         super().__init__(parent)
-        self._games: List[Dict[str, Any]] = []
+        self._games: list[dict[str, Any]] = []
 
-    def rowCount(self, parent: QModelIndex = QModelIndex()) -> int:
-        if parent.isValid():
+    def rowCount(self, parent: QModelIndex | None = None) -> int:
+        if parent is not None and parent.isValid():
             return 0
         return len(self._games)
 
@@ -161,7 +179,7 @@ class CoverListModel(QAbstractListModel):
 
         return None
 
-    def _format_tooltip(self, game: Dict[str, Any]) -> str:
+    def _format_tooltip(self, game: dict[str, Any]) -> str:
         """Format game data as HTML tooltip"""
         from bs4 import BeautifulSoup
 
@@ -214,7 +232,7 @@ class CoverListModel(QAbstractListModel):
 
         return tooltip
 
-    def set_games(self, games: List[Dict[str, Any]]) -> None:
+    def set_games(self, games: list[dict[str, Any]]) -> None:
         """Set the game list"""
         self.beginResetModel()
         self._games = games
@@ -232,7 +250,7 @@ class CoverListModel(QAbstractListModel):
         self._games.extend(games)
         self.endInsertRows()
 
-    def get_game_at(self, index: QModelIndex) -> Optional[Dict[str, Any]]:
+    def get_game_at(self, index: QModelIndex) -> dict[str, Any] | None:
         """Get game data at model index"""
         return self.data(index, CoverRoles.GameData)
 
@@ -261,8 +279,8 @@ class CoverItemDelegate(QStyledItemDelegate):
     def __init__(
         self,
         cover_width: int = 150,
-        image_cache: Optional[ImageCache] = None,
-        parent: Optional[QWidget] = None,
+        image_cache: ImageCache | None = None,
+        parent: QWidget | None = None,
     ):
         super().__init__(parent)
         self._cover_width = cover_width
@@ -297,8 +315,8 @@ class CoverItemDelegate(QStyledItemDelegate):
         self._cover_scaling = "none"
 
         # Local cache of plugin data (avoids classmethod dispatch in paint())
-        self._brand_colors: Dict[str, Dict[str, str]] = dict(PluginManager._brand_colors)
-        self._badge_labels: Dict[str, str] = dict(PluginManager._badge_labels)
+        self._brand_colors: dict[str, dict[str, str]] = dict(PluginManager._brand_colors)
+        self._badge_labels: dict[str, str] = dict(PluginManager._badge_labels)
 
         # Badge visibility (toggled from Settings → Appearance)
         self._show_game_mode_badges = True
@@ -732,7 +750,7 @@ class CoverView(QWidget):
     # Default cover size
     DEFAULT_COVER_WIDTH = 150
 
-    def __init__(self, parent: Optional[QWidget] = None):
+    def __init__(self, parent: QWidget | None = None):
         super().__init__(parent)
         self.setObjectName("coverView")
 
@@ -740,14 +758,14 @@ class CoverView(QWidget):
         self._image_cache = get_cover_cache()
 
         # Callback for fetching covers on-demand (game_id -> cover_url)
-        self._cover_callback: Optional[Callable[[str], str]] = None
+        self._cover_callback: Callable[[str], str] | None = None
         # Track which games we've already requested covers for (avoid duplicates)
-        self._pending_cover_requests: Set[str] = set()
+        self._pending_cover_requests: set[str] = set()
         # Games that have been checked and have no cover (don't retry)
-        self._no_cover_games: Set[str] = set()
+        self._no_cover_games: set[str] = set()
         # Active worker threads (limit concurrency)
-        self._active_workers: List[CoverFetchWorker] = []
-        self._request_queue: List[str] = []
+        self._active_workers: list[CoverFetchWorker] = []
+        self._request_queue: list[str] = []
         self._max_concurrent_workers = 4  # Limit parallel fetches
 
         self._scroll_rows = 0  # 0 = system default
@@ -772,6 +790,9 @@ class CoverView(QWidget):
         self._fade_timer = QTimer(self)
         self._fade_timer.setInterval(16)  # ~60fps
         self._fade_timer.timeout.connect(self._on_fade_tick)
+
+        # Layout retry budget for _queue_visible_covers after a model reset
+        self._layout_retries = 0
 
     def _setup_ui(self) -> None:
         """Create cover view layout"""
@@ -841,6 +862,11 @@ class CoverView(QWidget):
                 return True
         return super().eventFilter(obj, event)
 
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        # More or fewer rows fit now; re-queue after the debounce
+        self._scroll_debounce_timer.start()
+
     def _connect_signals(self) -> None:
         """Connect signals"""
         # currentChanged covers: mouse click (when item changes), keyboard nav.
@@ -882,13 +908,11 @@ class CoverView(QWidget):
         self._scroll_debounce_timer.start()
 
     def _on_scroll_settled(self) -> None:
-        """Scroll debounce expired — re-enable disk loads and repaint.
-
-        The repaint triggers get_image() for visible items, which queues async
-        disk loads (no longer blocks UI thread with synchronous reads).
-        """
+        """Scroll debounce expired: re-enable disk loads, repaint, and
+        re-queue cover fetches for what is on screen now."""
         self._image_cache.set_scroll_active(False)
         self.list_view.viewport().update()
+        self._queue_visible_covers()
 
     def _on_item_clicked(self, index: QModelIndex) -> None:
         """Handle item click - switches to list view and selects game"""
@@ -917,7 +941,7 @@ class CoverView(QWidget):
         if game_id and stores:
             self.game_launched.emit(game_id, stores[0])
 
-    def append_games(self, games: List[Dict[str, Any]]) -> None:
+    def append_games(self, games: list[dict[str, Any]]) -> None:
         """Append games incrementally during progressive loading."""
         if not games:
             return
@@ -929,7 +953,7 @@ class CoverView(QWidget):
             if game_id:
                 self._game_id_to_row[game_id] = start + i
 
-    def set_games(self, games: List[Dict[str, Any]]) -> None:
+    def set_games(self, games: list[dict[str, Any]]) -> None:
         """Set games to display
 
         Args:
@@ -952,36 +976,74 @@ class CoverView(QWidget):
             if game_id:
                 self._game_id_to_row[game_id] = row
 
-        # Queue cover fetches for games without covers (deferred to not block)
+        self._layout_retries = 0
+        # Queue cover fetches for what is on screen once layout settles
         if self._cover_callback:
-            QTimer.singleShot(100, lambda: self._queue_missing_covers(games))
+            QTimer.singleShot(50, self._queue_visible_covers)
 
-    def _queue_missing_covers(self, games: List[Dict[str, Any]]) -> None:
-        """Queue cover fetches for games that don't have covers."""
+    def _visible_rows(self) -> tuple[int, int] | None:
+        """(first, last) rows in the viewport, or None before layout."""
+        return visible_row_range(self.list_view, self.model)
+
+    def _queue_visible_covers(self) -> None:
+        """Queue cover fetches, viewport first.
+
+        Qt swallows exceptions raised in timer slots, so the body is
+        wrapped and logged; a silent failure here means a grid without
+        covers and no trace of why.
+        """
+        try:
+            self._queue_visible_covers_inner()
+        except Exception:
+            logger.error("Cover lazy loader crashed", exc_info=True)
+
+    def _queue_visible_covers_inner(self) -> None:
         if not self._cover_callback:
             return
+        row_count = self.model.rowCount()
+        if row_count == 0:
+            return
 
-        for game in games:
+        rng = self._visible_rows()
+        if rng is None:
+            # Model reset without a layout pass yet: force one, retry
+            self.list_view.doItemsLayout()
+            rng = self._visible_rows()
+            if rng is None:
+                self._layout_retries += 1
+                if self._layout_retries <= 20:   # ~2s
+                    QTimer.singleShot(100, self._queue_visible_covers)
+                return
+        first, last = rng
+
+        # Visible rows first, then one screen below, then one screen above
+        visible = max(last - first, 1)
+        below = range(last + 1, min(row_count, last + 1 + visible))
+        above = range(max(0, first - visible), first)
+        order = list(range(first, last + 1)) + list(below) + list(above)
+
+        # Anything still queued (not in flight) is dropped and released
+        # from the pending set, or it could never be queued again
+        for game_id in self._request_queue:
+            self._pending_cover_requests.discard(game_id)
+        self._request_queue.clear()
+
+        for row in order:
+            game = self.model.index(row, 0).data(CoverRoles.GameData)
+            if not game:
+                continue
             game_id = game.get("id")
             if not game_id:
                 continue
-
-            # Check if game has a cover
-            cover = game.get("cover_image")
-            if cover:
+            if game.get("cover_image"):
                 continue
-
-            # Skip if already processed
             if game_id in self._pending_cover_requests:
-                continue
+                continue      # a worker is fetching it right now
             if game_id in self._no_cover_games:
                 continue
-
-            # Add to request queue
             self._pending_cover_requests.add(game_id)
             self._request_queue.append(game_id)
 
-        # Start processing
         self._process_request_queue()
 
     def set_density(self, density: int) -> None:
@@ -995,6 +1057,8 @@ class CoverView(QWidget):
 
         # Force layout update
         self.list_view.doItemsLayout()
+        # Different geometry, different viewport contents
+        self._scroll_debounce_timer.start()
 
     def get_density(self) -> int:
         """Get current grid density (cover width)"""
@@ -1049,15 +1113,8 @@ class CoverView(QWidget):
         self._active_workers.clear()
         logger.debug("CoverView shutdown complete")
 
-    def set_cover_callback(self, callback: Callable[[str], str]) -> None:
-        """Set callback for fetching covers on-demand.
-
-        The callback receives a game_id and should return a cover URL.
-        Used as fallback when game has no cover from store metadata.
-
-        Args:
-            callback: Function(game_id: str) -> str (cover URL)
-        """
+    def set_cover_callback(self, callback: Callable[[str], CoverLookup]) -> None:
+        """Set the callback that fetches a cover when store metadata has none."""
         self._cover_callback = callback
 
     def _process_request_queue(self) -> None:
@@ -1086,13 +1143,14 @@ class CoverView(QWidget):
         # Process more queued requests
         self._process_request_queue()
 
-    def _on_cover_fetched(self, game_id: str, cover_url: str) -> None:
+    def _on_cover_fetched(self, game_id: str, cover_url: str, retry_later: bool) -> None:
         """Handle cover fetched from background thread."""
         self._pending_cover_requests.discard(game_id)
         if cover_url:
             self._update_game_cover(game_id, cover_url)
-        else:
-            # Mark as having no cover so we don't retry
+        elif not retry_later:
+            # Every source said no: don't ask again this session. A paused
+            # or offline source is asked again on the next visible pass.
             self._no_cover_games.add(game_id)
 
     def _update_game_cover(self, game_id: str, cover_url: str) -> None:
@@ -1112,7 +1170,7 @@ class CoverView(QWidget):
                 logger.debug(f"Updated cover for {game_id}: {cover_url[:50]}...")
                 break
 
-    def update_game_covers(self, modified: Dict[str, Dict[str, str]]) -> None:
+    def update_game_covers(self, modified: dict[str, dict[str, str]]) -> None:
         """Batch-update covers for specific games without model reset.
 
         Uses _game_id_to_row for O(1) index lookup per game.

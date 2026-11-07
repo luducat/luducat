@@ -6,6 +6,7 @@
 # Bootstrap i18n markers — these must exist before any module uses N_().
 # The real translations are installed later by init_i18n().
 import builtins
+
 if not hasattr(builtins, "N_"):
     builtins.N_ = lambda s: s
 if not hasattr(builtins, "_"):
@@ -14,7 +15,7 @@ if not hasattr(builtins, "ngettext"):
     builtins.ngettext = lambda singular, plural, n: singular if n == 1 else plural
 
 APP_NAME = "luducat"
-APP_VERSION = "0.8.5"
+APP_VERSION = "0.8.6"
 APP_ID = "com.luducat.luducat"  # Desktop file name / GNOME App ID
 APP_ICON_BASENAME = "app_icon"
 APP_DESCRIPTION = N_("Cross-platform game catalogue browser")
@@ -36,8 +37,11 @@ USER_AGENT = (
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36"
 )
-# Gateway UA: app-identifying, EXCLUSIVELY for luducat API proxy
-USER_AGENT_GW = f"luducat/{APP_VERSION} (game catalog browser)"
+# Gateway UA: app-identifying, for the luducat API proxy and for APIs
+# that require contact info (MediaWiki UA policy: name/ver (url; email))
+USER_AGENT_GW = (
+    f"luducat/{APP_VERSION} ({APP_HOMEPAGE}; {APP_AUTHOR})"
+)
 # Backwards compatibility alias
 USER_AGENT_BROWSER = USER_AGENT
 

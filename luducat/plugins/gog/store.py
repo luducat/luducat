@@ -16,9 +16,12 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, TYPE_CHECKING
 
 from luducat.plugins.sdk.constants import USER_AGENT
 from luducat.plugins.sdk.datetime import utc_now
-from luducat.plugins.base import Game, PluginError, StorePlugin
+from luducat.plugins.base import Game, Lookup, PluginError, StorePlugin
+from luducat.plugins.sdk.lookup import ON_MISS_MAX_WAIT_SECONDS
+from luducat.plugins.sdk.miss_cache import LookupMissCache
+from luducat.plugins.sdk.network import RequestException, is_online
 from .database import GogDatabase, GogGame
-from .gogdb_importer import GogdbImporter
+from .gogdb_importer import GogdbImporter, GogdbUnavailable
 from .galaxy_db import (
     get_playtime_data as _galaxy_get_playtime,
     get_installed_games_batch as _galaxy_get_installed,
@@ -28,6 +31,17 @@ if TYPE_CHECKING:
     from .gog_api import GogApiClient
 
 logger = logging.getLogger(__name__)
+
+_GOGDB_PRODUCTS_URL = "https://www.gogdb.org/data/products"
+_PRODUCTS_API_URL = "https://api.gog.com/products"
+
+
+class _RecordUnavailable(Exception):
+    """A record source could not be asked; carries the contract reason."""
+
+    def __init__(self, reason: str):
+        super().__init__(reason)
+        self.reason = reason
 
 # Days after which GOGdb import is considered stale
 IMPORT_FRESHNESS_DAYS = 30
@@ -392,7 +406,7 @@ class GogStore(StorePlugin):
         logger.info("Fetching owned games from GOG API")
         try:
             api = self._get_api_client()
-            owned_ids, product_dicts = await api.get_owned_games(
+            owned_ids, product_dicts, _tag_id_map, complete = await api.get_owned_games(
                 status_callback=status_callback,
                 cancel_check=cancel_check,
             )
@@ -401,6 +415,11 @@ class GogStore(StorePlugin):
             # Harvest basic metadata from getFilteredProducts response
             if product_dicts:
                 self._upsert_basic_metadata(product_dicts)
+
+            if not complete:
+                # A cancelled page walk is not the library; handing it on removes the rest as unowned
+                logger.info("GOG fetch cancelled, ownership left unchanged")
+                return []
 
             # Update last-scanned timestamp
             try:
@@ -419,13 +438,17 @@ class GogStore(StorePlugin):
             if self.get_setting("detect_delisted_games"):
                 try:
                     api = self._get_api_client()
-                    catalog = await api.fetch_full_catalog(
+                    catalog, complete = await api.fetch_full_catalog(
                         status_callback=status_callback,
                         cancel_check=cancel_check,
                     )
-                    self._cached_catalog = catalog
-                    if not catalog:
-                        logger.warning("Empty catalog — skipping delisted detection")
+                    # Enrichment can use a partial walk; only delisting needs the whole catalog
+                    self._cached_catalog = catalog or None
+                    if not complete:
+                        # Owned games after the last page read would all look delisted
+                        logger.warning("Catalog walk incomplete - skipping delisted detection")
+                    elif not catalog:
+                        logger.warning("Empty catalog - skipping delisted detection")
                     else:
                         catalog_id_strs = {str(gid) for gid in catalog}
                         self._catalog_id_strs = catalog_id_strs
@@ -668,7 +691,7 @@ class GogStore(StorePlugin):
         self._cached_catalog = None
         if not catalog:
             api = self._get_api_client()
-            catalog = await api.fetch_full_catalog(
+            catalog, _complete = await api.fetch_full_catalog(
                 status_callback=status_callback,
                 cancel_check=cancel_check,
             )
@@ -1019,9 +1042,6 @@ class GogStore(StorePlugin):
         Returns:
             GogGame from local DB (after caching) or None
         """
-        from .gog_api import GogApiClient
-        from .database import GogGame as GogGameModel
-
         api = self._get_api_client()
         metadata = await api.get_product_metadata(gogid)
         if not metadata:
@@ -1035,33 +1055,9 @@ class GogStore(StorePlugin):
             # Enrich existing record with products API data
             self._apply_products_api_data(existing, metadata)
         else:
-            game = GogGameModel(
-                gogid=gogid,
-                title=metadata.get("title", "Unknown"),
-                slug=metadata.get("slug", ""),
-                type=metadata.get("game_type", "game"),
-                description=metadata.get("description"),
-                description_lead=metadata.get("description_lead"),
-                description_cool=metadata.get("description_cool"),
-                background_url=metadata.get("background_url"),
-                logo_url=metadata.get("logo_url"),
-                icon_url=metadata.get("icon_url"),
-                windows=metadata.get("windows", False),
-                mac=metadata.get("mac", False),
-                linux=metadata.get("linux", False),
-                release_date=metadata.get("release_date"),
-                data_source="gog_api_full",
-                gogdb_imported=False,
-                enriched=True,
-            )
-            game.screenshots = metadata.get("screenshots", [])
-            game.downloads_json = metadata.get("downloads_json", {})
-            game.dlcs = metadata.get("dlcs", [])
-            game.videos = metadata.get("videos", [])
-            game.languages = metadata.get("languages", {})
-            game.links = metadata.get("links", {})
-            game.changelog = metadata.get("changelog")
-            db.session.add(game)
+            db.session.add(self._new_game_from_products_metadata(
+                gogid, metadata, data_source="gog_api_full", enriched=True
+            ))
 
         try:
             db.commit()
@@ -1071,6 +1067,41 @@ class GogStore(StorePlugin):
             return None
         logger.info(f"Cached product from GOG API: {gogid}")
         return db.get_game(gogid)
+
+    @staticmethod
+    def _new_game_from_products_metadata(
+        gogid: int, metadata: dict[str, Any], *, data_source: str, enriched: bool
+    ) -> GogGame:
+        """GogGame for a product the catalog has no row for, from parsed
+        products API metadata. `enriched` says whether the full expand was
+        fetched; a light fetch leaves it False so the sync completes it."""
+        game = GogGame(
+            gogid=gogid,
+            title=metadata.get("title", "Unknown"),
+            slug=metadata.get("slug", ""),
+            type=metadata.get("game_type", "game"),
+            description=metadata.get("description"),
+            description_lead=metadata.get("description_lead"),
+            description_cool=metadata.get("description_cool"),
+            background_url=metadata.get("background_url"),
+            logo_url=metadata.get("logo_url"),
+            icon_url=metadata.get("icon_url"),
+            windows=metadata.get("windows", False),
+            mac=metadata.get("mac", False),
+            linux=metadata.get("linux", False),
+            release_date=metadata.get("release_date"),
+            data_source=data_source,
+            gogdb_imported=False,
+            enriched=enriched,
+        )
+        game.screenshots = metadata.get("screenshots", [])
+        game.downloads_json = metadata.get("downloads_json", {})
+        game.dlcs = metadata.get("dlcs", [])
+        game.videos = metadata.get("videos", [])
+        game.languages = metadata.get("languages", {})
+        game.links = metadata.get("links", {})
+        game.changelog = metadata.get("changelog")
+        return game
 
     def _apply_products_api_data(self, game, metadata: Dict[str, Any]) -> None:
         """Apply products API metadata to an existing GogGame record."""
@@ -1351,54 +1382,153 @@ class GogStore(StorePlugin):
         store_name: str,
         store_id: str,
         normalized_title: str = "",
-    ) -> Optional[Dict[str, Any]]:
-        """Resolve a game in GOG's catalog and return standardized metadata.
+    ) -> Lookup:
+        """Resolve a game against GOG's catalog.
 
-        Resolution strategy:
-        1. If store_name == "gog" → direct ID lookup
-        2. Otherwise → title-based search in GOG catalog
-        3. Standardize field names via _standardize_metadata()
-        4. API-on-cache-miss for description and screenshots
-
-        Args:
-            store_name: Store identifier
-            store_id: Store's app ID
-            normalized_title: Optional normalized title for cross-store search
-
-        Returns:
-            Standardized metadata dict, or None
+        Own store: catalog row, else a record fetch on a miss (see
+        _lookup_own_store). Foreign store: the local title index only;
+        no title searches go online.
         """
-        db = self._get_db()
-        game = None
-
         if store_name == self.store_name:
-            try:
-                game = db.get_game(int(store_id))
-            except (ValueError, TypeError):
-                pass
-        if not game and normalized_title:
-            game = self._find_game_record_by_title(normalized_title)
+            return self._lookup_own_store(store_id)
 
-        if not game:
-            return None
+        if not normalized_title:
+            return Lookup.not_found("no title")
+        game = self._find_game_record_by_title(normalized_title)
+        if game is None:
+            return Lookup.not_found("no title match")
+        return Lookup.found(self._record_metadata(game))
 
+    def _lookup_own_store(self, store_id: str) -> Lookup:
+        """Own-store lookup with the three contract outcomes.
+
+        Order: catalog row, remembered miss, offline, limiter headroom,
+        then the record fetch (GOGdb product, else products API). Both
+        sources are public; no cookie-gated endpoint is involved. "No such
+        product" on both is remembered under the miss TTL; a source that
+        could not be asked is unavailable and asked again next time.
+        """
+        try:
+            gogid = int(store_id)
+        except (TypeError, ValueError):
+            return Lookup.not_found("bad app id")
+
+        game = self._get_db().get_game(gogid)
+        if game is not None:
+            return Lookup.found(self._record_metadata(game))
+
+        cached = self._cached_miss(gogid)
+        if cached:
+            return Lookup.not_found(f"{cached} (cached)")
+        if not is_online():
+            return Lookup.unavailable("offline")
+
+        for url in (_GOGDB_PRODUCTS_URL, _PRODUCTS_API_URL):
+            pending = self.http.rate_limit_wait(url)
+            if pending > ON_MISS_MAX_WAIT_SECONDS:
+                logger.debug("GOG record fetch for %s skipped: limiter busy for %.1fs",
+                             gogid, pending)
+                return Lookup.unavailable("rate_limited")
+
+        try:
+            game = self._fetch_record(gogid)
+        except _RecordUnavailable as e:
+            return Lookup.unavailable(e.reason)
+        if game is None:
+            self._remember_miss(gogid, "unknown product")
+            return Lookup.not_found("unknown product")
+        return Lookup.found(self._record_metadata(game))
+
+    def _record_metadata(self, game: GogGame) -> dict[str, Any]:
+        """Standardized metadata for a catalog row; description and
+        screenshots are filled from the products API when the row lacks
+        them (API-on-cache-miss for those two fields only)."""
         metadata = self._standardize_metadata(game.to_dict())
-
-        # API-on-cache-miss: fetch from GOG products API if key fields empty
         if not metadata.get("description") or not metadata.get("screenshots"):
             self._fetch_missing_metadata(game, metadata)
-
         return metadata
+
+    def _fetch_record(self, gogid: int) -> GogGame | None:
+        """Create the catalog row for an unknown id: GOGdb product first
+        (full record), products API second (title, images, description,
+        screenshots; enrichment flags left unset so the sync completes it).
+
+        Raises:
+            _RecordUnavailable: a source could not be asked
+        """
+        importer = GogdbImporter(self.data_dir, self.cache_dir, http_client=self.http)
+        try:
+            record = importer.fetch_product_from_api(gogid)
+        except GogdbUnavailable as e:
+            logger.warning("GOGdb record fetch for %s failed: %s", gogid, e)
+            raise _RecordUnavailable(e.reason) from e
+
+        db = self._get_db()
+        if record is not None:
+            record.gogdb_imported = True
+            db.upsert_game(record)
+            db.commit()
+            return db.get_game(gogid)
+
+        metadata = self._fetch_product_metadata_light(gogid)
+        if metadata is None:
+            return None
+        db.session.add(self._new_game_from_products_metadata(
+            gogid, metadata, data_source="gog_api_basic", enriched=False
+        ))
+        db.commit()
+        return db.get_game(gogid)
+
+    def _fetch_product_metadata_light(self, gogid: int) -> dict[str, Any] | None:
+        """Products API record with description and screenshots expanded.
+
+        Returns None when GOG has no such product.
+
+        Raises:
+            _RecordUnavailable: throttled, server error, or request failure
+        """
+        url = f"{_PRODUCTS_API_URL}/{gogid}?expand=description,screenshots&locale=en-US"
+        try:
+            resp = self.http.get(url, headers={"User-Agent": USER_AGENT}, timeout=15)
+        except RequestException as e:
+            raise _RecordUnavailable("network") from e
+        except Exception as e:  # OfflineError raised by the network layer mid-walk
+            logger.warning("GOG products request for %s failed: %s", gogid, e)
+            raise _RecordUnavailable("network") from e
+
+        if resp.status_code == 404:
+            return None
+        if resp.status_code in (429, 403):
+            raise _RecordUnavailable("rate_limited")
+        if resp.status_code != 200:
+            logger.warning("GOG products API returned %s for %s", resp.status_code, gogid)
+            raise _RecordUnavailable("network")
+        try:
+            data = resp.json()
+        except ValueError as e:
+            raise _RecordUnavailable("network") from e
+        return self._get_api_client()._parse_product_metadata(data)
+
+    def _cached_miss(self, gogid: int) -> str | None:
+        cache = LookupMissCache(self.data_dir / "lookup_misses.db")
+        try:
+            return cache.reason(gogid)
+        finally:
+            cache.close()
+
+    def _remember_miss(self, gogid: int, reason: str) -> None:
+        cache = LookupMissCache(self.data_dir / "lookup_misses.db")
+        try:
+            cache.remember(gogid, reason)
+        finally:
+            cache.close()
 
     def _find_game_by_title(self, normalized_title: str) -> Optional[Dict[str, Any]]:
         """Search GOG catalog by normalized title."""
         game = self._find_game_record_by_title(normalized_title)
         if not game:
             return None
-        metadata = self._standardize_metadata(game.to_dict())
-        if not metadata.get("description") or not metadata.get("screenshots"):
-            self._fetch_missing_metadata(game, metadata)
-        return metadata
+        return self._record_metadata(game)
 
     def _find_game_record_by_title(self, normalized_title: str) -> Optional[GogGame]:
         """Find a GogGame record by normalized title using lazy index."""

@@ -8,7 +8,7 @@ signals for all actions. Business logic is handled by MainWindow.
 """
 
 import logging
-from typing import Any, Dict, List
+from typing import Any
 
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
@@ -37,10 +37,11 @@ class GameContextMenu(QMenu):
     nsfw_override_changed = Signal(str, int)        # game_id, override_value
     edit_tags_requested = Signal(str)               # game_id
     filter_game_modes_requested = Signal(list)      # list of mode names
-    filter_developers_requested = Signal(list)      # list of developer names
-    filter_publishers_requested = Signal(list)      # list of publisher names
-    filter_genres_requested = Signal(list)          # list of genre names
-    filter_year_requested = Signal(list)            # list of year strings
+    filter_developers_requested = Signal(list)
+    filter_publishers_requested = Signal(list)
+    filter_genres_requested = Signal(list)
+    filter_platforms_requested = Signal(list)
+    filter_year_requested = Signal(list)
     view_screenshots_requested = Signal(str)        # game_id
     open_store_page_requested = Signal(str)         # game_id
     force_rescan_requested = Signal(str)            # game_id
@@ -53,14 +54,14 @@ class GameContextMenu(QMenu):
 
     def build(
         self,
-        game: Dict[str, Any],
+        game: dict[str, Any],
         default_store: str = "",
-        active_filters: Dict[str, Any] = None,
+        active_filters: dict[str, Any] = None,
         view_mode: str = "",
         sgdb_cover_author: str = "",
         sgdb_author_steam_id: str = "",
-        static_collections: List[Dict[str, Any]] = None,
-        game_collection_ids: List[int] = None,
+        static_collections: list[dict[str, Any]] = None,
+        game_collection_ids: list[int] = None,
     ) -> None:
         """Build context menu from game data.
 
@@ -206,7 +207,7 @@ class GameContextMenu(QMenu):
         self.addAction(widget_action)
 
     def _add_play_actions(
-        self, game: Dict[str, Any], game_id: str, default_store: str
+        self, game: dict[str, Any], game_id: str, default_store: str
     ) -> None:
         """Add Play and Play with... actions."""
         stores = game.get("stores", [])
@@ -232,7 +233,7 @@ class GameContextMenu(QMenu):
                     lambda checked, gid=game_id, s=store: self.play_requested.emit(gid, s)
                 )
 
-    def _add_filter_submenu(self, game: Dict[str, Any]) -> None:
+    def _add_filter_submenu(self, game: dict[str, Any]) -> None:
         """Add Filter submenu with game mode, developer, publisher, year options.
 
         Each entry is a direct filter action (no dialogs from context menu).
@@ -243,9 +244,10 @@ class GameContextMenu(QMenu):
         developers = game.get("developers") or []
         publishers = game.get("publishers") or []
         genres = game.get("genres") or []
+        platforms = game.get("platforms") or []
         release_date = game.get("release_date", "")
 
-        if not game_modes and not developers and not publishers and not genres and not release_date:
+        if not (game_modes or developers or publishers or genres or platforms or release_date):
             return
 
         # Get active filter sets for comparison
@@ -253,6 +255,7 @@ class GameContextMenu(QMenu):
         active_devs = set(self._active_filters.get("developers", []))
         active_pubs = set(self._active_filters.get("publishers", []))
         active_genres = set(self._active_filters.get("genres", []))
+        active_platforms = set(self._active_filters.get("platforms", []))
         active_years = set(self._active_filters.get("years", []))
 
         any_active = False
@@ -336,6 +339,25 @@ class GameContextMenu(QMenu):
                 )
                 has_items = True
 
+        if platforms:
+            if has_items:
+                filter_menu.addSeparator()
+            for plat in platforms:
+                is_active = plat in active_platforms
+                action = filter_menu.addAction(_("Platform: {platform}").format(platform=plat))
+                action.setCheckable(True)
+                action.setChecked(is_active)
+                if is_active:
+                    any_active = True
+                action.triggered.connect(
+                    lambda checked, p=plat, active=is_active: (
+                        self.filter_platforms_requested.emit(
+                            [] if active else [p]
+                        )
+                    )
+                )
+                has_items = True
+
         # Year - direct filter
         if release_date:
             year = self._extract_year(release_date)
@@ -379,7 +401,7 @@ class GameContextMenu(QMenu):
         return ""
 
     def _add_content_rating_submenu(
-        self, game: Dict[str, Any], game_id: str
+        self, game: dict[str, Any], game_id: str
     ) -> None:
         """Add Content Rating submenu with per-game NSFW override options."""
         current = game.get("nsfw_override", 0)
@@ -403,8 +425,8 @@ class GameContextMenu(QMenu):
     def _add_collections_submenu(
         self,
         game_id: str,
-        static_collections: List[Dict[str, Any]],
-        game_collection_ids: List[int],
+        static_collections: list[dict[str, Any]],
+        game_collection_ids: list[int],
     ) -> None:
         """Add Collections submenu for adding/removing game from static collections."""
         submenu = self.addMenu(_("Collections"))
@@ -427,7 +449,7 @@ class GameContextMenu(QMenu):
             )
 
     def _add_sgdb_author_submenu(
-        self, game: Dict[str, Any], game_id: str, author_name: str,
+        self, game: dict[str, Any], game_id: str, author_name: str,
         author_steam_id: str = "",
     ) -> None:
         """Add SteamGridDB author block/boost submenu when cover is from SGDB.
@@ -468,7 +490,7 @@ class GameContextMenu(QMenu):
         )
 
     @staticmethod
-    def _get_primary_store(stores: List[str], default_store: str) -> str:
+    def _get_primary_store(stores: list[str], default_store: str) -> str:
         """Get the primary store for launch actions.
 
         Uses default_store if the game has it, otherwise falls back

@@ -16,21 +16,101 @@ GameService and other components must use MetadataResolver for ALL
 metadata access - no direct plugin calls for metadata.
 """
 
+import dataclasses
 import hashlib
-from luducat.core.json_compat import json
 import logging
 import re
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Union
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any
+
+from luducat.core.json_compat import json
+from luducat.core.network_manager import OfflineError
+from luducat.plugins.base import (
+    AuthenticationError,
+    Lookup,
+    LookupOutcome,
+    NetworkError,
+    RateLimitError,
+)
 
 if TYPE_CHECKING:
     from luducat.core.plugin_manager import PluginManager
-    from luducat.plugins.base import EnrichmentData, Game as PluginGame
+    from luducat.plugins.base import EnrichmentData
+    from luducat.plugins.base import Game as PluginGame
 
 logger = logging.getLogger(__name__)
 
 
+# Plugin exceptions that mean "could not ask", never "no record". Anything
+# else raised by a hop is a plugin bug, logged and treated the same way.
+_UNAVAILABLE_REASONS: tuple[tuple[type[BaseException], str], ...] = (
+    (OfflineError, "offline"),
+    (RateLimitError, "rate_limited"),
+    (AuthenticationError, "auth"),
+    (NetworkError, "network"),
+)
+
+
+# Unavailable reasons that clear by themselves; "auth" and "error: ..." do not.
+TRANSIENT_REASONS = frozenset({"offline", "rate_limited", "network", "cancelled"})
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class ChainHop:
+    """One visited source in a chain walk and how it answered."""
+
+    source: str
+    outcome: LookupOutcome
+    reason: str = ""
+
+    @property
+    def outcome_text(self) -> str:
+        if self.reason:
+            return f"{self.outcome.value} ({self.reason})"
+        return self.outcome.value
+
+    @property
+    def transient(self) -> bool:
+        """True when the same question may get another answer soon."""
+        return self.reason.split(" ", 1)[0] in TRANSIENT_REASONS
+
+    def describe(self) -> str:
+        return f"{self.source} {self.outcome_text}"
+
+
+@dataclasses.dataclass(slots=True)
+class ChainWalk:
+    """Result of one walk over a priority chain.
+
+    Single-field walks fill value/source with the winner; gather walks
+    keep every found record in by_source. trail lists every hop asked.
+    """
+
+    offline: bool
+    value: Any = None
+    source: str = ""
+    trail: list[ChainHop] = dataclasses.field(default_factory=list)
+    by_source: dict[str, dict[str, Any]] = dataclasses.field(default_factory=dict)
+
+    @property
+    def found(self) -> bool:
+        return bool(self.by_source)
+
+    @property
+    def retry_later(self) -> bool:
+        """An empty walk that must not be remembered as a miss: offline, or a
+        source was only paused or failed a request. A missing key or a plugin
+        error does not go away by asking again, so those walks are final."""
+        if self.found:
+            return False
+        return self.offline or any(
+            hop.outcome is LookupOutcome.UNAVAILABLE and hop.transient
+            for hop in self.trail
+        )
+
+
 # Hardcoded fallback - used when no plugin declares provides_fields
-_DEFAULT_FIELD_SOURCE_CAPABILITIES: Dict[str, List[str]] = {
+_DEFAULT_FIELD_SOURCE_CAPABILITIES: dict[str, list[str]] = {
     # General
     "title": ["steam", "gog", "epic", "igdb", "pcgamingwiki"],
     "description": ["steam", "gog", "igdb"],
@@ -130,10 +210,10 @@ _DEFAULT_FIELD_SOURCE_CAPABILITIES: Dict[str, List[str]] = {
 }
 
 # Mutable alias - mutated in-place by build_from_plugins() so all importers see updates
-FIELD_SOURCE_CAPABILITIES: Dict[str, List[str]] = dict(_DEFAULT_FIELD_SOURCE_CAPABILITIES)
+FIELD_SOURCE_CAPABILITIES: dict[str, list[str]] = dict(_DEFAULT_FIELD_SOURCE_CAPABILITIES)
 
 # Field groupings for UI organization
-FIELD_GROUPS: Dict[str, List[str]] = {
+FIELD_GROUPS: dict[str, list[str]] = {
     "General": [
         "title", "description", "short_description", "developers", "publishers",
         "genres", "release_date", "game_modes_detail", "crossplay",
@@ -171,7 +251,7 @@ FIELD_GROUPS: Dict[str, List[str]] = {
 }
 
 # Human-readable labels for fields (N_() marks for extraction, _() at use site)
-FIELD_LABELS: Dict[str, str] = {
+FIELD_LABELS: dict[str, str] = {
     "title": N_("Title"),
     "description": N_("Description"),
     "short_description": N_("Short Desc."),
@@ -258,7 +338,7 @@ FIELD_LABELS: Dict[str, str] = {
 
 # Plain-English tooltips for field labels in the priority settings UI
 # N_() marks for extraction, _() at use site
-FIELD_TOOLTIPS: Dict[str, str] = {
+FIELD_TOOLTIPS: dict[str, str] = {
     # General
     "title": N_("The game's display name."),
     "description": N_("Full game description shown in the detail view."),
@@ -350,7 +430,7 @@ FIELD_TOOLTIPS: Dict[str, str] = {
 }
 
 # Human-readable labels for sources (hardcoded fallback)
-_DEFAULT_SOURCE_LABELS: Dict[str, str] = {
+_DEFAULT_SOURCE_LABELS: dict[str, str] = {
     "steam": "Steam",
     "gog": "GOG",
     "epic": "Epic Games",
@@ -360,7 +440,7 @@ _DEFAULT_SOURCE_LABELS: Dict[str, str] = {
 }
 
 # Mutable alias - mutated in-place by build_from_plugins()
-SOURCE_LABELS: Dict[str, str] = dict(_DEFAULT_SOURCE_LABELS)
+SOURCE_LABELS: dict[str, str] = dict(_DEFAULT_SOURCE_LABELS)
 
 
 def _title_similarity(title_a: str, title_b: str) -> float:
@@ -452,7 +532,7 @@ _SEED_METADATA_PRIORITY = ["pcgamingwiki", "steamgriddb", "igdb"]
 _SEED_HERO_PRIORITY = ["steamgriddb", "igdb", "steam", "epic"]
 _SEED_GAME_MODES_PRIORITY = ["pcgamingwiki", "igdb"]
 
-_SEED_FIELD_PRIORITIES: Dict[str, List[str]] = {
+_SEED_FIELD_PRIORITIES: dict[str, list[str]] = {
     # General
     "title": ["steam", "gog", "epic", "amazon", "zoom", "jastusa", "mangagamer", "igdb", "pcgamingwiki"],
     "description": ["steam", "gog", "amazon", "igdb", "zoom", "jastusa", "mangagamer"],
@@ -552,6 +632,26 @@ _SEED_FIELD_PRIORITIES: Dict[str, List[str]] = {
     "steam_deck_compat": ["steam"],
 }
 
+# The priority name doubles as the _sources key enrichment_service writes;
+# a name missing from the priority tables ranks every source 999.
+ENRICHMENT_FIELD_MAPPINGS: tuple[tuple[str, str], ...] = (
+    ("genres", "genres"),
+    ("developers", "developers"),
+    ("publishers", "publishers"),
+    ("cover_url", "cover"),
+    ("screenshots", "screenshots"),
+    ("background_url", "hero"),
+    ("franchise", "franchise"),
+    ("series", "series"),
+    ("themes", "themes"),
+    ("perspectives", "perspectives"),
+    ("platforms", "platforms"),
+    ("age_ratings", "age_ratings"),
+    ("websites", "links"),
+    ("user_rating", "rating"),
+    ("engine", "engine"),
+)
+
 
 class MetadataResolver:
     """Resolves metadata from multiple stores based on priority order.
@@ -570,7 +670,7 @@ class MetadataResolver:
     # Backward-compat aliases: old stored metadata_json keys → canonical names.
     # New plugin output uses canonical names directly. These shrink over time
     # as users re-sync and old metadata_json entries are overwritten.
-    _PRIORITY_FIELD_ALIASES: Dict[str, str] = {
+    _PRIORITY_FIELD_ALIASES: dict[str, str] = {
         "cover_url": "cover",
         "cover_detail_url": "cover",
         "background_url": "hero",
@@ -584,7 +684,7 @@ class MetadataResolver:
 
     def __init__(
         self,
-        field_priorities: Dict[str, List[str]],
+        field_priorities: dict[str, list[str]],
     ):
         """Initialize the resolver.
 
@@ -592,7 +692,7 @@ class MetadataResolver:
             field_priorities: Per-field priority lists loaded from user config.
                               REQUIRED — no hardcoded fallbacks.
         """
-        self._plugin_manager: Optional["PluginManager"] = None
+        self._plugin_manager: PluginManager | None = None
 
         # Track which fields user has explicitly customized
         self._user_overrides: set = set()
@@ -602,12 +702,12 @@ class MetadataResolver:
         self._missing_fields_warned: set = set()
 
         # Per-field priorities from config — the ONLY source of truth
-        self._field_priorities: Dict[str, List[str]] = {
+        self._field_priorities: dict[str, list[str]] = {
             k: v.copy() for k, v in field_priorities.items()
         }
 
         # Callback fired when priorities change (for cache invalidation)
-        self._on_priorities_changed: Optional[Callable] = None
+        self._on_priorities_changed: Callable | None = None
 
     def set_plugin_manager(self, plugin_manager: "PluginManager") -> None:
         """Set the plugin manager for on-demand metadata fetching
@@ -617,7 +717,7 @@ class MetadataResolver:
         """
         self._plugin_manager = plugin_manager
 
-    def get_field_priority(self, field_name: str) -> List[str]:
+    def get_field_priority(self, field_name: str) -> list[str]:
         """Get the priority order for a specific field
 
         Args:
@@ -657,13 +757,13 @@ class MetadataResolver:
         from luducat.core.plugin_manager import PluginManager
         return PluginManager.is_store_plugin(plugin_name)
 
-    def _get_all_priority_sources(self) -> List[str]:
+    def _get_all_priority_sources(self) -> list[str]:
         """Get all unique sources from field priorities, order-preserved.
 
         Used when no specific field is requested (full metadata gather).
         """
         seen: set = set()
-        result: List[str] = []
+        result: list[str] = []
         for sources in self._field_priorities.values():
             for s in sources:
                 if s not in seen:
@@ -689,7 +789,7 @@ class MetadataResolver:
         except ValueError:
             return 999  # Not in priority list, lowest priority
 
-    def set_field_priorities(self, priorities: Dict[str, List[str]]) -> None:
+    def set_field_priorities(self, priorities: dict[str, list[str]]) -> None:
         """Update per-field priority settings
 
         Marks each field as user-overridden so build_from_plugins() won't
@@ -704,7 +804,7 @@ class MetadataResolver:
                 self._user_overrides.add(field_name)
         logger.debug(f"Field priorities updated for {len(priorities)} fields")
 
-    def update_field_priorities(self, priorities: Dict[str, List[str]]) -> None:
+    def update_field_priorities(self, priorities: dict[str, list[str]]) -> None:
         """Update priorities from settings save and fire change callback.
 
         Called by the settings dialog after the user saves. Both updates
@@ -718,7 +818,7 @@ class MetadataResolver:
         if self._on_priorities_changed:
             self._on_priorities_changed()
 
-    def set_on_priorities_changed(self, callback: Optional[Callable]) -> None:
+    def set_on_priorities_changed(self, callback: Callable | None) -> None:
         """Register a callback fired when priorities change.
 
         Args:
@@ -729,9 +829,9 @@ class MetadataResolver:
     def resolve_field_with_priorities(
         self,
         field_name: str,
-        metadata_by_store: Dict[str, Dict[str, Any]],
-        priorities: List[str],
-    ) -> Tuple[Any, Optional[str]]:
+        metadata_by_store: dict[str, dict[str, Any]],
+        priorities: list[str],
+    ) -> tuple[Any, str | None]:
         """Resolve using explicit priority list (for preview dialog).
 
         The singleton's internal priorities are NOT modified. This allows
@@ -753,7 +853,7 @@ class MetadataResolver:
                 return value, source_name
         return None, None
 
-    def get_all_field_priorities(self) -> Dict[str, List[str]]:
+    def get_all_field_priorities(self) -> dict[str, list[str]]:
         """Get all per-field priorities
 
         Returns:
@@ -799,7 +899,7 @@ class MetadataResolver:
         self._user_overrides.clear()
         logger.debug("Reset all field priorities to defaults")
 
-    def get_effective_defaults(self) -> Dict[str, List[str]]:
+    def get_effective_defaults(self) -> dict[str, list[str]]:
         """Get the factory-default field priorities (for "Reset to Defaults").
 
         Returns the seed defaults — the same values used to populate config
@@ -810,7 +910,7 @@ class MetadataResolver:
         """
         return {k: v.copy() for k, v in _SEED_FIELD_PRIORITIES.items()}
 
-    def build_from_plugins(self, discovered_plugins: Dict[str, Any]) -> None:
+    def build_from_plugins(self, discovered_plugins: dict[str, Any]) -> None:
         """Build dynamic capability data from plugin declarations.
 
         Reads ``provides_fields`` from each plugin's metadata and rebuilds
@@ -832,7 +932,7 @@ class MetadataResolver:
 
         # Collect all provides_fields declarations
         # field_name -> [(plugin_name, priority_number), ...]
-        field_declarations: Dict[str, List[Tuple[str, int]]] = {}
+        field_declarations: dict[str, list[tuple[str, int]]] = {}
         any_declared = False
 
         for plugin_name, pmeta in discovered_plugins.items():
@@ -851,7 +951,7 @@ class MetadataResolver:
             return
 
         # --- Update SOURCE_LABELS from display_name ---
-        new_labels: Dict[str, str] = {}
+        new_labels: dict[str, str] = {}
         for plugin_name, pmeta in discovered_plugins.items():
             display = getattr(pmeta, "display_name", None)
             if display:
@@ -863,7 +963,7 @@ class MetadataResolver:
         SOURCE_LABELS.update(merged_labels)
 
         # --- Build FIELD_SOURCE_CAPABILITIES ---
-        new_caps: Dict[str, List[str]] = {}
+        new_caps: dict[str, list[str]] = {}
         for field_name, decls in field_declarations.items():
             # Sort by priority number ascending (lower = higher priority)
             decls.sort(key=lambda x: x[1])
@@ -915,8 +1015,8 @@ class MetadataResolver:
     def resolve_field_with_source(
         self,
         field_name: str,
-        metadata_by_store: Dict[str, Dict[str, Any]]
-    ) -> Tuple[Any, Optional[str]]:
+        metadata_by_store: dict[str, dict[str, Any]]
+    ) -> tuple[Any, str | None]:
         """Resolve a metadata field and return the source that provided it
 
         Uses per-field priority order.
@@ -974,7 +1074,7 @@ class MetadataResolver:
     def resolve_field(
         self,
         field_name: str,
-        metadata_by_store: Dict[str, Dict[str, Any]]
+        metadata_by_store: dict[str, dict[str, Any]]
     ) -> Any:
         """Resolve a metadata field from multiple stores
 
@@ -1001,7 +1101,7 @@ class MetadataResolver:
 
         # Empty priority (internal/merged fields): try all sources in dict order
         if not priority:
-            for source_name, source_metadata in metadata_by_store.items():
+            for source_metadata in metadata_by_store.values():
                 value = self._get_field(source_metadata, field_name)
                 if self._is_non_empty(value):
                     return value
@@ -1032,9 +1132,9 @@ class MetadataResolver:
 
     def resolve_game_metadata(
         self,
-        metadata_by_store: Dict[str, Dict[str, Any]],
-        fields: Optional[List[str]] = None
-    ) -> Dict[str, Any]:
+        metadata_by_store: dict[str, dict[str, Any]],
+        fields: list[str] | None = None
+    ) -> dict[str, Any]:
         """Resolve all metadata fields for a game
 
         Args:
@@ -1072,8 +1172,8 @@ class MetadataResolver:
 
     def _merge_release_dates(
         self,
-        metadata_by_store: Dict[str, Dict[str, Any]]
-    ) -> Dict[str, str]:
+        metadata_by_store: dict[str, dict[str, Any]]
+    ) -> dict[str, str]:
         """Merge release_date dicts from all sources, keeping oldest per platform.
 
         Uses user-configured release_date priority for source ordering.
@@ -1086,7 +1186,7 @@ class MetadataResolver:
         Returns:
             Dict mapping platform_name -> "YYYY-MM-DD" string, or empty dict
         """
-        merged: Dict[str, str] = {}
+        merged: dict[str, str] = {}
         # Use user-configured priority (read directly — get_field_priority()
         # returns [] for merged fields by design)
         canonical = self._PRIORITY_FIELD_ALIASES.get(
@@ -1112,8 +1212,8 @@ class MetadataResolver:
     def get_field_source(
         self,
         field_name: str,
-        metadata_by_store: Dict[str, Dict[str, Any]]
-    ) -> Optional[str]:
+        metadata_by_store: dict[str, dict[str, Any]]
+    ) -> str | None:
         """Get which source provided the value for a field
 
         Uses per-field priority order.
@@ -1155,7 +1255,7 @@ class MetadataResolver:
         return True
 
     # Old storage names → canonical names for _get_field backward compat
-    _STORAGE_ALIASES: Dict[str, str] = {
+    _STORAGE_ALIASES: dict[str, str] = {
         "cover_url": "cover",
         "cover_detail_url": "cover",
         "background_url": "hero",
@@ -1167,11 +1267,11 @@ class MetadataResolver:
         "esrb_rating": "age_rating_esrb",
     }
     # Reverse: canonical → old storage name (for metadata dicts that haven't been re-synced)
-    _CANONICAL_TO_OLD: Dict[str, str] = {v: k for k, v in _STORAGE_ALIASES.items()}
+    _CANONICAL_TO_OLD: dict[str, str] = {v: k for k, v in _STORAGE_ALIASES.items()}
 
     @staticmethod
     def _get_field(
-        metadata: Dict[str, Any],
+        metadata: dict[str, Any],
         field_name: str,
     ) -> Any:
         """Get field value from metadata dict.
@@ -1200,7 +1300,11 @@ class MetadataResolver:
         return None
 
     def _is_plugin_usable(self, plugin_name: str) -> bool:
-        """Check if a plugin is usable (enabled + available/authenticated)
+        """Check if a plugin is usable for resolve-time source selection
+        (enabled + authenticated/available).
+
+        NOT for the on-demand lazy-load chain; that uses
+        _enabled_plugins_in_chain(), which gates on enabled-ness only.
 
         Args:
             plugin_name: Name of the plugin to check
@@ -1216,8 +1320,6 @@ class MetadataResolver:
         if not plugin:
             return False
 
-        # Store plugins: authentication means plugin DB has data (from sync).
-        # Client installation is irrelevant for reading the local plugin DB.
         from luducat.plugins.base import StorePlugin
         if isinstance(plugin, StorePlugin):
             return plugin.is_authenticated()
@@ -1228,42 +1330,143 @@ class MetadataResolver:
 
         return True
 
-    def _query_plugin_for_game(
-        self,
-        plugin,
-        store_app_ids: Dict[str, str],
-        normalized_title: str,
-    ) -> Optional[Dict[str, Any]]:
-        """Query a plugin for game metadata using the uniform interface.
+    def _enabled_plugins_in_chain(self, priority: list[str]):
+        """Yield (name, plugin) for every enabled plugin, in priority order.
 
-        Iterates store_app_ids, calls get_metadata_for_store_game() for each.
-        Returns first non-None result.  Works identically for store plugins
-        and enrichment plugins — the resolver is plugin-type-agnostic.
-
-        Args:
-            plugin: Plugin instance (store or enrichment)
-            store_app_ids: Dict mapping store_name -> app_id
-            normalized_title: Normalized game title for fallback search
-
-        Returns:
-            Metadata dict or None
+        The lazy-load chain is gated on enabled-ness only. Credentials,
+        API keys and connectivity are the plugin's business: a plugin that
+        cannot answer returns None or raises, and the caller moves on.
         """
+        for plugin_name in priority:
+            plugin = self._plugin_manager.get_plugin(plugin_name)
+            if plugin is not None:
+                yield plugin_name, plugin
+
+    @staticmethod
+    def _unavailable_from_exception(plugin_name: str, exc: Exception) -> Lookup:
+        for exc_type, reason in _UNAVAILABLE_REASONS:
+            if isinstance(exc, exc_type):
+                return Lookup.unavailable(reason)
+        logger.error("lookup in %s raised %s: %s",
+                     plugin_name, type(exc).__name__, exc)
+        logger.debug("lookup in %s traceback", plugin_name, exc_info=exc)
+        return Lookup.unavailable(f"error: {type(exc).__name__}")
+
+    def _lookup_hop(
+        self,
+        plugin_name: str,
+        plugin: Any,
+        store_app_ids: dict[str, str],
+        normalized_title: str,
+    ) -> Lookup:
+        """Ask one plugin about every store id and fold the answers into
+        one outcome: found beats unavailable beats not_found, so an id
+        that could not be looked up is never reported as a miss."""
         if not hasattr(plugin, "get_metadata_for_store_game"):
-            return None
+            return Lookup.not_found("no lookup interface")
+
+        unavailable: Lookup | None = None
+        missing: Lookup | None = None
         for store_name, app_id in store_app_ids.items():
             if not app_id:
                 continue
-            metadata = plugin.get_metadata_for_store_game(
-                store_name, app_id, normalized_title=normalized_title
-            )
-            if metadata:
-                return metadata
+            try:
+                answer = Lookup.from_legacy(plugin.get_metadata_for_store_game(
+                    store_name, app_id, normalized_title=normalized_title
+                ))
+            except Exception as e:  # plugin dispatch boundary
+                answer = self._unavailable_from_exception(plugin_name, e)
+            if answer.is_found:
+                return answer
+            if answer.outcome is LookupOutcome.UNAVAILABLE:
+                unavailable = unavailable or answer
+            else:
+                missing = answer
+
+        if unavailable is not None:
+            return unavailable
+        return missing if missing is not None else Lookup.not_found("no store id")
+
+    @classmethod
+    def _field_from_metadata(cls, metadata: dict[str, Any], field_name: str) -> Any:
+        """Non-empty value for a field, under its canonical or any old
+        storage name; None when the record has nothing usable."""
+        canonical = cls._STORAGE_ALIASES.get(field_name, field_name)
+        value = metadata.get(canonical)
+        if cls._is_non_empty(value):
+            return value
+        for old_name, canon in cls._STORAGE_ALIASES.items():
+            if canon == canonical:
+                value = metadata.get(old_name)
+                if cls._is_non_empty(value):
+                    return value
         return None
+
+    def _walk_chain(
+        self,
+        priority: list[str],
+        store_app_ids: dict[str, str],
+        normalized_title: str,
+        *,
+        field: str | None = None,
+        offline: bool | None = None,
+    ) -> ChainWalk:
+        """Walk a priority chain once, one hop per enabled source.
+
+        With a field, the walk stops at the first hop whose record carries
+        a non-empty value for it. Without one, every hop is visited and
+        each found record lands in by_source. A hop answering not_found or
+        unavailable never ends the walk; credentials and connectivity are
+        the plugin's business. Offline is detected once per walk.
+        """
+        walk = ChainWalk(offline=self._is_offline() if offline is None else offline)
+        label = field or "metadata"
+
+        for plugin_name, plugin in self._enabled_plugins_in_chain(priority):
+            if any(hop.source == plugin_name for hop in walk.trail):
+                continue
+
+            answer = self._lookup_hop(plugin_name, plugin, store_app_ids,
+                                      normalized_title)
+            value = None
+            if answer.is_found and field is not None:
+                value = self._field_from_metadata(answer.data, field)
+                if value is None:
+                    answer = Lookup.not_found(f"no {field}")
+
+            hop = ChainHop(plugin_name, answer.outcome, answer.reason)
+            walk.trail.append(hop)
+            logger.debug("%s <- %s: %s", label, plugin_name, hop.outcome_text)
+
+            if answer.is_found:
+                walk.by_source[plugin_name] = answer.data
+                if field is not None:
+                    walk.value = value
+                    walk.source = plugin_name
+                    return walk
+
+        if not walk.found:
+            self._log_exhausted(label, walk, store_app_ids, normalized_title)
+        return walk
+
+    @staticmethod
+    def _log_exhausted(
+        label: str,
+        walk: ChainWalk,
+        store_app_ids: dict[str, str],
+        normalized_title: str,
+    ) -> None:
+        """One INFO line per empty walk so a miss is a grep, not a code read."""
+        ids = ",".join(f"{s}:{i}" for s, i in store_app_ids.items() if i)
+        hops = ", ".join(hop.describe() for hop in walk.trail) or "no enabled source"
+        logger.info("%s chain exhausted for '%s' (%s)%s: %s",
+                    label, normalized_title, ids or "no ids",
+                    ", offline" if walk.offline else "", hops)
 
     # Key fields that should be present for metadata to be considered "complete"
     ESSENTIAL_FIELDS = ["cover", "release_date", "developers", "publishers"]
 
-    def _is_metadata_complete(self, metadata: Dict[str, Any]) -> bool:
+    def _is_metadata_complete(self, metadata: dict[str, Any]) -> bool:
         """Check if metadata has all essential fields populated.
 
         Args:
@@ -1294,9 +1497,9 @@ class MetadataResolver:
     def _resolve_cross_store_app_id(
         self,
         target_store: str,
-        store_app_ids: Dict[str, str],
+        store_app_ids: dict[str, str],
         normalized_title: str,
-    ) -> Optional[str]:
+    ) -> str | None:
         """Resolve the app_id for target_store via cross-reference plugins.
 
         Plugin databases are license-agnostic caches. When a game is owned on
@@ -1387,16 +1590,17 @@ class MetadataResolver:
 
     def fetch_metadata_for_game(
         self,
-        store_app_ids: Dict[str, str],
+        store_app_ids: dict[str, str],
         normalized_title: str = "",
-        field: Optional[str] = None,
+        field: str | None = None,
         _return_sources: bool = False,
-    ) -> Union[Optional[Dict[str, Any]], Tuple[Optional[Dict[str, Any]], Dict[str, str]]]:
+    ) -> dict[str, Any] | None | tuple[dict[str, Any] | None, dict[str, str]]:
         """Fetch metadata on-demand from plugins in priority order.
 
-        Uses the combined priority order so per-field priorities are respected
-        during the final resolve_game_metadata() merge.  Each plugin must be
-        enabled and authenticated to be used.
+        With a field, walks that field's priority and returns the winning
+        source's whole record. Without one, gathers every enabled source
+        and merges by per-field priority. See _walk_chain for the walk
+        rules.
 
         Args:
             store_app_ids: Dict mapping store_name -> app_id for this game
@@ -1419,84 +1623,48 @@ class MetadataResolver:
             logger.debug("No plugin manager set, cannot fetch metadata on-demand")
             return _none_result
 
-        if self._is_offline():
-            logger.debug("Skipping fetch_metadata_for_game — offline")
-            return _none_result
-
-        # Use field-specific priority when looking for a single field,
-        # otherwise all unique sources for a full gather.
         priority = (
             self.get_field_priority(field) if field
             else self._get_all_priority_sources()
         )
+        walk = self._walk_chain(priority, store_app_ids, normalized_title,
+                                field=field)
+        if not walk.found:
+            return _none_result
 
-        # Collect metadata from all sources
-        metadata_by_source: Dict[str, Dict[str, Any]] = {}
+        if field:
+            record = walk.by_source[walk.source]
+            return (record, {field: walk.source}) if _return_sources else record
 
-        for plugin_name in priority:
-            if plugin_name in metadata_by_source:
-                continue  # Already gathered from this source
-            if not self._is_plugin_usable(plugin_name):
-                continue
+        metadata_by_source = walk.by_source
+        if _return_sources:
+            # Use resolve_field_with_source for each field to build source map
+            all_fields: set = set()
+            for source_meta in metadata_by_source.values():
+                all_fields.update(source_meta.keys())
 
-            try:
-                plugin = self._plugin_manager.get_plugin(plugin_name)
-                if not plugin:
-                    continue
-
-                metadata = self._query_plugin_for_game(
-                    plugin, store_app_ids, normalized_title
+            merged = {}
+            source_map: dict[str, str] = {}
+            for field_name in all_fields:
+                value, source = self.resolve_field_with_source(
+                    field_name, metadata_by_source
                 )
+                if value is not None:
+                    merged[field_name] = value
+                if source:
+                    source_map[field_name] = source
 
-                if metadata:
-                    # Single-field mode: return immediately if the field is found
-                    if field and self._is_non_empty(metadata.get(field)):
-                        logger.debug(f"Got {field} from {plugin_name}")
-                        if _return_sources:
-                            return metadata, {field: plugin_name}
-                        return metadata
+            return (merged if merged else None, source_map)
 
-                    metadata_by_source[plugin_name] = metadata
-                    logger.debug(f"Got metadata from {plugin_name}")
-
-            except Exception as e:
-                logger.debug(f"Failed to get metadata from {plugin_name}: {e}")
-                continue
-
-        # Merge metadata from all sources using priority resolution
-        if metadata_by_source:
-            if _return_sources:
-                # Use resolve_field_with_source for each field to build source map
-                all_fields: set = set()
-                for source_meta in metadata_by_source.values():
-                    all_fields.update(source_meta.keys())
-
-                merged = {}
-                source_map: Dict[str, str] = {}
-                for field_name in all_fields:
-                    value, source = self.resolve_field_with_source(
-                        field_name, metadata_by_source
-                    )
-                    if value is not None:
-                        merged[field_name] = value
-                    if source:
-                        source_map[field_name] = source
-
-                return (merged if merged else None, source_map)
-
-            merged = self.resolve_game_metadata(metadata_by_source)
-            return merged if merged else None
-
-        return _none_result
+        merged = self.resolve_game_metadata(metadata_by_source)
+        return merged if merged else None
 
     def get_description_on_demand(
         self,
-        store_app_ids: Dict[str, str],
+        store_app_ids: dict[str, str],
         normalized_title: str = ""
     ) -> str:
         """Get description on-demand from plugins in priority order
-
-        Convenience method that fetches just the description field.
 
         Args:
             store_app_ids: Dict mapping store_name -> app_id for this game
@@ -1508,42 +1676,17 @@ class MetadataResolver:
         if not self._plugin_manager:
             return ""
 
-        if self._is_offline():
-            logger.debug("Skipping get_description_on_demand — offline")
-            return ""
-
-        # Use per-field priority instead of hardcoded store/metadata order
-        priority = self.get_field_priority("description")
-
-        for plugin_name in priority:
-            if not self._is_plugin_usable(plugin_name):
-                continue
-
-            plugin = self._plugin_manager.get_plugin(plugin_name)
-            if not plugin:
-                continue
-
-            try:
-                metadata = self._query_plugin_for_game(
-                    plugin, store_app_ids, normalized_title
-                )
-                if metadata:
-                    desc = metadata.get("description", "")
-                    if desc and desc.strip():
-                        logger.debug(f"Got description from {plugin_name}")
-                        return desc
-            except Exception as e:
-                logger.debug(f"Failed to get description from {plugin_name}: {e}")
-                continue
-
-        return ""
+        walk = self._walk_chain(self.get_field_priority("description"),
+                                store_app_ids, normalized_title,
+                                field="description")
+        return walk.value if walk.found else ""
 
     def get_screenshots_on_demand(
         self,
-        store_app_ids: Dict[str, str],
+        store_app_ids: dict[str, str],
         normalized_title: str = "",
-        exclude_sources: Optional[List[str]] = None,
-    ) -> Tuple[List[str], str]:
+        exclude_sources: list[str] | None = None,
+    ) -> tuple[list[str], str]:
         """Get screenshots on-demand from plugins in per-field priority order.
 
         Args:
@@ -1557,42 +1700,20 @@ class MetadataResolver:
         if not self._plugin_manager:
             return [], ""
 
-        if self._is_offline():
-            logger.debug("Skipping get_screenshots_on_demand — offline")
-            return [], ""
-
         skip = set(exclude_sources) if exclude_sources else set()
-        priority = self.get_field_priority("screenshots")
-
-        for plugin_name in priority:
-            if plugin_name in skip:
-                continue
-            if not self._is_plugin_usable(plugin_name):
-                continue
-            try:
-                plugin = self._plugin_manager.get_plugin(plugin_name)
-                if not plugin:
-                    continue
-
-                metadata = self._query_plugin_for_game(
-                    plugin, store_app_ids, normalized_title
-                )
-                if metadata:
-                    screenshots = metadata.get("screenshots", [])
-                    if screenshots:
-                        logger.debug(f"Got screenshots from {plugin_name}")
-                        return screenshots, plugin_name
-            except Exception as e:
-                logger.debug(f"get_screenshots_on_demand: Failed from {plugin_name}: {e}")
-                continue
-
-        return [], ""
+        priority = [
+            name for name in self.get_field_priority("screenshots")
+            if name not in skip
+        ]
+        walk = self._walk_chain(priority, store_app_ids, normalized_title,
+                                field="screenshots")
+        return (walk.value, walk.source) if walk.found else ([], "")
 
     def get_cover_on_demand(
         self,
-        store_app_ids: Dict[str, str],
+        store_app_ids: dict[str, str],
         normalized_title: str = ""
-    ) -> Tuple[str, str]:
+    ) -> tuple[str, str]:
         """Get cover image URL on-demand from plugins in per-field priority order.
 
         Args:
@@ -1602,41 +1723,31 @@ class MetadataResolver:
         Returns:
             Tuple of (cover_url, source_name) or ("", "") if not found
         """
+        walk = self.cover_walk(store_app_ids, normalized_title)
+        if not walk.found:
+            return "", ""
+        return walk.value, walk.source
+
+    def cover_walk(
+        self,
+        store_app_ids: dict[str, str],
+        normalized_title: str = "",
+    ) -> ChainWalk:
+        """The cover chain walk itself, for callers that need to know
+        whether an empty answer is final (ChainWalk.retry_later)."""
         if not self._plugin_manager:
-            return "", ""
+            return ChainWalk(offline=False)
 
-        if self._is_offline():
-            logger.debug("Skipping get_cover_on_demand — offline")
-            return "", ""
-
-        priority = self.get_field_priority("cover")
-
-        for plugin_name in priority:
-            if not self._is_plugin_usable(plugin_name):
-                continue
-            try:
-                plugin = self._plugin_manager.get_plugin(plugin_name)
-                if not plugin:
-                    continue
-
-                metadata = self._query_plugin_for_game(
-                    plugin, store_app_ids, normalized_title
-                )
-                if metadata:
-                    cover = metadata.get("cover") or metadata.get("cover_url")
-                    if cover and cover.strip():
-                        logger.info(f"get_cover_on_demand: Got cover from {plugin_name}")
-                        return cover, plugin_name
-            except Exception as e:
-                logger.debug(f"get_cover_on_demand: Failed from {plugin_name}: {e}")
-                continue
-
-        return "", ""
+        walk = self._walk_chain(self.get_field_priority("cover"),
+                                store_app_ids, normalized_title, field="cover")
+        if walk.found:
+            logger.info("get_cover_on_demand: Got cover from %s", walk.source)
+        return walk
 
     def get_game_modes_bulk(
         self,
-        store_app_ids: Dict[str, List[str]]
-    ) -> Dict[str, Dict[str, List[str]]]:
+        store_app_ids: dict[str, list[str]]
+    ) -> dict[str, dict[str, list[str]]]:
         """Get game modes for multiple games from all enabled metadata plugins
 
         Queries each enabled metadata plugin that supports game modes and
@@ -1656,7 +1767,7 @@ class MetadataResolver:
             logger.debug("No plugin manager set, cannot fetch game modes")
             return {}
 
-        result: Dict[str, Dict[str, List[str]]] = {}
+        result: dict[str, dict[str, list[str]]] = {}
 
         # Query each metadata plugin that supports bulk game modes
         # Uses per-field priority for game_modes_detail
@@ -1711,9 +1822,9 @@ class MetadataResolver:
 
     def get_enrichment_bulk_for_cache(
         self,
-        store_app_ids: Dict[str, List[str]],
-        progress_callback: Optional[Callable[[str], None]] = None,
-    ) -> Dict[str, Dict[str, Dict[str, Any]]]:
+        store_app_ids: dict[str, list[str]],
+        progress_callback: Callable[[str], None] | None = None,
+    ) -> dict[str, dict[str, dict[str, Any]]]:
         """Query enrichment plugins' local DBs for cache build.
 
         Iterates all metadata-typed plugins (not stores) that implement
@@ -1759,14 +1870,14 @@ class MetadataResolver:
             )
             progress_callback(names)
 
-        result: Dict[str, Dict[str, Dict[str, Any]]] = {}
+        result: dict[str, dict[str, dict[str, Any]]] = {}
 
         # Each enrichment plugin has its own DB — safe to parallelize
         from concurrent.futures import ThreadPoolExecutor, as_completed
 
         def _fetch_enrichment(plugin_name, plugin):
             plugin_data = plugin.get_cache_metadata_bulk(store_app_ids)
-            flat: Dict[str, Dict[str, Any]] = {}
+            flat: dict[str, dict[str, Any]] = {}
             for store_entries in plugin_data.values():
                 for app_id, meta in store_entries.items():
                     if app_id not in flat:
@@ -1805,8 +1916,8 @@ class MetadataResolver:
     def resolve_steam_app_ids(
         self,
         store_name: str,
-        games: List["PluginGame"],
-    ) -> Dict[str, str]:
+        games: list["PluginGame"],
+    ) -> dict[str, str]:
         """Resolve Steam AppIDs for non-Steam games via metadata plugins.
 
         Queries PCGW first (no auth, always available), then IGDB for
@@ -1829,12 +1940,12 @@ class MetadataResolver:
             return {}
 
         # Build lookup: app_id -> normalized title
-        app_id_titles: Dict[str, str] = {}
+        app_id_titles: dict[str, str] = {}
         for game in games:
             app_id_titles[game.store_app_id] = normalize_title(game.title)
 
         app_ids = list(app_id_titles.keys())
-        result: Dict[str, str] = {}
+        result: dict[str, str] = {}
 
         # Try PCGW first (no auth needed, always available)
         pcgw_count = 0
@@ -1906,10 +2017,10 @@ class MetadataResolver:
 
     def check_priority_conformance(
         self,
-        metadata: Dict[str, Any],
-        store_app_ids: Dict[str, str],
-        fields: Optional[List[str]] = None,
-    ) -> Dict[str, Tuple[str, str]]:
+        metadata: dict[str, Any],
+        store_app_ids: dict[str, str],
+        fields: list[str] | None = None,
+    ) -> dict[str, tuple[str, str]]:
         """Check if cached metadata sources match current priority settings
 
         For each field, verifies that the current source (from _sources dict)
@@ -1931,7 +2042,7 @@ class MetadataResolver:
 
         fields = fields or self.MEDIA_FIELDS
         sources = _get_sources(metadata)
-        non_conforming: Dict[str, Tuple[str, str]] = {}
+        non_conforming: dict[str, tuple[str, str]] = {}
 
         for field_name in fields:
             current_source = sources.get(field_name, "")
@@ -1966,9 +2077,9 @@ class MetadataResolver:
     def _find_highest_priority_source(
         self,
         field_name: str,
-        priority: List[str],
-        store_app_ids: Dict[str, str],
-    ) -> Optional[str]:
+        priority: list[str],
+        store_app_ids: dict[str, str],
+    ) -> str | None:
         """Find the highest-priority usable source for a field
 
         Args:
@@ -1999,12 +2110,15 @@ class MetadataResolver:
     def fetch_field_from_priority_source(
         self,
         field_name: str,
-        store_app_ids: Dict[str, str],
+        store_app_ids: dict[str, str],
         normalized_title: str = "",
-    ) -> Tuple[Any, Optional[str]]:
-        """Fetch a field from the highest-priority source
+    ) -> tuple[Any, str | None]:
+        """Fetch a field from the highest-priority source that has it.
 
-        Queries sources in priority order until data is found.
+        Walks the field's priority over the sources capable of providing
+        it, under the same rules as the lazy-load chain: stored data is
+        answered offline, and no source is skipped for missing
+        credentials.
 
         Args:
             field_name: Name of the field to fetch
@@ -2017,64 +2131,22 @@ class MetadataResolver:
         if not self._plugin_manager:
             return None, None
 
-        if self._is_offline():
-            logger.debug("Skipping fetch_field_from_priority_source — offline")
-            return None, None
-
-        priority = self.get_field_priority(field_name)
         capable_sources = FIELD_SOURCE_CAPABILITIES.get(field_name, [])
-
-        # Canonical field names — try canonical first, then old storage name
-        _FIELD_FALLBACKS = {
-            "cover": "cover_url",
-            "hero": "background_url",
-        }
-        metadata_key = field_name
-        fallback_key = _FIELD_FALLBACKS.get(field_name)
-
-        for source_name in priority:
-            if source_name not in capable_sources:
-                continue
-
-            if not self._is_plugin_usable(source_name):
-                continue
-
-            try:
-                plugin = self._plugin_manager.get_plugin(source_name)
-                if not plugin:
-                    continue
-
-                metadata = self._query_plugin_for_game(
-                    plugin, store_app_ids, normalized_title
-                )
-
-                if metadata:
-                    value = metadata.get(metadata_key)
-                    # Backward compat: try old storage name if canonical not found
-                    if not self._is_non_empty(value) and fallback_key:
-                        value = metadata.get(fallback_key)
-
-                    if self._is_non_empty(value):
-                        logger.debug(
-                            f"Fetched '{field_name}' from priority source: {source_name}"
-                        )
-                        return value, source_name
-
-            except Exception as e:
-                logger.debug(
-                    f"Failed to fetch '{field_name}' from {source_name}: {e}"
-                )
-                continue
-
-        return None, None
+        priority = [
+            source for source in self.get_field_priority(field_name)
+            if source in capable_sources
+        ]
+        walk = self._walk_chain(priority, store_app_ids, normalized_title,
+                                field=field_name)
+        return (walk.value, walk.source) if walk.found else (None, None)
 
     def refresh_non_conforming_fields(
         self,
-        metadata: Dict[str, Any],
-        store_app_ids: Dict[str, str],
+        metadata: dict[str, Any],
+        store_app_ids: dict[str, str],
         normalized_title: str = "",
-        fields: Optional[List[str]] = None,
-    ) -> Dict[str, Tuple[Any, str]]:
+        fields: list[str] | None = None,
+    ) -> dict[str, tuple[Any, str]]:
         """Refresh fields that don't conform to current priority settings
 
         Checks each field for priority conformance and fetches fresh data
@@ -2093,9 +2165,9 @@ class MetadataResolver:
             metadata, store_app_ids, fields
         )
 
-        refreshed: Dict[str, Tuple[Any, str]] = {}
+        refreshed: dict[str, tuple[Any, str]] = {}
 
-        for field_name, (current, expected) in non_conforming.items():
+        for field_name, (current, _expected) in non_conforming.items():
             value, source = self.fetch_field_from_priority_source(
                 field_name, store_app_ids, normalized_title
             )
@@ -2114,8 +2186,8 @@ class MetadataResolver:
     def get_enrichment_for_cache(
         self,
         session,
-        fields: List[str],
-    ) -> Dict[str, Dict[str, Dict[str, Any]]]:
+        fields: list[str],
+    ) -> dict[str, dict[str, dict[str, Any]]]:
         """Bulk-extract enrichment-sourced fields from metadata_json.
 
         Reads _sources markers to attribute fields to their enrichment
@@ -2149,7 +2221,7 @@ class MetadataResolver:
         # EnrichmentService marks cover as _sources.cover, but data lives in
         # metadata.cover_url. Same for hero/background_url. On-demand enrichment
         # marks as _sources.cover_url. Use COALESCE to check both conventions.
-        _SOURCE_ALIASES: Dict[str, str] = {
+        _SOURCE_ALIASES: dict[str, str] = {
             "cover_url": "cover",
             "cover": "cover_url",
             "background_url": "hero",
@@ -2213,7 +2285,7 @@ class MetadataResolver:
             return {}
 
         # Determine which providers are currently usable
-        usable_cache: Dict[str, bool] = {}
+        usable_cache: dict[str, bool] = {}
 
         def is_usable(provider: str) -> bool:
             if provider not in usable_cache:
@@ -2221,7 +2293,7 @@ class MetadataResolver:
             return usable_cache[provider]
 
         # Build result: game_id -> provider -> field -> value
-        result: Dict[str, Dict[str, Dict[str, Any]]] = {}
+        result: dict[str, dict[str, dict[str, Any]]] = {}
 
         for row in rows:
             game_id = row[0]
@@ -2263,8 +2335,8 @@ class MetadataResolver:
     def get_metadata_bulk(
         self,
         store_name: str,
-        app_ids: List[str],
-    ) -> Dict[str, Dict[str, Any]]:
+        app_ids: list[str],
+    ) -> dict[str, dict[str, Any]]:
         """Get metadata for multiple games from a store plugin
 
         This is the ONLY way GameService should get bulk metadata from stores.
@@ -2303,14 +2375,14 @@ class MetadataResolver:
     async def enrich_games_batch(
         self,
         store_name: str,
-        games: List["PluginGame"],
-        progress_callback: Optional[Callable[[str, int, int], None]] = None,
-        cancel_check: Optional[Callable[[], bool]] = None,
-        status_callback: Optional[Callable[[str], None]] = None,
-        metadata_started_callback: Optional[Callable[[str], None]] = None,
-        metadata_finished_callback: Optional[Callable[[str], None]] = None,
-        metadata_skipped_callback: Optional[Callable[[str], None]] = None,
-    ) -> Dict[str, "EnrichmentData"]:
+        games: list["PluginGame"],
+        progress_callback: Callable[[str, int, int], None] | None = None,
+        cancel_check: Callable[[], bool] | None = None,
+        status_callback: Callable[[str], None] | None = None,
+        metadata_started_callback: Callable[[str], None] | None = None,
+        metadata_finished_callback: Callable[[str], None] | None = None,
+        metadata_skipped_callback: Callable[[str], None] | None = None,
+    ) -> dict[str, "EnrichmentData"]:
         """Run batch enrichment through all metadata plugins IN PARALLEL
 
         This is the ONLY way to run batch enrichment. GameService must use this
@@ -2391,7 +2463,7 @@ class MetadataResolver:
 
         # Resolve cross-store Steam AppIDs for non-Steam games
         # This enables ProtonDB (Steam-only) to rate GOG/Epic games
-        cross_store_ids: Dict[str, str] = {}
+        cross_store_ids: dict[str, str] = {}
         if store_name != "steam":
             try:
                 cross_store_ids = self.resolve_steam_app_ids(store_name, games)
@@ -2400,7 +2472,7 @@ class MetadataResolver:
 
         async def run_plugin_enrichment(
             plugin_name: str, plugin
-        ) -> tuple[str, Dict[str, "EnrichmentData"]]:
+        ) -> tuple[str, dict[str, "EnrichmentData"]]:
             """Run enrichment for a single plugin.
 
             Handles RateLimitError with retry and UI notification via
@@ -2490,7 +2562,7 @@ class MetadataResolver:
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
         # Collect enrichments by app_id, tracking sources
-        all_enrichments: Dict[str, Dict[str, Any]] = {}  # app_id -> {field: (value, source)}
+        all_enrichments: dict[str, dict[str, Any]] = {}  # app_id -> {field: (value, source)}
 
         # Merge results in priority order
         for result in results:
@@ -2511,7 +2583,7 @@ class MetadataResolver:
                 self._merge_enrichment(existing, enrichment, plugin_name)
 
         # Convert merged data back to EnrichmentData objects
-        result_dict: Dict[str, EnrichmentData] = {}
+        result_dict: dict[str, EnrichmentData] = {}
         for app_id, merged in all_enrichments.items():
             result_dict[app_id] = self._build_enrichment_data(merged)
 
@@ -2521,11 +2593,11 @@ class MetadataResolver:
         self,
         plugin_name: str,
         store_name: str,
-        games: List["PluginGame"],
-        progress_callback: Optional[Callable[[str, int, int], None]] = None,
-        cancel_check: Optional[Callable[[], bool]] = None,
-        status_callback: Optional[Callable[[str], None]] = None,
-    ) -> Dict[str, "EnrichmentData"]:
+        games: list["PluginGame"],
+        progress_callback: Callable[[str, int, int], None] | None = None,
+        cancel_check: Callable[[], bool] | None = None,
+        status_callback: Callable[[str], None] | None = None,
+    ) -> dict[str, "EnrichmentData"]:
         """Run enrichment through a SINGLE metadata plugin.
 
         Unlike enrich_games_batch() which runs ALL plugins in parallel,
@@ -2552,8 +2624,9 @@ class MetadataResolver:
             logger.debug("Skipping single-plugin enrich — offline")
             return {}
 
-        from luducat.plugins.base import RateLimitError
         import asyncio
+
+        from luducat.plugins.base import RateLimitError
 
         metadata_plugins = self._plugin_manager.get_metadata_plugins()
         plugin = metadata_plugins.get(plugin_name)
@@ -2626,7 +2699,7 @@ class MetadataResolver:
 
     def _merge_enrichment(
         self,
-        existing: Dict[str, Any],
+        existing: dict[str, Any],
         enrichment: "EnrichmentData",
         source_name: str,
     ) -> None:
@@ -2635,26 +2708,7 @@ class MetadataResolver:
         Modifies existing dict in place. Only overwrites if new source has
         higher priority (lower rank) for each field.
         """
-        # Define field mappings: enrichment attr -> (field_name, priority_field)
-        field_mappings = [
-            ("genres", "genres"),
-            ("developers", "developers"),
-            ("publishers", "publishers"),
-            ("cover_url", "cover"),
-            ("screenshots", "screenshots"),
-            ("background_url", "hero"),
-            ("franchise", "franchise"),
-            ("series", "series"),
-            ("themes", "themes"),
-            ("perspectives", "perspectives"),
-            ("platforms", "platforms"),
-            ("age_ratings", "age_rating"),
-            ("websites", "links"),
-            ("user_rating", "rating"),
-            ("engine", "engine"),
-        ]
-
-        for attr_name, field_name in field_mappings:
+        for attr_name, field_name in ENRICHMENT_FIELD_MAPPINGS:
             value = getattr(enrichment, attr_name, None)
             if not self._is_non_empty(value):
                 continue
@@ -2679,7 +2733,7 @@ class MetadataResolver:
                 if self._is_non_empty(value):
                     existing["extra"][key] = value
 
-    def _build_enrichment_data(self, merged: Dict[str, Any]) -> "EnrichmentData":
+    def _build_enrichment_data(self, merged: dict[str, Any]) -> "EnrichmentData":
         """Build EnrichmentData from merged dict"""
         from luducat.plugins.base import EnrichmentData
 
@@ -2720,7 +2774,7 @@ class MetadataResolver:
 
     def clear_plugin_cache_for_game(
         self,
-        store_ids: List[Tuple[str, str]],
+        store_ids: list[tuple[str, str]],
     ) -> None:
         """Clear cached matches in metadata plugins for a game
 
@@ -2769,9 +2823,9 @@ class MetadataResolver:
 
     async def force_rescan_game(
         self,
-        games: List["PluginGame"],
-        progress_callback: Optional[Callable[[str, int, int], None]] = None,
-    ) -> Dict[str, "EnrichmentData"]:
+        games: list["PluginGame"],
+        progress_callback: Callable[[str, int, int], None] | None = None,
+    ) -> dict[str, "EnrichmentData"]:
         """Force rescan metadata for games, bypassing cache
 
         Clears plugin caches and re-fetches from all sources.
@@ -2803,10 +2857,10 @@ class MetadataResolver:
 # Production code MUST use get_resolver().  Tests use init_resolver() /
 # reset_resolver() for isolation.
 # ---------------------------------------------------------------------------
-_default_resolver: Optional[MetadataResolver] = None
+_default_resolver: MetadataResolver | None = None
 
 
-def init_resolver(field_priorities: Dict[str, List[str]]) -> MetadataResolver:
+def init_resolver(field_priorities: dict[str, list[str]]) -> MetadataResolver:
     """Initialize the global singleton.  Called ONCE at app startup.
 
     Args:

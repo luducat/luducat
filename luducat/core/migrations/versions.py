@@ -42,7 +42,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 # Current schema version (increment when adding new migrations)
-CURRENT_SCHEMA_VERSION = 31
+CURRENT_SCHEMA_VERSION = 32
 
 # Mapping from Alembic revision IDs to internal version numbers
 ALEMBIC_REVISION_MAP = {
@@ -1328,6 +1328,51 @@ def migrate_030_to_031(conn: "Connection") -> None:
     conn.commit()
 
 
+def migrate_031_to_032(conn: "Connection") -> None:
+    """Rename the legacy _sources.age_rating key to age_ratings (lud-b2rk).
+
+    Where both keys exist, the plural one is the newer record and wins.
+    """
+    logger.info("Migration 31->32: Renaming _sources.age_rating to age_ratings")
+
+    # LIKE instead of json_extract: a malformed row must not abort the whole migration
+    rows = conn.execute(text(
+        "SELECT id, metadata_json FROM store_games "
+        "WHERE metadata_json LIKE '%\"age\\_rating\"%' ESCAPE '\\'"
+    )).fetchall()
+
+    renamed = 0
+    dropped = 0
+    for row_id, raw_json in rows:
+        try:
+            meta = json.loads(raw_json) if isinstance(raw_json, str) else raw_json
+        except (json.JSONDecodeError, TypeError) as e:
+            logger.warning("Migration 31->32: skipping store_game %s: %s", row_id, e)
+            continue
+
+        sources = meta.get("_sources") if isinstance(meta, dict) else None
+        if not isinstance(sources, dict) or "age_rating" not in sources:
+            continue
+
+        legacy = sources.pop("age_rating")
+        if "age_ratings" in sources:
+            dropped += 1
+        else:
+            sources["age_ratings"] = legacy
+            renamed += 1
+
+        conn.execute(
+            text("UPDATE store_games SET metadata_json = :json WHERE id = :id"),
+            {"json": json.dumps(meta), "id": row_id},
+        )
+
+    conn.commit()
+    logger.info(
+        "Migration 31->32: Renamed %d, dropped %d superseded legacy age_rating source keys",
+        renamed, dropped,
+    )
+
+
 # Migration registry: list of (from_version, to_version, migration_function)
 MIGRATIONS = [
     (0, 1, migrate_000_to_001),
@@ -1361,4 +1406,5 @@ MIGRATIONS = [
     (28, 29, migrate_028_to_029),
     (29, 30, migrate_029_to_030),
     (30, 31, migrate_030_to_031),
+    (31, 32, migrate_031_to_032),
 ]

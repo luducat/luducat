@@ -29,7 +29,7 @@ import time
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from luducat.plugins.base import AbstractGameStore, Game, PluginError
+from luducat.plugins.base import AbstractGameStore, Game, Lookup, PluginError
 
 from .amazon_api import AmazonApi
 from .amazon_session import AmazonSession
@@ -470,20 +470,28 @@ class AmazonStore(AbstractGameStore):
         store_name: str,
         store_id: str,
         normalized_title: str = "",
-    ) -> Optional[Dict[str, Any]]:
-        """Resolve a game in the Amazon catalog cache.
+    ) -> Lookup:
+        """Resolve a game against the Amazon catalog cache.
 
-        Direct id lookup for our own store, title lookup for
-        cross-store resolution.
+        Local data only: Amazon exposes the entitlements list, no
+        per-product endpoint, so a miss has no per-id fetch.
+        Foreign stores: the local title index only.
         """
-        app_id = None
         if store_name == self.store_name:
-            app_id = store_id
-        elif normalized_title:
-            app_id = self._find_app_id_by_title(normalized_title)
-        if not app_id:
-            return None
-        return self.get_game_metadata(app_id)
+            metadata = self.get_game_metadata(store_id)
+            if metadata:
+                return Lookup.found(metadata)
+            return Lookup.not_found("no catalog row")
+
+        if not normalized_title:
+            return Lookup.not_found("no title")
+        metadata = self._find_game_by_title(normalized_title)
+        if metadata:
+            return Lookup.found(metadata)
+        return Lookup.not_found("no title match")
+    def _find_game_by_title(self, normalized_title: str) -> dict[str, Any] | None:
+        app_id = self._find_app_id_by_title(normalized_title)
+        return self.get_game_metadata(app_id) if app_id else None
 
     def _find_app_id_by_title(self, normalized_title: str) -> Optional[str]:
         if self._title_index is None:

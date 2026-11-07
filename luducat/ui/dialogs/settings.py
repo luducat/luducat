@@ -17,59 +17,61 @@ Tabbed dialog containing:
 """
 
 import logging
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any
 
-from luducat.core.json_compat import json
-from PySide6.QtCore import Qt, Signal, Slot, QMetaObject, QUrl, Q_ARG
+from PySide6.QtCore import Q_ARG, QEvent, QMetaObject, Qt, QTimer, QUrl, Signal, Slot
+from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QApplication,
-    QDialog,
-    QDoubleSpinBox,
-    QVBoxLayout,
-    QHBoxLayout,
-    QTabWidget,
-    QWidget,
-    QLabel,
     QCheckBox,
     QComboBox,
-    QSpinBox,
-    QSlider,
-    QPushButton,
-    QGroupBox,
-    QFormLayout,
-    QGridLayout,
+    QDialog,
     QDialogButtonBox,
-    QMessageBox,
+    QDoubleSpinBox,
     QFileDialog,
-    QLineEdit,
+    QFormLayout,
     QFrame,
-    QScrollArea,
-    QStackedWidget,
+    QGridLayout,
+    QGroupBox,
+    QHBoxLayout,
     QInputDialog,
+    QLabel,
+    QLineEdit,
     QMenu,
+    QMessageBox,
+    QPushButton,
+    QScrollArea,
+    QSlider,
+    QSpinBox,
+    QStackedWidget,
+    QStyle,
+    QTabWidget,
+    QVBoxLayout,
+    QWidget,
 )
-from PySide6.QtGui import QDesktopServices
 
-from ...utils.icons import load_tinted_icon
+from luducat.core.json_compat import json
+
 from ...core.config import Config
-from ...core.path_safety import contained_path
 from ...core.constants import (
     APP_NAME,
     APP_VERSION,
-    VIEW_MODE_LIST,
-    VIEW_MODE_COVER,
-    VIEW_MODE_SCREENSHOT,
-    SORT_MODE_NAME,
-    SORT_MODE_RECENT,
-    SORT_MODE_ADDED,
-    GRID_DENSITY_MIN,
-    GRID_DENSITY_MAX,
     DEFAULT_GRID_DENSITY,
     DEFAULT_IMAGE_FADE_MS,
-    IMAGE_FADE_MIN_MS,
+    GRID_DENSITY_MAX,
+    GRID_DENSITY_MIN,
     IMAGE_FADE_MAX_MS,
+    IMAGE_FADE_MIN_MS,
+    SORT_MODE_ADDED,
+    SORT_MODE_NAME,
+    SORT_MODE_RECENT,
+    VIEW_MODE_COVER,
+    VIEW_MODE_LIST,
+    VIEW_MODE_SCREENSHOT,
 )
+from ...core.path_safety import contained_path
 from ...core.plugin_manager import PluginManager
+from ...utils.icons import load_tinted_icon
 
 logger = logging.getLogger(__name__)
 
@@ -218,7 +220,7 @@ class GeneralSettingsTab(QWidget):
 
     def __init__(
         self, config: Config, plugin_manager=None,
-        update_info=None, parent: Optional[QWidget] = None,
+        update_info=None, parent: QWidget | None = None,
     ):
         super().__init__(parent)
         self.config = config
@@ -376,8 +378,8 @@ class GeneralSettingsTab(QWidget):
 
     def _populate_stores(self) -> None:
         """Populate default store dropdown from enabled store plugins."""
-        from ...plugins.base import PluginType
         from ...core.plugin_manager import PluginManager as PM
+        from ...plugins.base import PluginType
         if not self._plugin_manager:
             # Fallback: enumerate from class-level registry
             for name in sorted(PM.get_store_plugin_names()):
@@ -493,7 +495,8 @@ class GeneralSettingsTab(QWidget):
             pass
 
         import threading
-        from ...core.update_checker import check_for_update, OfflineError
+
+        from ...core.update_checker import OfflineError, check_for_update
 
         self.btn_check_now.setEnabled(False)
         self.btn_check_now.setText(_("Checking\u2026"))
@@ -588,7 +591,7 @@ class AppearanceSettingsTab(QWidget):
     # Signal emitted when settings require immediate application
     settings_changed = Signal()
 
-    def __init__(self, config: Config, parent: Optional[QWidget] = None):
+    def __init__(self, config: Config, parent: QWidget | None = None):
         super().__init__(parent)
         self.config = config
         self._setup_ui()
@@ -777,8 +780,9 @@ class AppearanceSettingsTab(QWidget):
             themes = main_window.theme_manager.get_available_themes()
         else:
             # Fallback: use theme manager directly
-            from ...core.theme_manager import ThemeManager
             from PySide6.QtWidgets import QApplication
+
+            from ...core.theme_manager import ThemeManager
             # Create temporary manager just to get theme list
             temp_mgr = ThemeManager(QApplication.instance())
             themes = temp_mgr.get_available_themes()
@@ -880,13 +884,13 @@ class PluginListItem(QWidget):
         description: str,
         is_enabled: bool,
         is_authenticated: bool,
-        plugin_types: Optional[List[str]] = None,
+        plugin_types: list[str] | None = None,
         is_in_development: bool = False,
         is_security_disabled: bool = False,
         no_config_metadata: bool = False,
         is_platform_unsupported: bool = False,
-        supported_platforms: Optional[List[str]] = None,
-        parent: Optional[QWidget] = None,
+        supported_platforms: list[str] | None = None,
+        parent: QWidget | None = None,
     ):
         super().__init__(parent)
 
@@ -1084,15 +1088,15 @@ class PluginsSettingsTab(QWidget):
         config: Config,
         plugin_manager: PluginManager,
         game_service=None,
-        parent: Optional[QWidget] = None,
+        parent: QWidget | None = None,
     ):
         super().__init__(parent)
         self.config = config
         self.plugin_manager = plugin_manager
         self.game_service = game_service
-        self.reenabled_stores: List[str] = []
-        self._plugin_items: Dict[str, PluginListItem] = {}
-        self._panel_layouts: Dict[str, QVBoxLayout] = {}
+        self.reenabled_stores: list[str] = []
+        self._plugin_items: dict[str, PluginListItem] = {}
+        self._panel_layouts: dict[str, QVBoxLayout] = {}
         self._setup_ui()
         self._load_plugins()
 
@@ -1136,7 +1140,7 @@ class PluginsSettingsTab(QWidget):
         # Right: stacked widget with scroll areas per category
         self._stack = QStackedWidget()
 
-        for type_key, label, _icon in self._PLUGIN_CATEGORIES:
+        for type_key, _label, _icon in self._PLUGIN_CATEGORIES:
             # Each category gets a scroll area with a vertical layout
             scroll = QScrollArea()
             scroll.setWidgetResizable(True)
@@ -1182,7 +1186,7 @@ class PluginsSettingsTab(QWidget):
             item.deleteLater()
         self._plugin_items.clear()
 
-        for type_key, panel_layout in self._panel_layouts.items():
+        for panel_layout in self._panel_layouts.values():
             while panel_layout.count() > 0:
                 child = panel_layout.takeAt(0)
                 if child.widget():
@@ -1190,7 +1194,7 @@ class PluginsSettingsTab(QWidget):
 
         # Group plugins by primary type
         discovered = self.plugin_manager.get_discovered_plugins()
-        grouped: Dict[str, List[tuple]] = {k: [] for k, _lbl, _icn in self._PLUGIN_CATEGORIES}
+        grouped: dict[str, list[tuple]] = {k: [] for k, _lbl, _icn in self._PLUGIN_CATEGORIES}
 
         for name, metadata in discovered.items():
             if getattr(metadata, "hidden", False):
@@ -1209,9 +1213,9 @@ class PluginsSettingsTab(QWidget):
 
             if not plugins:
                 # Empty category hint
-                category_label = dict(
-                    (k, _(lbl)) for k, lbl, _icn in self._PLUGIN_CATEGORIES
-                ).get(type_key, type_key)
+                category_label = {
+                    k: _(lbl) for k, lbl, _icn in self._PLUGIN_CATEGORIES
+                }.get(type_key, type_key)
                 hint = QLabel(
                     _("No {category} plugins installed yet.")
                     .format(category=category_label.lower())
@@ -1262,8 +1266,8 @@ class PluginsSettingsTab(QWidget):
                                 is_auth = result()
                             else:
                                 is_auth = bool(result)
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.debug("Availability check failed for %s: %s", name, e)
 
                 capabilities = metadata.capabilities or {}
                 is_in_dev = capabilities.get("status") in ("stub", "in_development")
@@ -1472,10 +1476,12 @@ class AdvancedSettingsTab(QWidget):
     """Advanced settings tab"""
 
     download_covers_requested = Signal()
+    restart_requested = Signal()  # a directory move was recorded, run it now
 
-    def __init__(self, config: Config, parent: Optional[QWidget] = None):
+    def __init__(self, config: Config, parent: QWidget | None = None):
         super().__init__(parent)
         self.config = config
+        self._pending_widgets: dict[str, tuple[QLabel, QPushButton]] = {}
         self._setup_ui()
         self._load_settings()
 
@@ -1504,15 +1510,15 @@ class AdvancedSettingsTab(QWidget):
         paths_group = QGroupBox(_("Data Locations"))
         paths_layout = QFormLayout(paths_group)
 
-        from ...core.config import get_config_dir, get_data_dir, get_cache_dir
+        from ...core.config import get_cache_dir, get_config_dir, get_data_dir
 
-        self._config_path_row = self._create_path_row(get_config_dir(), movable=False)
+        self._config_path_row = self._create_path_row(get_config_dir())
         paths_layout.addRow(_("Config:"), self._config_path_row)
         self._data_path_row = self._create_path_row(
-            get_data_dir(), movable=True, config_key="app.custom_data_dir")
+            get_data_dir(), move_kind="data")
         paths_layout.addRow(_("Data:"), self._data_path_row)
         self._cache_path_row = self._create_path_row(
-            get_cache_dir(), movable=True, config_key="app.custom_cache_dir")
+            get_cache_dir(), move_kind="cache")
         paths_layout.addRow(_("Cache:"), self._cache_path_row)
 
         layout.addWidget(paths_group)
@@ -1612,7 +1618,7 @@ class AdvancedSettingsTab(QWidget):
 
         layout.addWidget(content_group)
 
-    def _compute_auto_budgets(self) -> Tuple[int, int]:
+    def _compute_auto_budgets(self) -> tuple[int, int]:
         """Compute optimal and minimum RAM cache budgets from current config."""
         from ...utils.image_cache import compute_auto_budgets
         cover_density = self.config.get("appearance.cover_grid_density", 250)
@@ -1652,7 +1658,7 @@ class AdvancedSettingsTab(QWidget):
     def _populate_browsers(self) -> None:
         """Populate browser dropdown with available browsers."""
         from ...core.browser_cookies import SUPPORTED_BROWSERS
-        for display_name, config_key, _ in SUPPORTED_BROWSERS:
+        for display_name, config_key, _unused in SUPPORTED_BROWSERS:
             self.cmb_browser.addItem(display_name, config_key)
 
     def _load_settings(self) -> None:
@@ -1703,18 +1709,20 @@ class AdvancedSettingsTab(QWidget):
             self.cmb_ram_cache_mode.setCurrentIndex(auto_idx)
         self._update_ram_cache_info()
 
-    def _create_path_row(self, path, movable: bool = False,
-                          config_key: str = "") -> QWidget:
-        """Create a path display row with health indicator,
-        open, optional move button, and stats."""
+    def _create_path_row(self, path, move_kind: str = "") -> QWidget:
         from pathlib import Path
+
         from ...core.directory_health import check_directory
         path = Path(path)
 
         container = QWidget()
-        row = QHBoxLayout(container)
+        outer = QVBoxLayout(container)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(2)
+        row = QHBoxLayout()
         row.setContentsMargins(0, 0, 0, 0)
         row.setSpacing(4)
+        outer.addLayout(row)
 
         # Health indicator dot
         health_dot = QLabel()
@@ -1734,13 +1742,13 @@ class AdvancedSettingsTab(QWidget):
         btn_open.clicked.connect(lambda checked=False, p=path: self._open_path(p))
         row.addWidget(btn_open)
 
-        if movable and config_key:
+        if move_kind:
             btn_move = QPushButton()
             btn_move.setIcon(load_tinted_icon("folder-move.svg", 16))
             btn_move.setFixedSize(28, 28)
             btn_move.setToolTip(_("Move this directory to a new location"))
             btn_move.clicked.connect(
-                lambda checked=False, p=path, k=config_key: self._move_directory(p, k))
+                lambda checked=False, p=path, k=move_kind: self._move_directory(p, k))
             row.addWidget(btn_move)
         else:
             # Spacer matching Move button width for alignment
@@ -1761,11 +1769,55 @@ class AdvancedSettingsTab(QWidget):
         stats_label.setMinimumWidth(180)
         row.addWidget(stats_label)
 
+        if move_kind:
+            pending_row = QHBoxLayout()
+            pending_row.setContentsMargins(16, 0, 0, 0)
+            pending_label = QLabel()
+            pending_label.setObjectName("hintLabel")
+            pending_label.setWordWrap(True)
+            pending_row.addWidget(pending_label, 1)
+            btn_cancel = QPushButton(_("Cancel Move"))
+            btn_cancel.clicked.connect(
+                lambda checked=False, k=move_kind: self._cancel_pending_move(k))
+            pending_row.addWidget(btn_cancel)
+            outer.addLayout(pending_row)
+            self._pending_widgets[move_kind] = (pending_label, btn_cancel)
+            self._refresh_pending_move(move_kind)
+
         return container
+
+    def _refresh_pending_move(self, kind: str) -> None:
+        from ...core.startup_move import MoveError, pending_move
+
+        label, button = self._pending_widgets[kind]
+        try:
+            move = pending_move(self.config, kind)
+        except MoveError as e:
+            logger.warning("Ignoring recorded move: %s", e)
+            move = None
+        if move is None:
+            label.hide()
+            button.hide()
+            return
+        if move.delete_source:
+            text = _("Moves to {target} at the next start; the old folder "
+                     "is deleted afterwards").format(target=move.target)
+        else:
+            text = _("Moves to {target} at the next start").format(target=move.target)
+        label.setText(text)
+        label.show()
+        button.show()
+
+    def _cancel_pending_move(self, kind: str) -> None:
+        from ...core.startup_move import cancel_move
+
+        cancel_move(self.config, kind)
+        self._refresh_pending_move(kind)
 
     def _update_health_dot(self, label: QLabel, path) -> None:
         """Set health dot color and tooltip based on directory health."""
         from pathlib import Path
+
         from ...core.directory_health import check_directory
         path = Path(path)
 
@@ -1782,10 +1834,16 @@ class AdvancedSettingsTab(QWidget):
             return f"{mb / 1024:.1f} GB"
         return f"{mb} MB"
 
-    def _move_directory(self, current_path, config_key: str) -> None:
-        """Show move directory dialog and perform migration."""
+    def _move_directory(self, current_path, kind: str) -> None:
+        """Pick a new location and record the move for the next start.
+
+        Copying while luducat runs loses writes to open databases
+        (lud-sdvi), so the copy waits for the next start.
+        """
         from pathlib import Path
+
         from ...core.directory_health import check_directory, get_dir_size
+        from ...core.startup_move import MoveError, schedule_move, validate_move
         current_path = Path(current_path)
 
         target = QFileDialog.getExistingDirectory(
@@ -1826,111 +1884,54 @@ class AdvancedSettingsTab(QWidget):
             )
             return
 
-        # Check target is empty or a luducat dir
-        if target_path.exists() and any(target_path.iterdir()):
-            # Look for luducat markers (games.db, plugins/, covers/)
-            markers = ["games.db", "plugins", "covers", "screenshots"]
-            has_marker = any((target_path / m).exists() for m in markers)
-            if not has_marker:
-                QMessageBox.warning(
-                    self, _("Non-Empty Target"),
-                    _("The target directory is not empty and doesn't appear to be\n"
-                      "a luducat directory. Please choose an empty directory.")
-                )
-                return
+        try:
+            validate_move(self.config, kind, target_path)
+        except MoveError as e:
+            QMessageBox.warning(self, _("Cannot Move Here"), str(e))
+            return
 
-        # Confirm
         size_str = self._format_size_mb(int(current_size / (1024 * 1024)))
-        reply = QMessageBox.question(
-            self, _("Confirm Move"),
-            _("Move directory contents?\n\n"
+        choice = self._confirm_move(current_path, target_path, size_str)
+        if choice is None:
+            return
+        when, delete_old = choice
+
+        try:
+            schedule_move(self.config, kind, target_path, delete_source=delete_old)
+        except MoveError as e:
+            QMessageBox.warning(self, _("Cannot Move Here"), str(e))
+            return
+        self._refresh_pending_move(kind)
+        if when == "now":
+            self.restart_requested.emit()
+
+    def _confirm_move(self, source, target, size_str: str):
+        """Ask when to move. Returns ("now" | "later", delete_old) or None."""
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Question)
+        box.setWindowTitle(_("Confirm Move"))
+        box.setText(
+            _("Move this folder?\n\n"
               "From: {source}\n"
               "To: {target}\n"
               "Size: {size}\n\n"
-              "The application will need to be restarted after the move.").format(
-                source=current_path, target=target_path, size=size_str),
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+              "Luducat copies the folder the next time it starts, before it "
+              "opens any of its files.").format(source=source, target=target, size=size_str)
         )
-        if reply != QMessageBox.StandardButton.Yes:
-            return
+        chk_delete = QCheckBox(_("Delete the old folder after a successful move"))
+        box.setCheckBox(chk_delete)
+        btn_now = box.addButton(_("Restart Now"), QMessageBox.ButtonRole.AcceptRole)
+        btn_later = box.addButton(_("At Next Start"), QMessageBox.ButtonRole.ActionRole)
+        box.addButton(QMessageBox.StandardButton.Cancel)
+        box.setDefaultButton(btn_now)
+        box.exec()
 
-        # Perform migration with progress dialog
-        from ...core.directory_migrate import DirectoryMigration
-
-        migration = DirectoryMigration(self)
-        progress_dialog = QDialog(self)
-        progress_dialog.setWindowTitle(_("Moving Directory..."))
-        progress_dialog.setModal(True)
-        progress_dialog.setMinimumWidth(400)
-
-        dlg_layout = QVBoxLayout(progress_dialog)
-        progress_label = QLabel(_("Preparing..."))
-        dlg_layout.addWidget(progress_label)
-
-        from PySide6.QtWidgets import QProgressBar
-        progress_bar = QProgressBar()
-        progress_bar.setRange(0, 100)
-        dlg_layout.addWidget(progress_bar)
-
-        btn_cancel = QPushButton(_("Cancel"))
-        dlg_layout.addWidget(btn_cancel)
-        btn_cancel.clicked.connect(migration.cancel)
-
-        def on_progress(current, total, filename):
-            progress_bar.setRange(0, total)
-            progress_bar.setValue(current)
-            progress_label.setText(_("Copying: {filename}").format(filename=filename))
-
-        def on_finished(success, message):
-            progress_dialog.accept()
-            if success:
-                # Offer to delete old location
-                reply = QMessageBox.question(
-                    self, _("Migration Complete"),
-                    _("{message}\n\n"
-                      "Delete the old directory?\n"
-                      "(The application needs to be restarted.)").format(message=message),
-                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                )
-                if reply == QMessageBox.StandardButton.Yes:
-                    import shutil
-                    try:
-                        shutil.rmtree(current_path)
-                    except OSError as e:
-                        QMessageBox.warning(
-                            self, _("Cleanup Failed"),
-                            _("Could not delete old "
-                              "directory:\n{error}")
-                            .format(error=e),
-                        )
-                QMessageBox.information(
-                    self, _("Restart Required"),
-                    _("Please restart luducat for the change to take effect.")
-                )
-            else:
-                QMessageBox.critical(self, _("Migration Failed"), message)
-
-        migration.progress.connect(on_progress)
-        migration.finished.connect(on_finished)
-
-        # Run migration in a thread
-        from PySide6.QtCore import QThread
-
-        class MigrationThread(QThread):
-            def __init__(self, migration_obj, src, tgt, key):
-                super().__init__()
-                self._migration = migration_obj
-                self._src = src
-                self._tgt = tgt
-                self._key = key
-
-            def run(self):
-                self._migration.migrate(self._src, self._tgt, self._key)
-
-        thread = MigrationThread(migration, current_path, target_path, config_key)
-        thread.start()
-        progress_dialog.exec()
-        thread.wait()
+        clicked = box.clickedButton()
+        if clicked is btn_now:
+            return "now", chk_delete.isChecked()
+        if clicked is btn_later:
+            return "later", chk_delete.isChecked()
+        return None
 
     def _open_path(self, path) -> None:
         """Open path in system file browser"""
@@ -1948,8 +1949,9 @@ class AdvancedSettingsTab(QWidget):
 
     def _clear_cache(self) -> None:
         """Clear all cached images from disk and memory."""
-        from pathlib import Path
         import shutil
+        from pathlib import Path
+
         from ...core.config import get_cache_dir
         from ...utils.image_cache import get_cover_cache, get_screenshot_cache
 
@@ -2040,7 +2042,7 @@ class BackupSettingsTab(QWidget):
 
     restart_required = Signal()  # Emitted when restore completes
 
-    def __init__(self, config: Config, parent: Optional[QWidget] = None):
+    def __init__(self, config: Config, parent: QWidget | None = None):
         super().__init__(parent)
         self.config = config
         self._retention_acknowledged = False
@@ -2282,6 +2284,7 @@ class BackupSettingsTab(QWidget):
             _("Where backups are stored on disk.\n"
               "Leave empty to use the default location."))
         from pathlib import Path as _Path
+
         from ...core.backup_manager import get_default_backup_dir
         default_path = str(get_default_backup_dir()).replace(
             str(_Path.home()), "~", 1)
@@ -2394,8 +2397,8 @@ class BackupSettingsTab(QWidget):
                 chk.setText(
                     f"{chk.text()}  ({self._format_cache_size(size_bytes)})"
                 )
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Cache size labels unavailable: %s", e)
 
     @staticmethod
     def _format_cache_size(size_bytes: int) -> str:
@@ -2479,7 +2482,7 @@ class BackupSettingsTab(QWidget):
                 if size_mb < 1:
                     size_str = "{:.1f} KB".format(info['total_size'] / 1024)
                 else:
-                    size_str = "{:.1f} MB".format(size_mb)
+                    size_str = f"{size_mb:.1f} MB"
                 date_str = info["newest"].strftime("%Y-%m-%d") if info["newest"] else ""
                 count = info['count']
                 backup_word = _("backup") if count == 1 else _("backups")
@@ -2664,7 +2667,9 @@ class BackupSettingsTab(QWidget):
     def _backup_now(self) -> None:
         """Execute backup immediately with progress dialog."""
         from ...core.backup_manager import (
-            create_backup, collect_backup_items, collect_assets_items,
+            collect_assets_items,
+            collect_backup_items,
+            create_backup,
         )
 
         # Show busy cursor while scanning files
@@ -2778,7 +2783,7 @@ class BackupSettingsTab(QWidget):
         progress_dialog.show()
 
     @staticmethod
-    def _compare_user_data(backup_zip_path, current_db_path) -> List[str]:
+    def _compare_user_data(backup_zip_path, current_db_path) -> list[str]:
         """Compare user data between current DB and backup DB.
 
         Uses raw SQLite (no ORM) to count tags, favorites, hidden, notes
@@ -2808,8 +2813,8 @@ class BackupSettingsTab(QWidget):
                     except sqlite3.OperationalError:
                         counts[key] = 0  # Table doesn't exist in older schemas
                 conn.close()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("Backup item counts unavailable: %s", e)
             return counts
 
         current = _count_user_data(current_db_path)
@@ -2856,7 +2861,9 @@ class BackupSettingsTab(QWidget):
         import zipfile
         from datetime import datetime
         from pathlib import Path
+
         from PySide6.QtCore import QTimer
+
         from ...core.config import get_config_dir, get_data_dir
 
         # Show file picker — safe directory resolution
@@ -2919,7 +2926,7 @@ class BackupSettingsTab(QWidget):
             return
 
         # Verify integrity
-        from ...core.backup_manager import verify_backup, MIN_RESTORE_VERSION
+        from ...core.backup_manager import MIN_RESTORE_VERSION, verify_backup
         ok, problems = verify_backup(file_path)
         if not ok:
             detail = "\n".join(problems)
@@ -3169,13 +3176,14 @@ class BackupSettingsTab(QWidget):
 # TagManagerDialog moved to tag_manager_dialog.py
 # Backwards compat re-export
 from .tag_manager_dialog import TagManagerDialog  # noqa: F401, E402
+
 TagManagerTab = TagManagerDialog  # Alias for any remaining references
 
 
 class CollapsibleSection(QWidget):
     """A collapsible section with header button and content area"""
 
-    def __init__(self, title: str, parent: Optional[QWidget] = None):
+    def __init__(self, title: str, parent: QWidget | None = None):
         super().__init__(parent)
         self._expanded = True
         self._title = title
@@ -3238,15 +3246,15 @@ class MetadataSettingsTab(QWidget):
         config: Config,
         plugin_manager: PluginManager,
         game_service=None,
-        parent: Optional[QWidget] = None,
+        parent: QWidget | None = None,
     ):
         super().__init__(parent)
         self.config = config
         self.plugin_manager = plugin_manager
         self.game_service = game_service
-        self._field_buttons: Dict[str, QPushButton] = {}
-        self._current_priorities: Dict[str, List[str]] = {}
-        self._initial_priorities: Dict[str, List[str]] = {}
+        self._field_buttons: dict[str, QPushButton] = {}
+        self._current_priorities: dict[str, list[str]] = {}
+        self._initial_priorities: dict[str, list[str]] = {}
 
         self._setup_ui()
         self._load_settings()
@@ -3339,7 +3347,7 @@ class MetadataSettingsTab(QWidget):
         # Right side: stacked widget with one scroll panel per category
         self._stack = QStackedWidget()
         self._stack.setObjectName("priorityStack")
-        self._category_indices: Dict[str, int] = {}
+        self._category_indices: dict[str, int] = {}
 
         for key, _label, _icon in self._CATEGORIES:
             fields = FIELD_GROUPS.get(key, [])
@@ -3380,7 +3388,7 @@ class MetadataSettingsTab(QWidget):
         self._sidebar.currentChanged.connect(self._on_category_changed)
         self._sidebar.select_category("General")
 
-    def _create_field_pair(self, field_name: str) -> Tuple[QLabel, QPushButton]:
+    def _create_field_pair(self, field_name: str) -> tuple[QLabel, QPushButton]:
         """Create a label + priority button pair for grid layout.
 
         Returns:
@@ -3416,6 +3424,7 @@ class MetadataSettingsTab(QWidget):
     def _restore_initial(self) -> None:
         """Restore priorities to the snapshot taken when the dialog opened."""
         from copy import deepcopy
+
         from luducat.core.metadata_resolver import FIELD_GROUPS
 
         if not self._initial_priorities:
@@ -3462,7 +3471,7 @@ class MetadataSettingsTab(QWidget):
 
         btn.setText(text)
 
-    def _get_enabled_plugins(self, authenticated_only: bool = False) -> Set[str]:
+    def _get_enabled_plugins(self, authenticated_only: bool = False) -> set[str]:
         """Get set of currently enabled plugin names
 
         Args:
@@ -3497,6 +3506,7 @@ class MetadataSettingsTab(QWidget):
     def _edit_field_priority(self, field_name: str) -> None:
         """Open priority editor for a field"""
         from luducat.core.metadata_resolver import FIELD_LABELS, get_resolver
+
         from .priority_editor import PriorityEditorDialog
 
         current = self._current_priorities.get(field_name, [])
@@ -3524,6 +3534,7 @@ class MetadataSettingsTab(QWidget):
     def _load_settings(self) -> None:
         """Load settings from config and snapshot for Defaults button."""
         from copy import deepcopy
+
         from luducat.core.metadata_resolver import FIELD_GROUPS, get_resolver
 
         saved = self.config.get_metadata_priorities()
@@ -3557,6 +3568,7 @@ class MetadataSettingsTab(QWidget):
         The actual field reset is done last.
         """
         from copy import deepcopy
+
         from luducat.core.metadata_resolver import FIELD_GROUPS, get_resolver
 
         resolver = get_resolver()
@@ -3702,7 +3714,7 @@ class MetadataSettingsTab(QWidget):
             return
 
         try:
-            with open(file_path, "r", encoding="utf-8") as f:
+            with open(file_path, encoding="utf-8") as f:
                 preset = json.load(f)
         except json.JSONDecodeError as e:
             QMessageBox.critical(
@@ -3773,9 +3785,7 @@ class MetadataSettingsTab(QWidget):
         if skipped:
             details = "\n".join(skipped[:10])
             suffix = (
-                "\n  ... and {n} more".format(
-                    n=len(skipped) - 10
-                )
+                f"\n  ... and {len(skipped) - 10} more"
                 if len(skipped) > 10
                 else ""
             )
@@ -3812,7 +3822,7 @@ class MetadataSettingsTab(QWidget):
 class PrivacySettingsTab(QWidget):
     """Privacy settings tab"""
 
-    def __init__(self, config: Config, plugin_manager=None, parent: Optional[QWidget] = None):
+    def __init__(self, config: Config, plugin_manager=None, parent: QWidget | None = None):
         super().__init__(parent)
         self.config = config
         self._plugin_manager = plugin_manager
@@ -3893,7 +3903,7 @@ class PrivacySettingsTab(QWidget):
         store_names = []
         metadata_names = []
         if self._plugin_manager:
-            for name, loaded in self._plugin_manager._loaded.items():
+            for loaded in self._plugin_manager._loaded.values():
                 if not loaded.enabled:
                     continue
                 if "store" in loaded.metadata.plugin_types:
@@ -3961,7 +3971,7 @@ class TagSettingsTab(QWidget):
     def __init__(
         self, config: Config,
         plugin_manager: PluginManager,
-        parent: Optional[QWidget] = None,
+        parent: QWidget | None = None,
     ):
         super().__init__(parent)
         self.config = config
@@ -4022,8 +4032,8 @@ class TagSettingsTab(QWidget):
         plugin_group_layout.addWidget(self._plugin_scroll)
 
         # Will be populated dynamically in _load_settings
-        self._plugin_rows: Dict[str, Dict[str, Any]] = {}
-        self._plugin_grid: Optional[QGridLayout] = None
+        self._plugin_rows: dict[str, dict[str, Any]] = {}
+        self._plugin_grid: QGridLayout | None = None
         self._plugin_grid_row: int = 0
 
         layout.addWidget(plugin_group, 1)  # stretch=1: expand to fill
@@ -4284,20 +4294,20 @@ class LaunchingSettingsTab(QWidget):
         self,
         config: Config,
         plugin_manager: PluginManager,
-        parent: Optional[QWidget] = None,
+        parent: QWidget | None = None,
     ):
         super().__init__(parent)
         self.config = config
         self.plugin_manager = plugin_manager
 
         # Widgets tracked for save
-        self._path_edits: Dict[str, Tuple[QLineEdit, str, str]] = {}
+        self._path_edits: dict[str, tuple[QLineEdit, str, str]] = {}
         # key -> (line_edit, config_key, auto_detected_path)
-        self._store_runner_combos: Dict[str, Tuple[QComboBox, str]] = {}
+        self._store_runner_combos: dict[str, tuple[QComboBox, str]] = {}
         # store_name -> (combo, config_key)
-        self._status_labels: Dict[str, QLabel] = {}
+        self._status_labels: dict[str, QLabel] = {}
         # plugin_name -> status label (for reset refresh)
-        self._runtime_combos: Dict[str, Tuple[QComboBox, str]] = {}
+        self._runtime_combos: dict[str, tuple[QComboBox, str]] = {}
         # plugin_name -> (combo, config_key)
 
         self._setup_ui()
@@ -4309,8 +4319,8 @@ class LaunchingSettingsTab(QWidget):
             rm = get_runtime_manager()
             if rm._initialized:
                 return rm
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("RuntimeManager not available yet: %s", e)
         return None
 
     @staticmethod
@@ -4369,7 +4379,7 @@ class LaunchingSettingsTab(QWidget):
             return
 
         # Build runner choices per store (no availability check — show all compatible)
-        runner_choices_by_store: Dict[str, list] = {}
+        runner_choices_by_store: dict[str, list] = {}
         for store_name, _display in store_plugins:
             choices = []
             for rname, rmeta in discovered.items():
@@ -4453,8 +4463,6 @@ class LaunchingSettingsTab(QWidget):
 
     def _build_launcher_status(self, layout: QVBoxLayout) -> None:
         """Build launcher/emulator detection status grid."""
-        import platform as _platform
-        import sys as _sys
 
         rm = self._get_runtime_manager()
         discovered = self.plugin_manager.get_discovered_plugins()
@@ -4464,7 +4472,7 @@ class LaunchingSettingsTab(QWidget):
         available_platforms = rm.get_available_platforms() if rm else []
 
         # Build platform lookup: plugin_name -> list[PlatformInfo]
-        platform_lookup: Dict[str, list] = {}
+        platform_lookup: dict[str, list] = {}
         for pi in available_platforms:
             pname = pi.platform_id.split("/")[0] if "/" in pi.platform_id else pi.platform_id
             platform_lookup.setdefault(pname, []).append(pi)
@@ -4523,7 +4531,7 @@ class LaunchingSettingsTab(QWidget):
             nonstore_runners,
             platform_entries,
         ]
-        for cat_idx, group_items in enumerate(categories):
+        for group_items in categories:
             if not group_items:
                 continue
             # Separator between groups (not before first)
@@ -4549,9 +4557,8 @@ class LaunchingSettingsTab(QWidget):
         plat_map: str,
         available_runners: dict,
         platform_lookup: dict,
-    ) -> Optional[dict]:
+    ) -> dict | None:
         """Build a status entry dict for one plugin."""
-        import platform as _platform
 
         ptypes = meta.plugin_types or []
         caps = meta.capabilities or {}
@@ -4621,8 +4628,8 @@ class LaunchingSettingsTab(QWidget):
                                 results = find_application([runner_name])
                                 if results:
                                     path_str = str(results[0].path)
-                            except Exception:
-                                pass
+                            except Exception as e:
+                                logger.debug("Runner lookup failed for %s: %s", runner_name, e)
                             if not path_str:
                                 path_str = info.url_scheme
                 else:
@@ -4801,8 +4808,8 @@ class LaunchingSettingsTab(QWidget):
                 )
                 for rt in scan_installed_runtimes():
                     combo.addItem(rt.display_label, rt.identifier)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("Wine runtime scan failed: %s", e)
 
             config_key = f"plugins.{plugin_name}.default_runtime"
             current = self.config.get(config_key, "")
@@ -4922,7 +4929,7 @@ class LaunchingSettingsTab(QWidget):
     def save_settings(self) -> None:
         """Save all launching settings to config."""
         # Path overrides
-        for plugin_name, (edit, config_key, auto_path) in self._path_edits.items():
+        for edit, config_key, auto_path in self._path_edits.values():
             text = edit.text().strip()
             if text and text != auto_path:
                 self.config.set(config_key, text)
@@ -4931,12 +4938,12 @@ class LaunchingSettingsTab(QWidget):
                 self.config.set(config_key, "")
 
         # Runtime picker dropdowns (e.g. Wine)
-        for plugin_name, (combo, config_key) in self._runtime_combos.items():
+        for combo, config_key in self._runtime_combos.values():
             value = combo.currentData()
             self.config.set(config_key, value or "")
 
         # Store runner defaults
-        for store_name, (combo, config_key) in self._store_runner_combos.items():
+        for combo, config_key in self._store_runner_combos.values():
             value = combo.currentData()
             if value:
                 self.config.set(config_key, value)
@@ -4991,7 +4998,7 @@ class LaunchingSettingsTab(QWidget):
         available_platforms = rm.get_available_platforms() if rm else []
 
         # Rebuild platform lookup
-        platform_lookup: Dict[str, list] = {}
+        platform_lookup: dict[str, list] = {}
         for pi in available_platforms:
             pname = (
                 pi.platform_id.split("/")[0]
@@ -5059,14 +5066,14 @@ class LaunchingSettingsTab(QWidget):
             status_label.style().polish(status_label)
 
         # Reset store runner combos to first item
-        for store_name, (combo, config_key) in self._store_runner_combos.items():
+        for combo, _config_key in self._store_runner_combos.values():
             combo.setCurrentIndex(0)
 
 
 class DownloadsSettingsTab(QWidget):
     """Downloads tab — download directory, folder organization, concurrency, bandwidth."""
 
-    def __init__(self, config: Config, parent: Optional[QWidget] = None):
+    def __init__(self, config: Config, parent: QWidget | None = None):
         super().__init__(parent)
         self.config = config
         self._default_archive_path = self._resolve_default_path()
@@ -5139,17 +5146,19 @@ class DownloadsSettingsTab(QWidget):
         org_layout.addWidget(self.combo_organization)
 
         from luducat.core.archivist.volume import (
-            CUSTOM_LAYOUT_VARIABLES, DEFAULT_CUSTOM_LAYOUT,
+            CUSTOM_LAYOUT_VARIABLES,
+            DEFAULT_CUSTOM_LAYOUT,
         )
         self.edit_custom_layout = QLineEdit()
         self.edit_custom_layout.setPlaceholderText(DEFAULT_CUSTOM_LAYOUT)
-        variable_lines = "\n".join(
-            f"{token}  -  {_(doc)}" for token, doc in
+        variable_lines = "<br>".join(
+            f"{token} &nbsp;-&nbsp; {_(doc)}" for token, doc in
             CUSTOM_LAYOUT_VARIABLES.items())
         self.edit_custom_layout.setToolTip(
-            _("Folder template below the base folder; the filename is "
-              "appended automatically. Available variables:")
-            + "\n\n" + variable_lines)
+            "<p>"
+            + _("Folder template below the base folder; the filename is "
+                "appended automatically. Available variables:")
+            + "<br><br>" + variable_lines + "</p>")
         self.edit_custom_layout.textChanged.connect(
             self._update_folder_preview)
         self.edit_custom_layout.hide()
@@ -5414,8 +5423,9 @@ class DownloadsSettingsTab(QWidget):
             self.path_edit.setText(folder)
 
     def _clear_details_cache(self) -> None:
-        from ...core.config import get_data_dir
         from sqlalchemy import create_engine, text
+
+        from ...core.config import get_data_dir
         db_path = get_data_dir() / "games.db"
         if not db_path.exists():
             return
@@ -5441,7 +5451,8 @@ class DownloadsSettingsTab(QWidget):
 
     def _update_folder_preview(self) -> None:
         from luducat.core.archivist.volume import (
-            render_custom_layout, validate_custom_layout,
+            render_custom_layout,
+            validate_custom_layout,
         )
         org = self.combo_organization.currentData()
         self.edit_custom_layout.setVisible(org == "custom")
@@ -5469,6 +5480,22 @@ class DownloadsSettingsTab(QWidget):
         self.lbl_folder_preview.setText(preview)
 
 
+SETTINGS_MIN_WIDTH = 780
+
+
+def fit_dialog_to_tabs(dialog: QDialog, tabs: QTabWidget, floor: int) -> None:
+    """Widen the dialog until every tab label fits, never below floor."""
+    if floor <= 0:
+        raise ValueError(f"floor must be positive, got {floor}")
+    margins = dialog.layout().contentsMargins() if dialog.layout() else None
+    side = margins.left() + margins.right() if margins else 0
+    frame = 2 * tabs.style().pixelMetric(QStyle.PixelMetric.PM_DefaultFrameWidth, None, tabs)
+    minimum = max(floor, tabs.tabBar().sizeHint().width() + side + frame)
+    dialog.setMinimumWidth(minimum)
+    if dialog.width() < minimum:
+        dialog.resize(minimum, dialog.height())
+
+
 class SettingsDialog(QDialog):
     """Main settings dialog with tabs"""
 
@@ -5484,8 +5511,8 @@ class SettingsDialog(QDialog):
         plugin_manager: PluginManager,
         game_service=None,  # GameService for tag management
         theme_manager=None,  # Optional ThemeManager for live updates
-        parent: Optional[QWidget] = None,
-        open_tab: Optional[str] = None,  # Tab name to open (e.g. "Backup")
+        parent: QWidget | None = None,
+        open_tab: str | None = None,  # Tab name to open (e.g. "Backup")
         update_info=None,  # Optional UpdateInfo from update checker
     ):
         super().__init__(parent)
@@ -5495,12 +5522,15 @@ class SettingsDialog(QDialog):
         self.game_service = game_service
         self.theme_manager = theme_manager
         self._update_info = update_info
+        # Set when the dialog closes for a restart that runs a recorded directory move
+        self.restart_for_move = False
 
         self.setWindowTitle(_("Settings"))
-        self.setMinimumSize(780, 660)
+        self.setMinimumSize(SETTINGS_MIN_WIDTH, 660)
         self.resize(840, 740)
 
         self._setup_ui()
+        self._fit_to_tabs()
 
         # Switch to requested tab if specified
         if open_tab:
@@ -5508,6 +5538,16 @@ class SettingsDialog(QDialog):
                 if self.tabs.tabText(i) == open_tab:
                     self.tabs.setCurrentIndex(i)
                     break
+
+    def _fit_to_tabs(self) -> None:
+        fit_dialog_to_tabs(self, self.tabs, SETTINGS_MIN_WIDTH)
+
+    def changeEvent(self, event) -> None:  # noqa: N802
+        super().changeEvent(event)
+        # Applying a theme changes fonts while the dialog is open; the tab bar
+        # only knows its new size after the restyle, hence the deferred call.
+        if event.type() in (QEvent.Type.FontChange, QEvent.Type.StyleChange) and hasattr(self, "tabs"):
+            QTimer.singleShot(0, self, self._fit_to_tabs)
 
     def _setup_ui(self) -> None:
         layout = QVBoxLayout(self)
@@ -5560,6 +5600,7 @@ class SettingsDialog(QDialog):
 
         # Advanced tab
         self.advanced_tab = AdvancedSettingsTab(self.config)
+        self.advanced_tab.restart_requested.connect(self._on_restart_for_move)
         self.advanced_tab.download_covers_requested.connect(
             self.download_covers_requested.emit
         )
@@ -5643,6 +5684,11 @@ class SettingsDialog(QDialog):
     def _on_accept(self) -> None:
         """Apply settings and close"""
         self._apply_settings()
+        self.accept()
+
+    def _on_restart_for_move(self) -> None:
+        self._apply_settings()
+        self.restart_for_move = True
         self.accept()
 
     def _on_restart_required(self) -> None:

@@ -12,47 +12,54 @@ Shows comprehensive information about the selected game with tabbed interface:
 """
 
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any
 
-from PySide6.QtCore import Qt, Signal, QUrl, QEvent, QRect
+from PySide6.QtCore import QEvent, QRect, Qt, QUrl, Signal
 from PySide6.QtGui import (
-    QDesktopServices, QPixmap, QFont, QPainter, QPalette, QLinearGradient, QColor, QPainterPath,
+    QColor,
+    QDesktopServices,
+    QFont,
+    QLinearGradient,
+    QPainter,
+    QPainterPath,
+    QPalette,
+    QPixmap,
 )
 from PySide6.QtWidgets import (
     QApplication,
-    QWidget,
-    QVBoxLayout,
-    QHBoxLayout,
-    QGridLayout,
-    QLabel,
-    QMessageBox,
-    QPushButton,
-    QToolButton,
-    QScrollArea,
-    QFrame,
-    QSizePolicy,
-    QMenu,
-    QTextBrowser,
-    QStackedWidget,
     QButtonGroup,
     QComboBox,
-    QLineEdit,
     QFormLayout,
+    QFrame,
+    QGridLayout,
     QGroupBox,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QMenu,
+    QMessageBox,
     QPlainTextEdit,
+    QPushButton,
+    QScrollArea,
+    QSizePolicy,
     QSplitter,
+    QStackedWidget,
+    QTextBrowser,
+    QToolButton,
+    QVBoxLayout,
+    QWidget,
 )
 
 from ..core.constants import (
-    GAME_MODE_LABELS,
     GAME_MODE_FILTERS,
+    GAME_MODE_LABELS,
     INSTALLED_BADGE_LABEL,
     PROTONDB_TIER_LABELS,
     STEAM_DECK_LABELS,
 )
 from ..core.plugin_manager import PluginManager
 from ..utils.icons import load_tinted_icon
-from ..utils.image_cache import get_screenshot_cache, get_hero_cache, ImageCache
+from ..utils.image_cache import ImageCache, get_hero_cache, get_screenshot_cache
 from ..utils.workers import DataLoaderWorker
 from .badge_painter import GAME_MODE_ICON_FILES, get_player_count
 
@@ -60,7 +67,7 @@ logger = logging.getLogger(__name__)
 
 
 # Shared cache for description images (singleton)
-_description_image_cache: Optional[ImageCache] = None
+_description_image_cache: ImageCache | None = None
 
 
 def get_description_image_cache() -> ImageCache:
@@ -84,7 +91,7 @@ def get_description_image_cache() -> ImageCache:
 class RemoteImageTextBrowser(QTextBrowser):
     """QTextBrowser with async remote image loading via ImageCache"""
 
-    def __init__(self, parent: Optional[QWidget] = None):
+    def __init__(self, parent: QWidget | None = None):
         super().__init__(parent)
         # Use shared cache for description images
         self._image_cache = get_description_image_cache()
@@ -188,10 +195,10 @@ class ClickableLabel(QLabel):
 
     clicked = Signal(int)  # Emits index on single-click
 
-    def __init__(self, index: int, parent: Optional[QWidget] = None):
+    def __init__(self, index: int, parent: QWidget | None = None):
         super().__init__(parent)
         self._index = index
-        self._thumb_pixmap: Optional[QPixmap] = None
+        self._thumb_pixmap: QPixmap | None = None
         self._hovered = False
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setMouseTracking(True)
@@ -274,12 +281,12 @@ class ScreenshotCarousel(QWidget):
 
     screenshot_clicked = Signal(int)  # Screenshot index
 
-    def __init__(self, parent: Optional[QWidget] = None):
+    def __init__(self, parent: QWidget | None = None):
         super().__init__(parent)
 
-        self._screenshots: List[str] = []
+        self._screenshots: list[str] = []
         self._image_cache = get_screenshot_cache()
-        self._thumb_labels: List[ClickableLabel] = []
+        self._thumb_labels: list[ClickableLabel] = []
 
         self._setup_ui()
 
@@ -317,7 +324,7 @@ class ScreenshotCarousel(QWidget):
         self.scroll.setWidget(self.container)
         layout.addWidget(self.scroll)
 
-    def set_screenshots(self, screenshots: List[str]) -> None:
+    def set_screenshots(self, screenshots: list[str]) -> None:
         """Set screenshot URLs/paths
 
         Args:
@@ -387,7 +394,7 @@ class ScreenshotCarousel(QWidget):
             if item.widget():
                 item.widget().deleteLater()
 
-    def get_screenshots(self) -> List[str]:
+    def get_screenshots(self) -> list[str]:
         """Get current screenshot URLs"""
         return self._screenshots
 
@@ -406,11 +413,11 @@ class HeroBanner(QWidget):
     BANNER_HEIGHT = 290          # Full height with hero image
     COLLAPSED_HEIGHT = 220       # No-image: buttons + breathing room + carousel
 
-    def __init__(self, parent: Optional[QWidget] = None):
+    def __init__(self, parent: QWidget | None = None):
         super().__init__(parent)
         self.setFixedHeight(self.COLLAPSED_HEIGHT)
         self.setObjectName("heroBanner")
-        self._background_pixmap: Optional[QPixmap] = None
+        self._background_pixmap: QPixmap | None = None
         self._current_image_url = ""
         self._image_cache = get_hero_cache()
         self._image_cache.image_loaded.connect(self._on_hero_loaded)
@@ -565,7 +572,7 @@ class TagChip(QFrame):
         self,
         name: str,
         color: str = "",
-        parent: Optional[QWidget] = None
+        parent: QWidget | None = None
     ):
         super().__init__(parent)
         self.tag_name = name
@@ -651,10 +658,11 @@ class MetadataPanel(QScrollArea):
     filter_developer_requested = Signal(list)
     filter_publisher_requested = Signal(list)
     filter_genre_requested = Signal(list)
+    filter_platform_requested = Signal(list)
     filter_tag_requested = Signal(list)
     filter_year_requested = Signal(list)
 
-    def __init__(self, parent: Optional[QWidget] = None):
+    def __init__(self, parent: QWidget | None = None):
         super().__init__(parent)
         self.setObjectName("metadataPanel")
         self.setWidgetResizable(True)
@@ -670,9 +678,9 @@ class MetadataPanel(QScrollArea):
         self._grid.setVerticalSpacing(2)
         self._grid.setColumnStretch(1, 1)
 
-        self._rows: Dict[str, tuple] = {}  # name -> (key_label, value_widget)
+        self._rows: dict[str, tuple] = {}  # name -> (key_label, value_widget)
         self._row_count = 0
-        self._tag_chips: List[TagChip] = []
+        self._tag_chips: list[TagChip] = []
 
         self._create_rows()
         self._grid.setRowStretch(self._row_count, 1)  # push content up
@@ -767,7 +775,9 @@ class MetadataPanel(QScrollArea):
         self.art_style_value = self._make_plain_label()
         self._add_row(_("Art Style"), self.art_style_value, "art_style")
 
-        self.platforms_value = self._make_plain_label()
+        self.platforms_value = self._make_clickable_label(
+            self.filter_platform_requested
+        )
         self._add_row(_("Platforms"), self.platforms_value, "platforms")
 
         self.stores_value = self._make_plain_label()
@@ -899,7 +909,7 @@ class MetadataPanel(QScrollArea):
         )
         return True
 
-    def set_game_metadata(self, game: Dict[str, Any]) -> None:
+    def set_game_metadata(self, game: dict[str, Any]) -> None:
         """Populate all metadata rows from a game data dict.
 
         Empty fields are automatically hidden.
@@ -977,14 +987,8 @@ class MetadataPanel(QScrollArea):
         self._set_row_visible("art_style", bool(art_styles))
 
         # Platforms
-        platforms = game.get("platforms", [])
-        if platforms:
-            self.platforms_value.setText(
-                ", ".join(str(p) for p in platforms)
-            )
-            self._set_row_visible("platforms", True)
-        else:
-            self._set_row_visible("platforms", False)
+        visible = self._set_clickable_items(self.platforms_value, game.get("platforms", []))
+        self._set_row_visible("platforms", visible)
 
         # Stores
         stores = game.get("stores", [])
@@ -1263,7 +1267,7 @@ class MetadataPanel(QScrollArea):
             self.storyline_value.setText(display)
         self._set_row_visible("storyline", bool(storyline))
 
-    def set_tags(self, tags: List[Dict[str, Any]]) -> None:
+    def set_tags(self, tags: list[dict[str, Any]]) -> None:
         """Set tag chips in the panel."""
         # Remove existing chips (keep stretch at end)
         for chip in self._tag_chips:
@@ -1327,6 +1331,7 @@ class ListView(QWidget):
     filter_developer_requested = Signal(list)   # [developer_name]
     filter_publisher_requested = Signal(list)   # [publisher_name]
     filter_genre_requested = Signal(list)       # [genre_name]
+    filter_platform_requested = Signal(list)    # [platform_name]
     filter_tag_requested = Signal(list)         # [tag_name]
     filter_year_requested = Signal(list)        # [year_string]
 
@@ -1337,11 +1342,11 @@ class ListView(QWidget):
     TAB_FILES = 3
     TAB_NOTES = 4
 
-    def __init__(self, parent: Optional[QWidget] = None):
+    def __init__(self, parent: QWidget | None = None):
         super().__init__(parent)
 
-        self._game: Optional[Dict[str, Any]] = None
-        self._running_game_id: Optional[str] = None
+        self._game: dict[str, Any] | None = None
+        self._running_game_id: str | None = None
         self._screenshot_callback = None  # Callback to fetch screenshots
         self._description_callback = None  # Callback to fetch descriptions
         self._borrowed_from_callback = None  # Callback to resolve steamid to name
@@ -1777,6 +1782,9 @@ class ListView(QWidget):
         )
         self.metadata_panel.filter_genre_requested.connect(
             self.filter_genre_requested.emit
+        )
+        self.metadata_panel.filter_platform_requested.connect(
+            self.filter_platform_requested.emit
         )
         self.metadata_panel.filter_tag_requested.connect(
             self.filter_tag_requested.emit
@@ -2335,11 +2343,11 @@ class ListView(QWidget):
         """Open documentation URL for the selected platform."""
         url = getattr(self, "_config_doc_url", "")
         if url:
-            from PySide6.QtGui import QDesktopServices
             from PySide6.QtCore import QUrl
+            from PySide6.QtGui import QDesktopServices
             QDesktopServices.openUrl(QUrl(url))
 
-    def _populate_platforms(self, game: Optional[Dict[str, Any]] = None) -> None:
+    def _populate_platforms(self, game: dict[str, Any] | None = None) -> None:
         """Populate platform/runner dropdown from RuntimeManager.
 
         Args:
@@ -2363,7 +2371,7 @@ class ListView(QWidget):
 
             # Build set of compatible runners when a game is selected
             stores = game.get("stores", []) if game else []
-            compatible: Optional[set] = None
+            compatible: set | None = None
             if stores:
                 compatible = set()
                 for store in stores:
@@ -2417,7 +2425,7 @@ class ListView(QWidget):
         else:
             self.platform_combo.setVisible(True)
 
-    def _update_default_platform_label(self, game: Dict[str, Any]) -> None:
+    def _update_default_platform_label(self, game: dict[str, Any]) -> None:
         """Update the 'Default' combo item to show which runner will be used.
 
         Resolves the primary store for the game and finds the top-priority
@@ -2484,7 +2492,7 @@ class ListView(QWidget):
         )
         if path:
             try:
-                with open(path, 'r', encoding='utf-8') as f:
+                with open(path, encoding='utf-8') as f:
                     self.notes_edit.setPlainText(f.read())
             except Exception as e:
                 logger.warning(f"Failed to import notes: {e}")
@@ -2571,7 +2579,7 @@ class ListView(QWidget):
         from ..utils.browser import open_url
         open_url(url)
 
-    def _setup_store_button(self, stores: List[str]) -> None:
+    def _setup_store_button(self, stores: list[str]) -> None:
         """Configure store button based on available stores
 
         Args:
@@ -2659,11 +2667,11 @@ class ListView(QWidget):
             game_id = self._game.get("id", "")
             self.view_screenshots_requested.emit(game_id, index)
 
-    def get_screenshots(self) -> List[str]:
+    def get_screenshots(self) -> list[str]:
         """Get current game's screenshot URLs"""
         return self.carousel.get_screenshots()
 
-    def set_tags(self, tags: List[Dict[str, Any]]) -> None:
+    def set_tags(self, tags: list[dict[str, Any]]) -> None:
         """Set displayed tags for current game
 
         Args:
@@ -2725,7 +2733,7 @@ class ListView(QWidget):
             game_id = self._game.get("id", "")
             self.game_install_requested.emit(game_id, store)
 
-    def set_game(self, game: Dict[str, Any], _from_worker: bool = False) -> None:
+    def set_game(self, game: dict[str, Any], _from_worker: bool = False) -> None:
         """Set game to display
 
         Args:
@@ -2958,7 +2966,7 @@ class ListView(QWidget):
         # Update Notes tab
         self._update_notes_tab(game)
 
-    def _update_settings_tab(self, game: Dict[str, Any]) -> None:
+    def _update_settings_tab(self, game: dict[str, Any]) -> None:
         """Update Settings tab with game's launch configuration."""
         import json as _json
 
@@ -3017,7 +3025,7 @@ class ListView(QWidget):
         di = self.wine_debug_combo.findData(debug_val)
         self.wine_debug_combo.setCurrentIndex(di if di >= 0 else 0)
 
-    def _update_stats_tab(self, game: Dict[str, Any]) -> None:
+    def _update_stats_tab(self, game: dict[str, Any]) -> None:
         """Update Stats tab with play statistics"""
         # Launch count
         launch_count = game.get("launch_count", 0)
@@ -3113,7 +3121,7 @@ class ListView(QWidget):
             except (ValueError, TypeError):
                 pass
 
-    def _update_files_tab(self, game: Dict[str, Any]) -> None:
+    def _update_files_tab(self, game: dict[str, Any]) -> None:
         """Update Files tab with installation and archive info"""
         # Installation status from game cache (install_info in DETAIL_FIELDS)
         install_info = game.get("install_info", {})
@@ -3159,7 +3167,7 @@ class ListView(QWidget):
             self.btn_open_folder.setEnabled(False)
             self.btn_verify.setEnabled(False)
 
-    def _update_notes_tab(self, game: Dict[str, Any]) -> None:
+    def _update_notes_tab(self, game: dict[str, Any]) -> None:
         """Update Notes tab with saved notes"""
         notes = game.get("notes", "")
         self.notes_edit.setPlainText(notes)
@@ -3177,8 +3185,8 @@ class ListView(QWidget):
         Returns:
             HTML string ready for QTextBrowser
         """
-        import re
         import html as html_module
+        import re
 
         if not text:
             return f"<p><i>{_('No description available.')}</i></p>"
@@ -3256,8 +3264,8 @@ class ListView(QWidget):
             """
 
     def _update_launch_buttons(
-        self, stores: List[str],
-        game: Optional[Dict[str, Any]] = None,
+        self, stores: list[str],
+        game: dict[str, Any] | None = None,
     ) -> None:
         """Update launch button for game's stores.
 
@@ -3483,7 +3491,7 @@ class ListView(QWidget):
     @staticmethod
     def _pick_primary_store(
         default_store: str,
-        sorted_stores: List[str],
+        sorted_stores: list[str],
         installed_stores: set,
         launchable_stores: set,
     ) -> str:
@@ -3517,7 +3525,7 @@ class ListView(QWidget):
         # 6. First
         return sorted_stores[0]
 
-    def _build_play_tooltip(self, game: Dict[str, Any]) -> str:
+    def _build_play_tooltip(self, game: dict[str, Any]) -> str:
         """Build tooltip text with play statistics for the play button."""
         lines = []
 

@@ -99,8 +99,8 @@ class StripedProgressBar(QProgressBar):
                 frac = (self.value() - self.minimum()) / rng
             chunk_w = inset.width() * frac
             if chunk_w < 1:
-                # No chunk to draw, just paint text and return
-                self._paint_text(painter, inset, None)
+                # Zero-width chunk: the text sits on the background, not the accent.
+                self._paint_text(painter, inset, QRectF(inset.x(), inset.y(), 0, inset.height()))
                 painter.end()
                 return
             chunk_rect = QRectF(inset.x(), inset.y(), chunk_w, inset.height())
@@ -169,7 +169,6 @@ class StripedProgressBar(QProgressBar):
         text_rect = self.rect().adjusted(2, 2, -2, -2)
 
         if chunk_rect is None:
-            # Indeterminate or no chunk — single color over highlight
             painter.setPen(pal.color(QPalette.ColorRole.HighlightedText))
             painter.drawText(text_rect, Qt.AlignmentFlag.AlignCenter, text)
         else:

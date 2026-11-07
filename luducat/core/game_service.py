@@ -21,8 +21,9 @@ import gc
 import logging
 import re
 from collections import OrderedDict
+from collections.abc import Callable
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Any, Optional
 
 if TYPE_CHECKING:
     from .config import Config
@@ -30,30 +31,32 @@ if TYPE_CHECKING:
 from sqlalchemy.orm import selectinload
 from sqlalchemy.orm.attributes import flag_modified
 
+from ..plugins.base import Game as PluginGame
+from .collection_service import CollectionService
 from .config import get_cache_dir
+from .constants import DEFAULT_TAG_COLOR
+from .content_filter import adult_confidence, adult_confidence_from_sources
 from .database import (
     Database,
-    Game as DbGame,
     StoreGame,
     find_or_create_game,
     repair_parent_dedup,
 )
+from .database import (
+    Game as DbGame,
+)
+from .dt import parse_release_date
 from .enrichment_service import EnrichmentService
 from .game_entry import GameEntry, _intern
 from .lazy_metadata import LazyMetadata
-from .plugin_manager import PluginManager
 from .metadata_resolver import (
     FIELD_SOURCE_CAPABILITIES,
     get_resolver,
 )
-from .sync_orchestrator import SyncOrchestrator, METADATA_JOB_BATCH_SIZE
-from .constants import DEFAULT_TAG_COLOR
-from .content_filter import adult_confidence, adult_confidence_from_sources
-from .dt import parse_release_date
-from .collection_service import CollectionService
+from .plugin_manager import PluginManager
+from .sync_orchestrator import METADATA_JOB_BATCH_SIZE, SyncOrchestrator
 from .tag_service import TagService
 from .user_data_service import UserDataService
-from ..plugins.base import Game as PluginGame
 
 logger = logging.getLogger(__name__)
 
@@ -72,6 +75,34 @@ def _strip_company_prefix(items: list) -> list:
     return [_COMPANY_PREFIX.sub('', s) for s in items if s]
 
 
+# IGDB uses inconsistent names for the same platform family
+_PLATFORM_NORMALIZE: dict[str, str] = {
+    "PC (Microsoft Windows)": "Windows",
+    "Windows 3.x": "Windows",
+    "OS X": "Mac",
+    "Mac OS": "Mac",
+    "macOS": "Mac",
+    "Amiga CD32": "Amiga",
+    "Commodore C64/128/MAX": "Commodore 64",
+    "Atari ST/STE": "Atari ST",
+}
+
+
+def normalize_platform(name: str) -> str:
+    return _PLATFORM_NORMALIZE.get(name, name)
+
+
+def normalize_platforms(platforms: list) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for p in platforms:
+        norm = normalize_platform(p)
+        if norm not in seen:
+            seen.add(norm)
+            result.append(norm)
+    return result
+
+
 # Fields that stay in _games_cache (views, filters, sorting, FTS, context menu)
 LIST_FIELDS = frozenset({
     "id", "title", "normalized_title", "primary_store",
@@ -81,6 +112,7 @@ LIST_FIELDS = frozenset({
     "tags", "added_at", "last_launched", "launch_count", "playtime_minutes", "notes",
     "short_description", "header_image", "cover_image", "screenshots",
     "release_date", "developers", "publishers", "genres", "franchise", "game_modes", "themes",
+    "platforms",
     "is_free", "is_demo",
     "protondb_rating", "steam_deck_compat",
     "adult_confidence", "nsfw_override",
@@ -92,7 +124,7 @@ LIST_FIELDS = frozenset({
 # Fields loaded on demand when a game is selected (MetadataPanel only)
 DETAIL_FIELDS = frozenset({
     "background_image", "install_info",
-    "series", "engine", "perspectives", "platforms", "age_ratings",
+    "series", "engine", "perspectives", "age_ratings",
     "user_rating", "rating_positive", "rating_negative",
     "critic_rating", "critic_rating_url",
     "controller_support", "supported_languages", "full_audio_languages",
@@ -161,19 +193,19 @@ class GameService:
             logger.info("Persisted pruned metadata priorities to config")
 
         # Cache for UI data (GameEntry objects with __slots__ for memory efficiency)
-        self._games_cache: Dict[str, GameEntry] = {}
+        self._games_cache: dict[str, GameEntry] = {}
         self._cache_valid = False
         self._shutting_down = False
 
         # Cached per-store game counts (invalidated on cache rebuild)
-        self._store_counts_cache: Optional[Dict[str, int]] = None
+        self._store_counts_cache: dict[str, int] | None = None
 
         # LRU cache for descriptions (lazy loaded, max 20 items)
         self._description_cache: OrderedDict[str, str] = OrderedDict()
         self._description_cache_max = 20
 
         # LRU cache for detail fields (lazy loaded per game, max 50 items)
-        self._detail_cache: OrderedDict[str, Dict[str, Any]] = OrderedDict()
+        self._detail_cache: OrderedDict[str, dict[str, Any]] = OrderedDict()
         self._detail_cache_max = 50
 
         # --- Wire up extracted services ---
@@ -318,8 +350,8 @@ class GameService:
     # ── Cache / Query / Conversion ─────────────────────────────────────
 
     def get_all_games(
-        self, progress_callback: Optional[Callable[[str, str, int], None]] = None
-    ) -> List[GameEntry]:
+        self, progress_callback: Callable[[str, str, int], None] | None = None
+    ) -> list[GameEntry]:
         """Get all games formatted for UI
 
         Args:
@@ -339,7 +371,7 @@ class GameService:
         self._refresh_cache(progress_callback)
         return list(self._games_cache.values())
 
-    def get_game(self, game_id: str) -> Optional[GameEntry]:
+    def get_game(self, game_id: str) -> GameEntry | None:
         """Get a single game by ID
 
         Args:
@@ -353,7 +385,7 @@ class GameService:
 
         return self._games_cache.get(game_id)
 
-    def get_game_details(self, game_id: str) -> Optional[Dict[str, Any]]:
+    def get_game_details(self, game_id: str) -> dict[str, Any] | None:
         """Get detailed game info including store game metadata
 
         This method queries the database directly to get the raw store_game
@@ -396,7 +428,7 @@ class GameService:
             return None
 
     def _refresh_cache(
-        self, progress_callback: Optional[Callable[[str, str, int], None]] = None
+        self, progress_callback: Callable[[str, str, int], None] | None = None
     ) -> None:
         """Refresh games cache from database
 
@@ -457,11 +489,11 @@ class GameService:
             loading_msg = _("Loading games...")
             report(loading_msg, _("Found %d games") % total_games, 10)
 
-            store_app_ids: Dict[str, List[str]] = {}
-            game_store_map: Dict[str, List[tuple]] = {}
+            store_app_ids: dict[str, list[str]] = {}
+            game_store_map: dict[str, list[tuple]] = {}
 
             for game in games:
-                game_stores: List[tuple] = []
+                game_stores: list[tuple] = []
                 for sg in game.store_games:
                     store_app_ids.setdefault(sg.store_name, []).append(sg.store_app_id)
                     game_stores.append((sg.store_name, sg.store_app_id))
@@ -495,7 +527,7 @@ class GameService:
             # 95-100% FTS rebuild
             num_stores = len(metadata_stores)
 
-            all_metadata: Dict[str, Dict[str, Dict]] = {}
+            all_metadata: dict[str, dict[str, dict]] = {}
 
             if num_stores == 0 and store_app_ids:
                 logger.info("No authenticated plugins - skipping metadata fetch")
@@ -549,7 +581,7 @@ class GameService:
 
             # Batch-fetch steam_deck_compat from metadata_json (only for Steam games)
             # This avoids loading metadata_json for ALL store games (most are non-Steam)
-            steam_deck_compat_map: Dict[str, str] = {}
+            steam_deck_compat_map: dict[str, str] = {}
             try:
                 from sqlalchemy import text as sa_text
                 compat_rows = session.execute(
@@ -568,7 +600,7 @@ class GameService:
                 logger.debug(f"Could not batch-fetch steam_deck_compat: {e}")
 
             # Batch-fetch family_license_count from metadata_json (Steam games only)
-            family_license_map: Dict[str, int] = {}
+            family_license_map: dict[str, int] = {}
             try:
                 from sqlalchemy import text as sa_text
                 flc_rows = session.execute(
@@ -603,7 +635,7 @@ class GameService:
             # Query enrichment plugin local DBs (IGDB, SteamGridDB, etc.)
             # This is the key addition: plugins with local DBs have thousands
             # of cached entries that were never surfaced during cache build.
-            enrichment_plugin_data: Dict[str, Dict[str, Dict[str, Any]]] = {}
+            enrichment_plugin_data: dict[str, dict[str, dict[str, Any]]] = {}
             if store_app_ids:
                 def _enrichment_progress(display_name: str) -> None:
                     report(
@@ -627,7 +659,7 @@ class GameService:
             enabled_stores = set(self.plugin_manager.get_store_plugins().keys())
 
             game_modes_available = self._resolver.has_game_modes_support()
-            all_game_modes: Dict[str, Dict[str, List[str]]] = {}
+            all_game_modes: dict[str, dict[str, list[str]]] = {}
 
             if game_modes_available and store_app_ids:
                 try:
@@ -637,7 +669,7 @@ class GameService:
                 except Exception as e:
                     logger.warning(f"Failed to load game modes: {e}")
 
-            protondb_ratings: Dict[str, Dict[str, Any]] = {}
+            protondb_ratings: dict[str, dict[str, Any]] = {}
             try:
                 protondb_plugin = self.plugin_manager.get_plugin("protondb")
                 if protondb_plugin and hasattr(protondb_plugin, "get_ratings_bulk"):
@@ -693,7 +725,7 @@ class GameService:
 
                 # Merge enrichment plugin DB data (IGDB, SteamGridDB, etc.)
                 if game.id in game_store_map and enrichment_plugin_data:
-                    for store_name, app_id in game_store_map[game.id]:
+                    for _store_name, app_id in game_store_map[game.id]:
                         for provider_name, provider_data in enrichment_plugin_data.items():
                             if app_id in provider_data:
                                 if provider_name not in metadata_by_store:
@@ -815,10 +847,10 @@ class GameService:
             logger.warning(f"Failed to rebuild FTS5 index: {e}")
             try:
                 session.rollback()
-            except Exception:
-                pass
+            except Exception as rollback_err:
+                logger.debug("FTS5 rollback failed too: %s", rollback_err)
 
-    def search_fts(self, query: str) -> Optional[set]:
+    def search_fts(self, query: str) -> set | None:
         """Search games using FTS5 full-text search.
 
         Args:
@@ -864,13 +896,13 @@ class GameService:
             return None
 
     def _db_game_to_ui(
-        self, game: DbGame, metadata: Optional[Dict] = None,
-        enabled_stores: Optional[set] = None,
+        self, game: DbGame, metadata: dict | None = None,
+        enabled_stores: set | None = None,
         game_modes_available: bool = False,
         include_detail_fields: bool = True,
-        metadata_by_store: Optional[Dict[str, Dict]] = None,
-        family_license_map: Optional[Dict[str, int]] = None,
-    ) -> Optional[Union[GameEntry, Dict[str, Any]]]:
+        metadata_by_store: dict[str, dict] | None = None,
+        family_license_map: dict[str, int] | None = None,
+    ) -> GameEntry | dict[str, Any] | None:
         """Convert database Game to UI format
 
         Args:
@@ -969,6 +1001,7 @@ class GameService:
         _publishers = [_intern(p) for p in _strip_company_prefix(metadata.get("publishers", []))]
         _genres = [_intern(g) for g in (metadata.get("genres") or [])]
         _themes = [_intern(t) for t in (metadata.get("themes") or [])]
+        _platforms = [_intern(p) for p in normalize_platforms(metadata.get("platforms") or [])]
         _game_modes = (
             [_intern(m) for m in (metadata.get("game_modes") or [])]
             if game_modes_available else []
@@ -1014,6 +1047,7 @@ class GameService:
             franchise=_intern(_franchise) if _franchise else "",
             game_modes=_game_modes,
             themes=_themes,
+            platforms=_platforms,
             is_demo=(
                 metadata.get("is_demo", False)
                 or bool(_DEMO_TITLE.search(game.normalized_title))
@@ -1055,7 +1089,6 @@ class GameService:
                 "series": metadata.get("series", ""),
                 "engine": metadata.get("engine", ""),
                 "perspectives": metadata.get("perspectives", []),
-                "platforms": metadata.get("platforms", []),
                 "age_ratings": metadata.get("age_ratings", []),
                 "user_rating": metadata.get("user_rating"),
                 "rating_positive": metadata.get("rating_positive"),
@@ -1129,9 +1162,9 @@ class GameService:
 
     def reset_media_fields(
         self,
-        fields: List[str],
-        only_sources: Optional[set] = None,
-        affected_game_ids: Optional[set] = None,
+        fields: list[str],
+        only_sources: set | None = None,
+        affected_game_ids: set | None = None,
     ) -> int:
         """Clear resolved media fields from metadata_json so they re-resolve.
 
@@ -1153,7 +1186,7 @@ class GameService:
         from .enrichment_state import _FIELD_TO_KEY, SOURCES_KEY
 
         # Build the set of metadata_json keys to remove per field
-        field_keys: Dict[str, List[str]] = {}
+        field_keys: dict[str, list[str]] = {}
         for f in fields:
             keys = [f]
             mapped = _FIELD_TO_KEY.get(f)
@@ -1173,7 +1206,7 @@ class GameService:
                 StoreGame.metadata_json.isnot(None)
             ).all()
 
-            for idx, sg in enumerate(store_games):
+            for sg in store_games:
                 meta = sg.metadata_json
                 if not meta:
                     continue
@@ -1237,7 +1270,7 @@ class GameService:
 
     def reselect_media_from_plugin(
         self, source_name: str, plugin
-    ) -> Dict[str, Dict[str, str]]:
+    ) -> dict[str, dict[str, str]]:
         """Re-evaluate cover/hero for games sourced from a metadata plugin.
 
         Locally re-queries the plugin's cached assets with current settings
@@ -1264,7 +1297,7 @@ class GameService:
         session = self.database.get_session()
         modified = 0
         # Track which game_ids changed and what their new URLs are
-        modified_game_ids: Dict[str, Dict[str, str]] = {}
+        modified_game_ids: dict[str, dict[str, str]] = {}
         try:
             from sqlalchemy import or_, text
 
@@ -1300,7 +1333,7 @@ class GameService:
                 result = plugin.reselect_cached_assets(sg.store_name, sg.store_app_id)
 
                 changed = False
-                updates: Dict[str, str] = {}
+                updates: dict[str, str] = {}
                 if cover_sourced:
                     new_cover = (result or {}).get("cover")
                     old_cover = meta.get(cover_key) or meta.get("cover")
@@ -1383,10 +1416,10 @@ class GameService:
     def _reresolve_cleared_fields(
         self,
         session,
-        needs_resolve: Dict[str, Dict[str, str]],
+        needs_resolve: dict[str, dict[str, str]],
         cover_key: str,
         hero_key: str,
-        modified_game_ids: Dict[str, Dict[str, str]],
+        modified_game_ids: dict[str, dict[str, str]],
     ) -> None:
         """Re-resolve cleared cover/hero from sibling StoreGames.
 
@@ -1570,7 +1603,7 @@ class GameService:
                 count += 1
         return count
 
-    def remove_store_data(self, store_name: str) -> Dict[str, int]:
+    def remove_store_data(self, store_name: str) -> dict[str, int]:
         """Remove all StoreGame entries for a store and clean up orphans.
 
         Orphan cleanup rules:
@@ -1728,7 +1761,7 @@ class GameService:
         return removed
 
     def _save_last_account_id(
-        self, store_name: str, account_id: Optional[str]
+        self, store_name: str, account_id: str | None
     ) -> None:
         """Persist the last-known account ID for a store.
 
@@ -1794,7 +1827,7 @@ class GameService:
         session.commit()
         return (game.id, is_new)
 
-    def get_store_info(self, enabled_only: bool = True) -> List[tuple]:
+    def get_store_info(self, enabled_only: bool = True) -> list[tuple]:
         """Get info about store plugins (not metadata providers).
 
         Args:
@@ -1838,7 +1871,7 @@ class GameService:
             logger.error(f"Failed to get game counts: {e}")
             return (0, 0)
 
-    def get_per_store_counts(self) -> Dict[str, int]:
+    def get_per_store_counts(self) -> dict[str, int]:
         """Get game counts per store (cached, invalidated on cache rebuild).
 
         Returns:
@@ -1856,7 +1889,7 @@ class GameService:
                 .group_by(StoreGame.store_name)
                 .all()
             )
-            self._store_counts_cache = {name: count for name, count in rows}
+            self._store_counts_cache = dict(rows)
             return self._store_counts_cache
         except Exception as e:
             logger.error(f"Failed to get per-store counts: {e}")
@@ -1871,8 +1904,8 @@ class GameService:
         return self._tags._apply_metadata_tag_sync(source, mode, entries, removals)
 
     def _apply_install_sync_data(
-        self, store_name: str, install_data: Dict[str, Any]
-    ) -> Dict[str, int]:
+        self, store_name: str, install_data: dict[str, Any]
+    ) -> dict[str, int]:
         """Apply installation status from a store plugin to the main DB.
 
         Updates StoreGame.is_installed and install_path for all games belonging
@@ -1921,8 +1954,42 @@ class GameService:
 
         return stats
 
+    def update_single_install_status(
+        self, store_name: str, store_app_id: str, install_path: str | None
+    ) -> str | None:
+        """Mark one store game installed outside a sync; return its game_id or None."""
+        session = self.database.get_session()
+        try:
+            sg = session.query(StoreGame).filter_by(
+                store_name=store_name, store_app_id=store_app_id
+            ).first()
+            if sg is None:
+                return None
+
+            sg.is_installed = True
+            sg.install_path = install_path
+            session.commit()
+            game_id = sg.game_id
+        except Exception as e:
+            logger.error(
+                "Failed to update install status for %s/%s: %s",
+                store_name, store_app_id, e,
+            )
+            session.rollback()
+            return None
+
+        entry = self._games_cache.get(game_id)
+        if entry is not None:
+            entry.is_installed = True
+        # install_info lives in the detail fields; a stale copy would make the
+        # launch buttons treat every store of the game as installed.
+        self._detail_cache.pop(game_id, None)
+
+        logger.info("Install check: %s/%s already installed", store_name, store_app_id)
+        return game_id
+
     def _apply_family_license_data(
-        self, store_name: str, counts: Dict[str, int]
+        self, store_name: str, counts: dict[str, int]
     ) -> None:
         """Write per-game family license counts into StoreGame.metadata_json.
 
@@ -1962,8 +2029,8 @@ class GameService:
             session.close()
 
     def _apply_playtime_sync_data(
-        self, store_name: str, playtime_data: Dict[str, Any]
-    ) -> Dict[str, int]:
+        self, store_name: str, playtime_data: dict[str, Any]
+    ) -> dict[str, int]:
         """Apply playtime data from a store plugin to the main DB.
 
         For each entry: find StoreGame by store_name + store_app_id, then call
@@ -2186,6 +2253,9 @@ class GameService:
     def get_cover(self, game_id):
         return self._lazy_metadata.get_cover(game_id)
 
+    def lookup_cover(self, game_id):
+        return self._lazy_metadata.lookup_cover(game_id)
+
     def update_game_description(self, game_id, description):
         return self._lazy_metadata.update_game_description(game_id, description)
 
@@ -2308,13 +2378,13 @@ class GameService:
             )
 
             # Group by parent game, pick one representative per game
-            by_game_id: Dict[str, list] = {}
+            by_game_id: dict[str, list] = {}
             for sg in store_games:
                 if sg.game:
                     by_game_id.setdefault(sg.game_id, []).append(sg)
 
-            games_by_store: Dict[str, list] = {}
-            for game_id, sgs in by_game_id.items():
+            games_by_store: dict[str, list] = {}
+            for sgs in by_game_id.values():
                 sgs_sorted = sorted(
                     sgs,
                     key=lambda s: _STORE_PREFERENCE.get(s.store_name, 99),

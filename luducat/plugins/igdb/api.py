@@ -42,9 +42,10 @@ ProgressCallback = Optional[Callable[[str, int, int], None]]
 TWITCH_AUTH_URL = "https://id.twitch.tv/oauth2/token"
 IGDB_API_BASE = "https://api.igdb.com/v4"
 
-# Rate limiting (per second)
+# Rate limiting (per second). IGDB documents a hard 4 req/s limit;
+# BYOK was 5 and hammered 429s during bulk discovery (lud-qzrh).
 RATE_LIMIT_REQUESTS_PROXY = 4  # Conservative for shared proxy credentials
-RATE_LIMIT_REQUESTS_BYOK = 5   # User's own credentials, slightly higher
+RATE_LIMIT_REQUESTS_BYOK = 4   # IGDB's documented ceiling, not above it
 RATE_LIMIT_PERIOD = 1.0  # seconds
 RATE_LIMIT_RETRY_DELAY = 2.0  # seconds to wait after 429
 MAX_RATE_LIMIT_RETRIES = 3
@@ -107,9 +108,29 @@ class IgdbRateLimitError(IgdbApiError):
     pass
 
 
+class IgdbCircuitOpenError(IgdbRateLimitError):
+    """Request skipped because a rate-limit pause is still running"""
+    pass
+
+
 class IgdbCancelledError(IgdbApiError):
     """Operation cancelled by user"""
     pass
+
+
+def _is_budget_429(response) -> bool:
+    """True for the proxy's own daily/weekly budget, False for IGDB's per-second limit."""
+    scope = response.headers.get("X-RateLimit-Scope")
+    if scope:
+        return scope == "budget"
+    # Proxies deployed before the scope header only said so in the body
+    return response.text.lstrip().startswith(("Daily request limit", "Weekly request limit"))
+
+
+def _log_fetch_failure(what: str, igdb_id: int, error: IgdbApiError) -> None:
+    """A running rate-limit pause is expected; only real failures are warnings."""
+    level = logging.DEBUG if isinstance(error, IgdbCircuitOpenError) else logging.WARNING
+    logger.log(level, "Failed to fetch %s for %s: %s", what, igdb_id, error)
 
 
 class IgdbApi:
@@ -154,6 +175,8 @@ class IgdbApi:
         self._proxy_url = proxy_url or get_proxy_url()
         self._token: Optional[TokenInfo] = None
         self._request_times: List[float] = []
+        # Lazy cover loads and the enrichment sync share one client from different threads.
+        self._state_lock = threading.Lock()
         self._http = http_client
         self._cancel_event = threading.Event()
         self._rate_limit_requests = (
@@ -272,28 +295,29 @@ class IgdbApi:
         Args:
             status_callback: Optional callback for progress updates
         """
-        now = time.time()
+        # Each caller reserves a start slot under the lock, then waits outside it.
+        with self._state_lock:
+            now = time.monotonic()
+            self._request_times = [
+                t for t in self._request_times
+                if t > now - RATE_LIMIT_PERIOD
+            ]
+            start = now
+            if len(self._request_times) >= self._rate_limit_requests:
+                start = max(start, self._request_times[-self._rate_limit_requests] + RATE_LIMIT_PERIOD)
+            if self._request_times:
+                start = max(start, self._request_times[-1])
+            self._request_times.append(start)
 
-        # Remove old timestamps
-        self._request_times = [
-            t for t in self._request_times
-            if now - t < RATE_LIMIT_PERIOD
-        ]
-
-        # Wait if at limit
-        if len(self._request_times) >= self._rate_limit_requests:
-            oldest = self._request_times[0]
-            sleep_time = RATE_LIMIT_PERIOD - (now - oldest)
-            if sleep_time > 0.05:  # Only report if waiting more than 50ms
-                if status_callback:
-                    status_callback(f"IGDB rate limit - waiting {sleep_time:.2f}s...", -1, -1)
-                logger.debug(f"Rate limit: waiting {sleep_time:.2f}s")
-                # Use event.wait() instead of time.sleep() so cancellation
-                # can interrupt the wait immediately
-                if self._cancel_event.wait(sleep_time):
-                    raise IgdbCancelledError("IGDB operation cancelled")
-
-        self._request_times.append(time.time())
+        sleep_time = start - time.monotonic()
+        if sleep_time > 0.05:
+            if status_callback:
+                status_callback(f"IGDB rate limit - waiting {sleep_time:.2f}s...", -1, -1)
+            logger.debug(f"Rate limit: waiting {sleep_time:.2f}s")
+            # Use event.wait() instead of time.sleep() so cancellation
+            # can interrupt the wait immediately
+            if self._cancel_event.wait(sleep_time):
+                raise IgdbCancelledError("IGDB operation cancelled")
 
     def _request(
         self,
@@ -317,15 +341,16 @@ class IgdbApi:
         if self._cancel_event.is_set():
             raise IgdbCancelledError("IGDB operation cancelled")
 
-        # Circuit breaker: skip request if in backoff period
-        if self._circuit_open_until > 0:
-            remaining = self._circuit_open_until - time.time()
-            if remaining > 0:
-                raise IgdbRateLimitError(
-                    f"IGDB circuit breaker open, {int(remaining)}s remaining"
-                )
-            # Breaker expired — reset for next trip
-            self._circuit_open_until = 0
+        # Breaker checked and reset under the lock so an expired reading cannot
+        # erase a trip made meanwhile.
+        with self._state_lock:
+            if self._circuit_open_until > 0:
+                remaining = self._circuit_open_until - time.time()
+                if remaining > 0:
+                    raise IgdbCircuitOpenError(
+                        f"IGDB circuit breaker open, {int(remaining)}s remaining"
+                    )
+                self._circuit_open_until = 0
 
         self._rate_limit(status_callback)
 
@@ -351,21 +376,35 @@ class IgdbApi:
             response = self._http.post(url, headers=headers, data=query)
 
             if response.status_code == 429:
-                # Trip circuit breaker immediately — no retries
-                self._circuit_open_until = time.time() + self._circuit_backoff
-                duration = int(self._circuit_backoff)
+                if not _is_budget_429(response) and retry_count < MAX_RATE_LIMIT_RETRIES:
+                    # IGDB's per-second limit: the next second is usually free again
+                    wait_time = RATE_LIMIT_RETRY_DELAY * (retry_count + 1)
+                    logger.debug(f"IGDB 429 (upstream), retry {retry_count + 1} in {wait_time}s")
+                    if self._cancel_event.wait(wait_time):
+                        raise IgdbCancelledError("IGDB operation cancelled")
+                    return self._request(endpoint, query, status_callback, retry_count + 1)
+                with self._state_lock:
+                    now = time.time()
+                    remaining = self._circuit_open_until - now
+                    if remaining > 0:
+                        # Answer to a request sent before this incident tripped the breaker
+                        raise IgdbCircuitOpenError(
+                            f"IGDB circuit breaker open, {int(remaining)}s remaining"
+                        )
+                    duration = int(self._circuit_backoff)
+                    self._circuit_open_until = now + self._circuit_backoff
+                    self._circuit_backoff = min(
+                        self._circuit_backoff * 2, CIRCUIT_BREAKER_MAX,
+                    )
+                reason = response.text.strip()[:200] or "no reason given"
                 logger.warning(
-                    f"Proxy rate limit 429, circuit breaker open for {duration}s"
+                    f"Proxy rate limit 429 ({reason}), circuit breaker open for {duration}s"
                 )
                 if status_callback:
                     status_callback(
                         f"IGDB proxy rate limited — pausing {duration // 60}min",
                         -1, -1,
                     )
-                # Escalate for next trip (double, cap at max)
-                self._circuit_backoff = min(
-                    self._circuit_backoff * 2, CIRCUIT_BREAKER_MAX,
-                )
                 raise IgdbRateLimitError(
                     f"Proxy rate limit 429, backing off {duration}s"
                 )
@@ -546,7 +585,7 @@ class IgdbApi:
             if results and len(results) > 0:
                 return results[0]
         except IgdbApiError as e:
-            logger.warning(f"Failed to fetch main game data for {igdb_id}: {e}")
+            _log_fetch_failure("main game data", igdb_id, e)
 
         return None
 
@@ -565,7 +604,7 @@ class IgdbApi:
         try:
             return self._request("release_dates", query, status_callback)
         except IgdbApiError as e:
-            logger.warning(f"Failed to fetch release dates for {igdb_id}: {e}")
+            _log_fetch_failure("release dates", igdb_id, e)
             return []
 
     def _fetch_covers(
@@ -583,7 +622,7 @@ class IgdbApi:
         try:
             return self._request("covers", query, status_callback)
         except IgdbApiError as e:
-            logger.warning(f"Failed to fetch covers for {igdb_id}: {e}")
+            _log_fetch_failure("covers", igdb_id, e)
             return []
 
     def _fetch_screenshots(
@@ -601,7 +640,7 @@ class IgdbApi:
         try:
             return self._request("screenshots", query, status_callback)
         except IgdbApiError as e:
-            logger.warning(f"Failed to fetch screenshots for {igdb_id}: {e}")
+            _log_fetch_failure("screenshots", igdb_id, e)
             return []
 
     def _fetch_artworks(
@@ -619,7 +658,7 @@ class IgdbApi:
         try:
             return self._request("artworks", query, status_callback)
         except IgdbApiError as e:
-            logger.warning(f"Failed to fetch artworks for {igdb_id}: {e}")
+            _log_fetch_failure("artworks", igdb_id, e)
             return []
 
     def _fetch_videos(
@@ -637,7 +676,7 @@ class IgdbApi:
         try:
             return self._request("game_videos", query, status_callback)
         except IgdbApiError as e:
-            logger.warning(f"Failed to fetch videos for {igdb_id}: {e}")
+            _log_fetch_failure("videos", igdb_id, e)
             return []
 
     def _process_images(self, game_data: Dict[str, Any]) -> None:

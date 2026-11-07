@@ -16,7 +16,7 @@ CACHE_DIR = "./cache"
 DATABASE_PATH = "./steam_games.db"
 
 # Schema version for migrations
-CURRENT_SCHEMA_VERSION = 7
+CURRENT_SCHEMA_VERSION = 8
 
 # SteamSpy fallback threshold
 # If SteamSpy returns fewer than this many total reviews (positive + negative),

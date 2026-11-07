@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import logging
 from typing import Any, Dict, Optional
+from urllib.parse import urlparse
 
 import requests
 
@@ -139,6 +140,20 @@ class PluginHttpClient:
         return self._manager.execute_request(
             self._plugin_name, method, url, **kwargs
         )
+
+    # ── Rate limit probe ─────────────────────────────────────────────
+
+    def rate_limit_wait(self, url: str) -> float:
+        """Seconds a request to this URL's host would block on the
+        per-domain limiter right now; 0.0 if it would go out at once.
+
+        Use it to answer "unavailable" instead of stalling an optional
+        lookup behind a full window.
+        """
+        host = urlparse(url).hostname
+        if not host:
+            raise ValueError(f"rate_limit_wait needs an absolute URL, got {url!r}")
+        return self._manager.rate_limit_wait(host)
 
     # ── Session access ───────────────────────────────────────────────
 

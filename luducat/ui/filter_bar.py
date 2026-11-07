@@ -10,55 +10,49 @@ Contains:
 """
 
 import logging
-from typing import Dict, List, Optional, Set
+from datetime import datetime
 
-from PySide6.QtCore import QSize, Qt, Signal
-from PySide6.QtGui import QAction, QActionGroup, QColor
-from PySide6.QtWidgets import (
-    QWidget,
-    QHBoxLayout,
-    QLabel,
-    QPushButton,
-    QFrame,
-    QMenu,
-    QMessageBox,
-)
-
-from ..core.constants import (
-    FILTER_BASE_ALL,
-    FILTER_BASE_RECENT,
-    FILTER_TYPE_FREE,
-    FILTER_TYPE_FAVORITES,
-    FILTER_TYPE_INSTALLED,
-    FILTER_TYPE_DEMOS,
-    SORT_MODE_NAME,
-    SORT_MODE_RECENT,
-    SORT_MODE_ADDED,
-    SORT_MODE_PUBLISHER,
-    SORT_MODE_DEVELOPER,
-    SORT_MODE_RELEASE,
-    SORT_MODE_FRANCHISE,
-    SORT_MODE_FAMILY_LICENSES,
-    GAME_MODE_FILTERS,
-    DEFAULT_TAG_COLOR,
-)
-from ..core.plugin_manager import PluginManager
-from ..utils.icons import load_tinted_icon
-
-from PySide6.QtCore import QSortFilterProxyModel
-from PySide6.QtGui import QCursor, QStandardItem, QStandardItemModel
+from PySide6.QtCore import QSize, QSortFilterProxyModel, Qt, Signal
+from PySide6.QtGui import QAction, QActionGroup, QColor, QCursor, QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
     QDialog,
     QDialogButtonBox,
     QFormLayout,
+    QFrame,
+    QHBoxLayout,
+    QLabel,
     QLineEdit,
     QListView,
+    QMenu,
+    QMessageBox,
+    QPushButton,
     QSpinBox,
     QVBoxLayout,
+    QWidget,
 )
-from datetime import datetime
+
+from ..core.constants import (
+    DEFAULT_TAG_COLOR,
+    FILTER_BASE_ALL,
+    FILTER_BASE_RECENT,
+    FILTER_TYPE_DEMOS,
+    FILTER_TYPE_FAVORITES,
+    FILTER_TYPE_FREE,
+    FILTER_TYPE_INSTALLED,
+    GAME_MODE_FILTERS,
+    SORT_MODE_ADDED,
+    SORT_MODE_DEVELOPER,
+    SORT_MODE_FAMILY_LICENSES,
+    SORT_MODE_FRANCHISE,
+    SORT_MODE_NAME,
+    SORT_MODE_PUBLISHER,
+    SORT_MODE_RECENT,
+    SORT_MODE_RELEASE,
+)
+from ..core.plugin_manager import PluginManager
+from ..utils.icons import load_tinted_icon
 
 logger = logging.getLogger(__name__)
 
@@ -66,7 +60,7 @@ logger = logging.getLogger(__name__)
 class FilterChip(QPushButton):
     """Toggleable filter chip button"""
 
-    def __init__(self, text: str, chip_id: str, parent: Optional[QWidget] = None):
+    def __init__(self, text: str, chip_id: str, parent: QWidget | None = None):
         super().__init__(text, parent)
 
         self.chip_id = chip_id
@@ -83,7 +77,7 @@ class TagChip(FilterChip):
         color: str = DEFAULT_TAG_COLOR,
         source: str = "native",
         source_colors_enabled: bool = False,
-        parent: Optional[QWidget] = None,
+        parent: QWidget | None = None,
     ):
         super().__init__(tag_name, f"tag:{tag_name}", parent)
 
@@ -139,7 +133,7 @@ class FilterCrumb(QFrame):
         *,
         color: str = "",
         tooltip_detail: str = "",
-        parent: Optional[QWidget] = None,
+        parent: QWidget | None = None,
     ):
         super().__init__(parent)
         self.setObjectName("filterCrumb")
@@ -225,20 +219,21 @@ class FilterBar(QWidget):
     save_collection_requested = Signal()  # user clicked "Save current filter..."
     manage_collections_requested = Signal()
 
-    def __init__(self, parent: Optional[QWidget] = None):
+    def __init__(self, parent: QWidget | None = None):
         super().__init__(parent)
         self.setObjectName("filterBarWidget")
 
         # Filter state
         self._base_filter = FILTER_BASE_ALL  # "all", "recent", or "hidden"
-        self._type_filters: Set[str] = set()  # favorites, free
-        self._active_stores: Set[str] = set()
-        self._active_tags: Set[str] = set()
-        self._active_game_modes: Set[str] = set()  # IGDB game mode names
-        self._active_developers: Set[str] = set()
-        self._active_publishers: Set[str] = set()
-        self._active_genres: Set[str] = set()
-        self._active_years: Set[str] = set()  # year strings like "2024"
+        self._type_filters: set[str] = set()  # favorites, free
+        self._active_stores: set[str] = set()
+        self._active_tags: set[str] = set()
+        self._active_game_modes: set[str] = set()  # IGDB game mode names
+        self._active_developers: set[str] = set()
+        self._active_publishers: set[str] = set()
+        self._active_genres: set[str] = set()
+        self._active_platforms: set[str] = set()
+        self._active_years: set[str] = set()  # year strings like "2024"
         self._filter_family_shared: bool = False
         self._filter_orphaned: bool = False
         self._filter_private_apps: bool = False
@@ -248,8 +243,8 @@ class FilterBar(QWidget):
         self._exact_stores_filter: bool = False
 
         # Collection state
-        self._active_collection: Optional[dict] = None  # Currently active collection
-        self._collections_list: List[dict] = []  # All collections from service
+        self._active_collection: dict | None = None
+        self._collections_list: list[dict] = []  # All collections from service
 
         # Sort state
         self._current_sort_mode = SORT_MODE_NAME
@@ -257,18 +252,19 @@ class FilterBar(QWidget):
         self._favorites_first = False
 
         # Available stores (for minimum-one validation)
-        self._available_stores: List[str] = []
+        self._available_stores: list[str] = []
 
         # UI references
-        self._store_actions: Dict[str, QAction] = {}
-        self._game_mode_actions: Dict[str, QAction] = {}
-        self._available_tag_list: List[tuple[str, str, str]] = []  # (name, color, source)
-        self._quick_tags: List[Dict] = []  # Quick-access tags (scored + frequent)
+        self._store_actions: dict[str, QAction] = {}
+        self._game_mode_actions: dict[str, QAction] = {}
+        self._available_tag_list: list[tuple[str, str, str]] = []  # (name, color, source)
+        self._quick_tags: list[dict] = []  # Quick-access tags (scored + frequent)
         self._source_colors_enabled: bool = False  # Show brand color accents
-        self._available_developers: List[str] = []
-        self._available_publishers: List[str] = []
-        self._available_genres: List[str] = []
-        self._available_years: List[str] = []
+        self._available_developers: list[str] = []
+        self._available_publishers: list[str] = []
+        self._available_genres: list[str] = []
+        self._available_platforms: list[str] = []
+        self._available_years: list[str] = []
 
         self._setup_ui()
 
@@ -441,6 +437,11 @@ class FilterBar(QWidget):
         self.genres_action.setCheckable(True)
         self.genres_action.setVisible(False)
         self.genres_action.triggered.connect(self._on_genres_action)
+
+        self.platforms_action = menu.addAction(_("Platforms..."))
+        self.platforms_action.setCheckable(True)
+        self.platforms_action.setVisible(False)
+        self.platforms_action.triggered.connect(self._on_platforms_action)
 
         # Tags action (opens search+checkbox dialog with colored indicators)
         self.tags_action = menu.addAction(_("Tags..."))
@@ -621,6 +622,7 @@ class FilterBar(QWidget):
         self._active_developers.clear()
         self._active_publishers.clear()
         self._active_genres.clear()
+        self._active_platforms.clear()
         self._active_years.clear()
         self._exact_stores_filter = False
         self._filter_family_shared = False
@@ -651,7 +653,7 @@ class FilterBar(QWidget):
         """Update the list of available collections (called by main_window)."""
         self._collections_list = collections
 
-    def get_active_collection(self) -> Optional[dict]:
+    def get_active_collection(self) -> dict | None:
         """Return the currently active collection, or None."""
         return self._active_collection
 
@@ -876,6 +878,15 @@ class FilterBar(QWidget):
         )
         self._update_button_states()
 
+    def _on_platforms_action(self) -> None:
+        self._show_search_checkbox_dialog(
+            _("Filter by Platform"),
+            self._available_platforms,
+            self._active_platforms,
+            self._apply_platform_selection,
+        )
+        self._update_button_states()
+
     def _on_tags_action(self) -> None:
         """Open tag selection dialog with search and color indicators."""
         available = [name for name, _color, _source in self._available_tag_list]
@@ -1033,7 +1044,7 @@ class FilterBar(QWidget):
             action.setVisible(visible)
 
     def _show_search_checkbox_dialog(
-        self, title: str, available: List[str], active: Set[str], apply_callback
+        self, title: str, available: list[str], active: set[str], apply_callback
     ) -> None:
         """Show a dialog with search input, selected panel, and checkable list.
 
@@ -1065,7 +1076,7 @@ class FilterBar(QWidget):
                 apply_callback(selected)
 
     def _build_search_checkbox_dialog(
-        self, title: str, available: List[str], active: Set[str],
+        self, title: str, available: list[str], active: set[str],
     ):
         # Filter out empty/whitespace-only entries
         available = [x for x in available if x and x.strip()]
@@ -1140,7 +1151,7 @@ class FilterBar(QWidget):
 
         # Build a lookup for selected panel → source model row
         # so unchecking in the selected panel syncs back
-        def _item_text_to_source_row() -> Dict[str, int]:
+        def _item_text_to_source_row() -> dict[str, int]:
             return {
                 source_model.item(r).text(): r
                 for r in range(source_model.rowCount())
@@ -1213,6 +1224,11 @@ class FilterBar(QWidget):
         self._update_button_states()
         self._emit_filters_changed()
 
+    def _apply_platform_selection(self, selected: set) -> None:
+        self._active_platforms = selected
+        self._update_button_states()
+        self._emit_filters_changed()
+
     def _apply_tag_selection(self, selected: set) -> None:
         """Apply tag filter selection from dialog."""
         self._active_tags = selected
@@ -1256,6 +1272,11 @@ class FilterBar(QWidget):
             genres: List of genre names to activate
         """
         self._active_genres = set(genres)
+        self._update_button_states()
+        self._emit_filters_changed()
+
+    def set_platform_filters(self, platforms: list) -> None:
+        self._active_platforms = set(platforms)
         self._update_button_states()
         self._emit_filters_changed()
 
@@ -1329,10 +1350,10 @@ class FilterBar(QWidget):
         for action in self._game_mode_actions.values():
             action.setChecked(False)
 
-        # Clear developer/publisher/genre/year filters
         self._active_developers.clear()
         self._active_publishers.clear()
         self._active_genres.clear()
+        self._active_platforms.clear()
         self._active_years.clear()
 
         # Clear exact stores filter
@@ -1381,6 +1402,7 @@ class FilterBar(QWidget):
             len(self._active_developers) == 0 and
             len(self._active_publishers) == 0 and
             len(self._active_genres) == 0 and
+            len(self._active_platforms) == 0 and
             len(self._active_years) == 0 and
             len(self._active_tags) == 0 and
             not self._filter_family_shared and
@@ -1406,6 +1428,7 @@ class FilterBar(QWidget):
         self.developers_action.setChecked(bool(self._active_developers))
         self.publishers_action.setChecked(bool(self._active_publishers))
         self.genres_action.setChecked(bool(self._active_genres))
+        self.platforms_action.setChecked(bool(self._active_platforms))
         self.tags_action.setChecked(bool(self._active_tags))
         self.years_action.setChecked(bool(self._active_years))
 
@@ -1494,6 +1517,18 @@ class FilterBar(QWidget):
                     _("Genres: {genres}... (+{n})").format(
                         genres=", ".join(genres[:3]),
                         n=len(genres) - 3,
+                    )
+                )
+
+        if self._active_platforms:
+            plats = sorted(self._active_platforms)
+            if len(plats) <= 3:
+                lines.append(_("Platforms: {platforms}").format(platforms=", ".join(plats)))
+            else:
+                lines.append(
+                    _("Platforms: {platforms}... (+{n})").format(
+                        platforms=", ".join(plats[:3]),
+                        n=len(plats) - 3,
                     )
                 )
 
@@ -1691,6 +1726,14 @@ class FilterBar(QWidget):
                 "filter", "", tip,
             ))
 
+        for pl in sorted(self._active_platforms):
+            tip = _("Platform: {platform}").format(platform=pl)
+            chips.append((
+                pl,
+                lambda _pl=pl: self._remove_platform(_pl),
+                "filter", "", tip,
+            ))
+
         # Years
         if self._active_years:
             years_sorted = sorted(self._active_years)
@@ -1829,6 +1872,11 @@ class FilterBar(QWidget):
         self._update_button_states()
         self._emit_filters_changed()
 
+    def _remove_platform(self, platform: str) -> None:
+        self._active_platforms.discard(platform)
+        self._update_button_states()
+        self._emit_filters_changed()
+
     def _clear_year_filter(self) -> None:
         self._active_years.clear()
         self._update_button_states()
@@ -1900,7 +1948,7 @@ class FilterBar(QWidget):
         logger.debug(f"Filters changed: {filters}")
         self.filters_changed.emit(filters)
 
-    def set_stores(self, stores: List[tuple[str, str]]) -> None:
+    def set_stores(self, stores: list[tuple[str, str]]) -> None:
         """Set available store filters
 
         Args:
@@ -1951,7 +1999,7 @@ class FilterBar(QWidget):
         self._available_stores.append(store_name)
         self._active_stores.add(store_name)
 
-    def set_tags(self, tags: List[tuple[str, str, str]]) -> None:
+    def set_tags(self, tags: list[tuple[str, str, str]]) -> None:
         """Set available tag filters
 
         Args:
@@ -1976,6 +2024,7 @@ class FilterBar(QWidget):
             "developers": list(self._active_developers),
             "publishers": list(self._active_publishers),
             "genres": list(self._active_genres),
+            "platforms": list(self._active_platforms),
             "years": list(self._active_years),
             "filter_family_shared": self._filter_family_shared,
             "filter_orphaned": self._filter_orphaned,
@@ -2019,10 +2068,10 @@ class FilterBar(QWidget):
         for name, action in self._game_mode_actions.items():
             action.setChecked(name in self._active_game_modes)
 
-        # Developers / Publishers / Genres / Years (no submenu actions to update)
         self._active_developers = set(filters.get("developers", []))
         self._active_publishers = set(filters.get("publishers", []))
         self._active_genres = set(filters.get("genres", []))
+        self._active_platforms = set(filters.get("platforms", []))
         self._active_years = set(filters.get("years", []))
 
         # Exact stores filter
@@ -2060,7 +2109,7 @@ class FilterBar(QWidget):
         self._update_button_states()
         self._emit_filters_changed()
 
-    def set_available_stores(self, stores: List[tuple]) -> None:
+    def set_available_stores(self, stores: list[tuple]) -> None:
         """Set available store filters from game_service format
 
         Args:
@@ -2070,7 +2119,7 @@ class FilterBar(QWidget):
         store_list = [(name, display) for name, display, _ in stores]
         self.set_stores(store_list)
 
-    def set_available_tags(self, tags: List[Dict]) -> None:
+    def set_available_tags(self, tags: list[dict]) -> None:
         """Set available tag filters from game_service format
 
         Args:
@@ -2085,7 +2134,7 @@ class FilterBar(QWidget):
         # Show/hide Tags... in filter dropdown
         self.tags_action.setVisible(len(tag_list) > 0)
 
-    def set_quick_access_tags(self, tags: List[Dict]) -> None:
+    def set_quick_access_tags(self, tags: list[dict]) -> None:
         """Set quick-access tags for the crumb bar.
 
         Quick-access tags appear as toggle buttons on the left side of
@@ -2110,7 +2159,7 @@ class FilterBar(QWidget):
             for action in self._game_mode_actions.values():
                 action.setChecked(False)
 
-    def set_available_developers(self, developers: List[str]) -> None:
+    def set_available_developers(self, developers: list[str]) -> None:
         """Set available developer filters (for dialog population).
 
         Args:
@@ -2121,7 +2170,7 @@ class FilterBar(QWidget):
         # Remove active developers that are no longer available
         self._active_developers &= set(self._available_developers)
 
-    def set_available_publishers(self, publishers: List[str]) -> None:
+    def set_available_publishers(self, publishers: list[str]) -> None:
         """Set available publisher filters (for dialog population).
 
         Args:
@@ -2132,7 +2181,7 @@ class FilterBar(QWidget):
         # Remove active publishers that are no longer available
         self._active_publishers &= set(self._available_publishers)
 
-    def set_available_genres(self, genres: List[str]) -> None:
+    def set_available_genres(self, genres: list[str]) -> None:
         """Set available genre filters (for dialog population).
 
         Args:
@@ -2140,10 +2189,14 @@ class FilterBar(QWidget):
         """
         self._available_genres = [g for g in genres if g and g.strip()]
         self.genres_action.setVisible(len(self._available_genres) > 0)
-        # Remove active genres that are no longer available
         self._active_genres &= set(self._available_genres)
 
-    def set_available_years(self, years: List[str]) -> None:
+    def set_available_platforms(self, platforms: list[str]) -> None:
+        self._available_platforms = [p for p in platforms if p and p.strip()]
+        self.platforms_action.setVisible(len(self._available_platforms) > 0)
+        self._active_platforms &= set(self._available_platforms)
+
+    def set_available_years(self, years: list[str]) -> None:
         """Set available release year filters (for dialog population).
 
         Args:
@@ -2160,6 +2213,7 @@ class FilterBar(QWidget):
         When a Ginger Max theme is active, shows the cat app icon instead.
         """
         from pathlib import Path
+
         from PySide6.QtGui import QIcon
 
         size = max(18, self.btn_random.height() - 8)

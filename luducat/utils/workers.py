@@ -332,16 +332,19 @@ class SyncWorker(QThread):
                 return  # Page progress shown in progress bar, not status bar
             self._on_status(message)
 
-        all_ids, new_ids, refetch_ids = await self._game_service.execute_store_fetch(
-            store_name,
-            full_resync=self._full_resync,
-            status_callback=_status_with_page_progress,
-            cancel_check=cancel_or_skip,
+        all_ids, new_ids, discovered_ids, refetch_ids = (
+            await self._game_service.execute_store_fetch(
+                store_name,
+                full_resync=self._full_resync,
+                status_callback=_status_with_page_progress,
+                cancel_check=cancel_or_skip,
+            )
         )
 
         self._stats.setdefault(store_name, {})
         self._stats[store_name]["games_found"] = len(all_ids)
         self._stats[store_name]["games_new"] = len(new_ids)
+        self._stats[store_name]["games_discovered"] = len(discovered_ids)
         self._stats[store_name]["games_refetch"] = len(refetch_ids)
 
         # Don't create metadata jobs if cancelled during fetch
@@ -387,17 +390,19 @@ class SyncWorker(QThread):
                 )
 
         # Create skeleton games from plugin DB (local, no HTTP)
-        # so games appear in the UI immediately
-        if new_ids:
+        # so games appear in the UI immediately. Gap-filler discoveries
+        # are owned games and get skeletons too.
+        skeleton_ids = new_ids + discovered_ids
+        if skeleton_ids:
             self.phase_started.emit(
-                store_name, "adding games...", len(new_ids),
+                store_name, "adding games...", len(skeleton_ids),
             )
 
             def skeleton_cb(batch):
                 self.games_batch_ready.emit(batch)
 
             self._game_service.create_skeleton_games(
-                store_name, new_ids,
+                store_name, skeleton_ids,
                 new_games_callback=skeleton_cb,
                 progress_callback=lambda cur, tot: (
                     self.phase_progress.emit(store_name, cur, tot)
@@ -409,7 +414,9 @@ class SyncWorker(QThread):
         # visible in the final _load_games() call
         self._game_service.invalidate_cache()
 
-        metadata_ids = new_ids + refetch_ids
+        # Discovered games enrich BEHIND new+refetch so a bulk gap
+        # discovery cannot starve genuinely new games (lud-4r1g)
+        metadata_ids = new_ids + refetch_ids + discovered_ids
         if metadata_ids:
             # Don't queue metadata jobs if cancelled during skeleton creation
             if cancel_or_skip():
@@ -449,6 +456,8 @@ class SyncWorker(QThread):
             parts = []
             if new_ids:
                 parts.append(f"{len(new_ids)} new")
+            if discovered_ids:
+                parts.append(f"{len(discovered_ids)} discovered")
             if refetch_ids:
                 parts.append(f"{len(refetch_ids)} refetch")
             logger.info(

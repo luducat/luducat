@@ -8,35 +8,35 @@ Uses QListView with custom delegate for two-row compact layout.
 """
 
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from PySide6.QtCore import (
+    QAbstractListModel,
+    QEvent,
+    QModelIndex,
+    QRect,
+    QSize,
     Qt,
     Signal,
-    QAbstractListModel,
-    QModelIndex,
-    QSize,
-    QRect,
-    QEvent,
 )
 from PySide6.QtGui import (
-    QPainter,
+    QColor,
     QFont,
     QFontMetrics,
-    QPalette,
-    QColor,
     QHelpEvent,
+    QPainter,
+    QPalette,
 )
 from PySide6.QtWidgets import (
+    QAbstractItemView,
     QApplication,
-    QWidget,
-    QVBoxLayout,
     QListView,
+    QStyle,
     QStyledItemDelegate,
     QStyleOptionViewItem,
-    QAbstractItemView,
-    QStyle,
     QToolTip,
+    QVBoxLayout,
+    QWidget,
 )
 
 from ..core.constants import (
@@ -44,8 +44,18 @@ from ..core.constants import (
     INSTALLED_BADGE_COLOR,
     INSTALLED_BADGE_LABEL,
 )
-from ..core.plugin_manager import PluginManager, _DEFAULT_BRAND_COLORS
-from .badge_painter import draw_badge, draw_icon_badge, draw_store_icon_badge, draw_status_dot, get_player_count, game_mode_badge_width, store_badge_width, STATUS_DOT_PRIVATE, STATUS_DOT_DELISTED
+from ..core.plugin_manager import _DEFAULT_BRAND_COLORS, PluginManager
+from .badge_painter import (
+    STATUS_DOT_DELISTED,
+    STATUS_DOT_PRIVATE,
+    draw_badge,
+    draw_icon_badge,
+    draw_status_dot,
+    draw_store_icon_badge,
+    game_mode_badge_width,
+    get_player_count,
+    store_badge_width,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -68,13 +78,13 @@ class GameListModel(QAbstractListModel):
     Designed for efficient handling of 15,000+ games.
     """
 
-    def __init__(self, parent: Optional[QWidget] = None):
+    def __init__(self, parent: QWidget | None = None):
         super().__init__(parent)
 
-        self._games: List[Dict[str, Any]] = []
-        self._filtered_indices: List[int] = []
+        self._games: list[dict[str, Any]] = []
+        self._filtered_indices: list[int] = []
         self._search_filter: str = ""
-        self._filters: Dict[str, Any] = {}
+        self._filters: dict[str, Any] = {}
 
     def rowCount(self, parent: QModelIndex = QModelIndex()) -> int:
         if parent.isValid():
@@ -107,7 +117,7 @@ class GameListModel(QAbstractListModel):
 
         return None
 
-    def set_games(self, games: List[Dict[str, Any]]) -> None:
+    def set_games(self, games: list[dict[str, Any]]) -> None:
         """Set the full game list
 
         Games are pre-filtered by main_window, so just display them all.
@@ -239,7 +249,7 @@ class GameListModel(QAbstractListModel):
         self._apply_filters()
         self.endResetModel()
 
-    def set_filters(self, filters: Dict[str, Any]) -> None:
+    def set_filters(self, filters: dict[str, Any]) -> None:
         """Set filter criteria
 
         Args:
@@ -250,7 +260,7 @@ class GameListModel(QAbstractListModel):
         self._apply_filters()
         self.endResetModel()
 
-    def get_game_at(self, index: QModelIndex) -> Optional[Dict[str, Any]]:
+    def get_game_at(self, index: QModelIndex) -> dict[str, Any] | None:
         """Get game data at model index"""
         return self.data(index, GameRoles.GameData)
 
@@ -277,6 +287,16 @@ class GameListModel(QAbstractListModel):
                     self.endResetModel()
                 break
 
+    def update_game_installed(self, game_id: str, is_installed: bool) -> None:
+        """Set the INST badge flag; no re-filter, the list arrives pre-filtered."""
+        for i, game in enumerate(self._games):
+            if game.get("id") == game_id:
+                game["is_installed"] = is_installed
+                if i in self._filtered_indices:
+                    idx = self.index(self._filtered_indices.index(i), 0)
+                    self.dataChanged.emit(idx, idx, [GameRoles.IsInstalled])
+                break
+
     def update_game_hidden(self, game_id: str, is_hidden: bool) -> None:
         """Update hidden status for a game
 
@@ -284,7 +304,7 @@ class GameListModel(QAbstractListModel):
             game_id: Game UUID
             is_hidden: New hidden status
         """
-        for i, game in enumerate(self._games):
+        for game in self._games:
             if game.get("id") == game_id:
                 game["is_hidden"] = is_hidden
                 # Always re-filter since hidden state affects visibility
@@ -310,7 +330,7 @@ class GameListDelegate(QStyledItemDelegate):
     STORE_BADGE_SIZE = 16
     BADGE_PADDING = 4
 
-    def __init__(self, parent: Optional[QWidget] = None):
+    def __init__(self, parent: QWidget | None = None):
         super().__init__(parent)
 
         # Use system font as base, with relative sizing
@@ -329,8 +349,8 @@ class GameListDelegate(QStyledItemDelegate):
         self._fav_color = QColor("#f1c40f")
 
         # Local cache of plugin data (avoids classmethod dispatch in paint())
-        self._brand_colors: Dict[str, Dict[str, str]] = dict(PluginManager._brand_colors)
-        self._badge_labels: Dict[str, str] = dict(PluginManager._badge_labels)
+        self._brand_colors: dict[str, dict[str, str]] = dict(PluginManager._brand_colors)
+        self._badge_labels: dict[str, str] = dict(PluginManager._badge_labels)
 
     def update_theme_colors(self, fav_color: str) -> None:
         """Update delegate colors from current theme."""
@@ -509,7 +529,7 @@ class GameListDelegate(QStyledItemDelegate):
 
     def _store_tooltip_at(
         self, mouse_x: int, option: QStyleOptionViewItem, index: QModelIndex
-    ) -> Optional[str]:
+    ) -> str | None:
         """Check if mouse_x is over a store badge, return store display name."""
         stores = index.data(GameRoles.Stores) or []
         if not stores:
@@ -528,7 +548,7 @@ class GameListDelegate(QStyledItemDelegate):
 
     def _game_mode_tooltip_at(
         self, mouse_x: int, option: QStyleOptionViewItem, index: QModelIndex
-    ) -> Optional[str]:
+    ) -> str | None:
         """Check if mouse_x is over a game mode badge, return tooltip text."""
         stores = index.data(GameRoles.Stores) or []
         is_favorite = index.data(GameRoles.IsFavorite) or False
@@ -574,7 +594,7 @@ class GameListDelegate(QStyledItemDelegate):
 
     def _status_dot_tooltip_at(
         self, mouse_x: int, option: QStyleOptionViewItem, index: QModelIndex
-    ) -> Optional[str]:
+    ) -> str | None:
         """Check if mouse_x is over a status dot, return tooltip."""
         game = index.data(GameRoles.GameData) or {}
         is_private = game.get("is_private_app", False)
@@ -640,7 +660,7 @@ class GameList(QWidget):
     game_selected = Signal(str)
     context_menu_requested = Signal(object, object)  # game_data, global_pos
 
-    def __init__(self, parent: Optional[QWidget] = None):
+    def __init__(self, parent: QWidget | None = None):
         super().__init__(parent)
 
         self._selecting_programmatically = False
@@ -715,7 +735,7 @@ class GameList(QWidget):
             global_pos = self.list_view.viewport().mapToGlobal(pos)
             self.context_menu_requested.emit(game_data, global_pos)
 
-    def set_games(self, games: List[Dict[str, Any]]) -> None:
+    def set_games(self, games: list[dict[str, Any]]) -> None:
         """Set game list data
 
         Args:
@@ -731,7 +751,7 @@ class GameList(QWidget):
         if scrollbar and saved_scroll > 0:
             scrollbar.setValue(saved_scroll)
 
-    def append_games(self, games: List[Dict[str, Any]]) -> None:
+    def append_games(self, games: list[dict[str, Any]]) -> None:
         """Append games incrementally during progressive loading."""
         if not games:
             return
@@ -745,7 +765,7 @@ class GameList(QWidget):
         """
         self.model.set_search_filter(text)
 
-    def set_filters(self, filters: Dict[str, Any]) -> None:
+    def set_filters(self, filters: dict[str, Any]) -> None:
         """Set filter criteria
 
         Args:
@@ -762,6 +782,9 @@ class GameList(QWidget):
         """
         self.model.update_game_favorite(game_id, is_favorite)
 
+    def update_game_installed(self, game_id: str, is_installed: bool) -> None:
+        self.model.update_game_installed(game_id, is_installed)
+
     def update_game_hidden(self, game_id: str, is_hidden: bool) -> None:
         """Update hidden status for a game
 
@@ -771,7 +794,7 @@ class GameList(QWidget):
         """
         self.model.update_game_hidden(game_id, is_hidden)
 
-    def get_selected_game_id(self) -> Optional[str]:
+    def get_selected_game_id(self) -> str | None:
         """Get currently selected game ID"""
         indexes = self.list_view.selectedIndexes()
         if indexes:

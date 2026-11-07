@@ -2,26 +2,47 @@
 
 luducat uses TOML configuration files following XDG standards.
 
-## File Locations (XDG Standards)
+## File Locations
 
-| Type | Path | Contents |
-|------|------|----------|
-| Config | `~/.config/luducat/config.toml` | User settings |
-| Data | `~/.local/share/luducat/` | Databases, plugins |
-| Cache | `~/.cache/luducat/` | Thumbnails, screenshots |
+luducat keeps three separate folders: config (settings, credentials
+fallback, user plugins, logs), data (databases) and cache (images and other
+re-downloadable files). They never overlap; if they do, for example through
+XDG variables pointing at the same place, luducat refuses to start and says
+why.
+
+| Platform | Config | Data | Cache |
+|----------|--------|------|-------|
+| Linux | `~/.config/luducat/` | `~/.local/share/luducat/` | `~/.cache/luducat/` |
+| Windows | `%LOCALAPPDATA%\luducat\config\` | `%LOCALAPPDATA%\luducat\data\` | `%LOCALAPPDATA%\luducat\cache\` |
+| macOS | `~/Library/Application Support/luducat/config/` | `~/Library/Application Support/luducat/data/` | `~/Library/Caches/luducat/` |
+
+Before 0.8.6, Windows and macOS used one merged folder for config and data
+(`%LOCALAPPDATA%\luducat\luducat\`, with the cache in its `Cache\`
+subfolder, and `~/Library/Application Support/luducat/`). The first start of
+0.8.6 or newer moves its contents into the layout above once. It refuses with
+a message, and moves nothing, if an older luducat is still running, if the
+folder holds something it does not recognise, or if a destination already
+exists.
+
+You can move the data and cache folders in Settings > Advanced. luducat
+records the move in the config (`app.pending_move_data` /
+`app.pending_move_cache`) and runs it at the next start, before anything opens
+the files; afterwards `app.custom_data_dir` / `app.custom_cache_dir` point to
+the new place.
 
 ### Data Directory Structure
 ```
 ~/.local/share/luducat/
 ├── games.db                    # Main database
 ├── trust-state.json            # Plugin integrity trust data (HMAC-signed)
-├── plugins/
+├── plugins-data/
 │   ├── steam/
 │   │   └── catalog.db          # Plugin database
 │   ├── gog/
 │   │   └── catalog.db
 │   └── ...
-└── backups/                    # Database backups
+├── archive/                    # Downloaded installers, if the download folder was set here
+└── pre_restore_backups/        # Safety copies made before a backup restore
 ```
 
 ### Cache Directory Structure

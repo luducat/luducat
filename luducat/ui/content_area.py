@@ -10,23 +10,22 @@ Stacked widget containing view modes:
 """
 
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any
 
-from PySide6.QtCore import Signal, QTimer
+from PySide6.QtCore import QTimer, Signal
 from PySide6.QtWidgets import (
-    QWidget,
     QStackedWidget,
     QVBoxLayout,
+    QWidget,
 )
 
 from ..core.constants import (
-    VIEW_MODE_LIST,
     VIEW_MODE_COVER,
+    VIEW_MODE_LIST,
     VIEW_MODE_SCREENSHOT,
 )
-
-from .list_view import ListView
 from .cover_view import CoverView
+from .list_view import ListView
 from .screenshot_view import ScreenshotView
 
 logger = logging.getLogger(__name__)
@@ -66,16 +65,17 @@ class ContentArea(QWidget):
     filter_developer_requested = Signal(list)   # [developer_name]
     filter_publisher_requested = Signal(list)   # [publisher_name]
     filter_genre_requested = Signal(list)       # [genre_name]
+    filter_platform_requested = Signal(list)    # [platform_name]
     filter_tag_requested = Signal(list)         # [tag_name]
     filter_year_requested = Signal(list)        # [year_string]
 
-    def __init__(self, parent: Optional[QWidget] = None):
+    def __init__(self, parent: QWidget | None = None):
         super().__init__(parent)
         self.setObjectName("contentArea")
 
         self._current_mode = VIEW_MODE_LIST
-        self._current_game_id: Optional[str] = None
-        self._games: Dict[str, Dict[str, Any]] = {}
+        self._current_game_id: str | None = None
+        self._games: dict[str, dict[str, Any]] = {}
 
         # Track which views need updating (lazy loading)
         self._cover_view_stale = True
@@ -127,6 +127,7 @@ class ContentArea(QWidget):
         self.list_view.filter_developer_requested.connect(self.filter_developer_requested.emit)
         self.list_view.filter_publisher_requested.connect(self.filter_publisher_requested.emit)
         self.list_view.filter_genre_requested.connect(self.filter_genre_requested.emit)
+        self.list_view.filter_platform_requested.connect(self.filter_platform_requested.emit)
         self.list_view.filter_tag_requested.connect(self.filter_tag_requested.emit)
         self.list_view.filter_year_requested.connect(self.filter_year_requested.emit)
         self.cover_view.game_launched.connect(self.game_launched.emit)
@@ -182,14 +183,7 @@ class ContentArea(QWidget):
         self.list_view.set_ensure_metadata_callback(callback)
 
     def set_cover_callback(self, callback) -> None:
-        """Set callback for lazy-loading covers.
-
-        The callback is called when cover view encounters a game without a cover,
-        allowing fallback to IGDB or other metadata sources.
-
-        Args:
-            callback: Function(game_id: str) -> str (cover URL)
-        """
+        """Callback the cover view asks when a game has no cover from store metadata."""
         self.cover_view.set_cover_callback(callback)
 
     def set_store_url_callback(self, callback) -> None:
@@ -238,7 +232,7 @@ class ContentArea(QWidget):
             game_data = self._games[game_id]
             QTimer.singleShot(0, lambda: self._deferred_set_game(game_id, game_data))
 
-    def _deferred_set_game(self, game_id: str, game_data: Dict[str, Any]) -> None:
+    def _deferred_set_game(self, game_id: str, game_data: dict[str, Any]) -> None:
         """Deferred game update for list view"""
         # Only update if this game is still selected
         if self._current_game_id == game_id:
@@ -337,15 +331,15 @@ class ContentArea(QWidget):
                 try:
                     sessions = self._play_sessions_callback(game_id)
                     self.list_view.set_play_sessions_data(sessions)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug("Play session stats unavailable for %s: %s", game_id, e)
             # Only select in grid views if they're not stale
             if not self._cover_view_stale:
                 self.cover_view.select_game(game_id)
             if not self._screenshot_view_stale:
                 self.screenshot_view.select_game(game_id)
 
-    def append_games(self, games: List[Dict[str, Any]]) -> None:
+    def append_games(self, games: list[dict[str, Any]]) -> None:
         """Append games incrementally during progressive loading.
 
         Only appends to the currently visible grid view.
@@ -365,7 +359,7 @@ class ContentArea(QWidget):
             self.screenshot_view.append_games(games)
             self._screenshot_view_stale = False
 
-    def update_game_covers(self, modified: Dict[str, Dict[str, str]]) -> None:
+    def update_game_covers(self, modified: dict[str, dict[str, str]]) -> None:
         """Update covers/heroes for specific games without full view rebuild.
 
         Args:
@@ -383,7 +377,7 @@ class ContentArea(QWidget):
         self.cover_view.update_game_covers(modified)
         self.screenshot_view.update_game_covers(modified)
 
-    def set_games(self, games: Dict[str, Dict[str, Any]]) -> None:
+    def set_games(self, games: dict[str, dict[str, Any]]) -> None:
         """Set all games data
 
         Only updates the currently visible view. Grid views are updated
@@ -466,6 +460,22 @@ class ContentArea(QWidget):
             # Mark grid views as needing update
             self._cover_view_stale = True
             self._screenshot_view_stale = True
+
+    def update_game_installed(self, game_id: str, is_installed: bool) -> None:
+        if game_id not in self._games:
+            return
+        self._games[game_id]["is_installed"] = is_installed
+        self._cover_view_stale = True
+        self._screenshot_view_stale = True
+
+        if self._current_game_id == game_id:
+            game = self._games[game_id]
+            if self._detail_fields_callback:
+                detail = self._detail_fields_callback(game_id)
+                if detail:
+                    game = {**game, **detail}
+            # _from_worker bypasses the same-game dedup in set_game
+            self.list_view.set_game(game, _from_worker=True)
 
     def update_game_tags(self, game_id: str, tags: list) -> None:
         """Update tags for a game in cached data and display

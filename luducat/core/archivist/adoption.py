@@ -286,7 +286,8 @@ class AdoptionScanner:
         if self._spec is None or len(parts) < len(self._spec):
             return None
         groups: dict = {}
-        for segment_re, part in zip(self._spec, parts):
+        # parts may be deeper than the layout; only the layout depth is matched
+        for segment_re, part in zip(self._spec, parts, strict=False):
             m = segment_re.fullmatch(part)
             if m is None:
                 return None

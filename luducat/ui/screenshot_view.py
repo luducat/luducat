@@ -9,60 +9,74 @@ Uses QListView in IconMode with custom delegate for virtual scrolling.
 
 import html
 import logging
-import re
 import time
-from typing import Any, Callable, Dict, List, Optional, Set
+from collections.abc import Callable
+from typing import Any
 
 from PySide6.QtCore import (
-    Qt,
-    Signal,
-    QSize,
-    QRect,
+    QAbstractListModel,
+    QEvent,
     QModelIndex,
     QObject,
-    QAbstractListModel,
+    QRect,
+    QSize,
+    Qt,
     QThread,
     QTimer,
-    QEvent,
+    Signal,
 )
 from PySide6.QtGui import (
-    QPainter,
-    QPalette,
+    QColor,
     QFont,
     QFontMetrics,
-    QColor,
+    QHelpEvent,
+    QPainter,
+    QPalette,
     QPen,
     QPixmap,
-    QHelpEvent,
 )
 from PySide6.QtWidgets import (
-    QWidget,
-    QVBoxLayout,
-    QListView,
-    QStyledItemDelegate,
-    QStyleOptionViewItem,
-    QStyle,
     QAbstractItemView,
     QApplication,
+    QListView,
+    QStyle,
+    QStyledItemDelegate,
+    QStyleOptionViewItem,
     QToolTip,
+    QVBoxLayout,
+    QWidget,
 )
 
 from ..core.constants import (
     CORNER_DEMO_COLORS,
     CORNER_FREE_COLORS,
     CORNER_TRIANGLE_SIZE,
+    DEFAULT_IMAGE_FADE_MS,
     GAME_MODE_LABELS,
     INSTALLED_BADGE_COLOR,
     INSTALLED_BADGE_LABEL,
-    PROTONDB_TIER_LABELS,
     PROTONDB_TIER_COLORS,
-    STEAM_DECK_LABELS,
+    PROTONDB_TIER_LABELS,
     STEAM_DECK_COLORS,
-    DEFAULT_IMAGE_FADE_MS,
+    STEAM_DECK_LABELS,
 )
-from ..core.plugin_manager import PluginManager, _DEFAULT_BRAND_COLORS
-from ..utils.image_cache import get_screenshot_cache, ImageCache
-from .badge_painter import draw_badge, draw_icon_badge, draw_store_icon_badge, draw_license_circle, draw_corner_triangle, draw_overflow_pill, draw_status_dot, get_player_count, game_mode_badge_width, store_badge_width, STATUS_DOT_PRIVATE, STATUS_DOT_DELISTED
+from ..core.plugin_manager import _DEFAULT_BRAND_COLORS, PluginManager
+from ..utils.image_cache import ImageCache, get_screenshot_cache
+from .badge_painter import (
+    STATUS_DOT_DELISTED,
+    STATUS_DOT_PRIVATE,
+    draw_badge,
+    draw_corner_triangle,
+    draw_icon_badge,
+    draw_license_circle,
+    draw_overflow_pill,
+    draw_status_dot,
+    draw_store_icon_badge,
+    game_mode_badge_width,
+    get_player_count,
+    store_badge_width,
+)
+from .grid_lazy_load import visible_row_range
 
 logger = logging.getLogger(__name__)
 
@@ -86,7 +100,7 @@ class ScreenshotFetchWorker(QThread):
         self,
         game_id: str,
         callback: Callable[[str], list],
-        parent: Optional[QObject] = None,
+        parent: QObject | None = None,
     ):
         super().__init__(parent)
         self._game_id = game_id
@@ -120,12 +134,12 @@ class ScreenshotRoles:
 class ScreenshotListModel(QAbstractListModel):
     """Model for screenshot grid with virtual scrolling support"""
 
-    def __init__(self, parent: Optional[QWidget] = None):
+    def __init__(self, parent: QWidget | None = None):
         super().__init__(parent)
-        self._games: List[Dict[str, Any]] = []
+        self._games: list[dict[str, Any]] = []
 
-    def rowCount(self, parent: QModelIndex = QModelIndex()) -> int:
-        if parent.isValid():
+    def rowCount(self, parent: QModelIndex | None = None) -> int:
+        if parent is not None and parent.isValid():
             return 0
         return len(self._games)
 
@@ -163,7 +177,7 @@ class ScreenshotListModel(QAbstractListModel):
 
         return None
 
-    def _format_tooltip(self, game: Dict[str, Any]) -> str:
+    def _format_tooltip(self, game: dict[str, Any]) -> str:
         """Format game data as HTML tooltip"""
         from bs4 import BeautifulSoup
 
@@ -217,7 +231,7 @@ class ScreenshotListModel(QAbstractListModel):
 
         return tooltip
 
-    def set_games(self, games: List[Dict[str, Any]]) -> None:
+    def set_games(self, games: list[dict[str, Any]]) -> None:
         """Set the game list"""
         self.beginResetModel()
         self._games = games
@@ -235,7 +249,7 @@ class ScreenshotListModel(QAbstractListModel):
         self._games.extend(games)
         self.endInsertRows()
 
-    def get_game_at(self, index: QModelIndex) -> Optional[Dict[str, Any]]:
+    def get_game_at(self, index: QModelIndex) -> dict[str, Any] | None:
         """Get game data at model index"""
         return self.data(index, ScreenshotRoles.GameData)
 
@@ -264,8 +278,8 @@ class ScreenshotItemDelegate(QStyledItemDelegate):
     def __init__(
         self,
         item_width: int = 280,
-        image_cache: Optional[ImageCache] = None,
-        parent: Optional[QWidget] = None,
+        image_cache: ImageCache | None = None,
+        parent: QWidget | None = None,
     ):
         super().__init__(parent)
         self._item_width = item_width
@@ -297,8 +311,8 @@ class ScreenshotItemDelegate(QStyledItemDelegate):
         self.FADE_DURATION = DEFAULT_IMAGE_FADE_MS / 1000.0
 
         # Local cache of plugin data (avoids classmethod dispatch in paint())
-        self._brand_colors: Dict[str, Dict[str, str]] = dict(PluginManager._brand_colors)
-        self._badge_labels: Dict[str, str] = dict(PluginManager._badge_labels)
+        self._brand_colors: dict[str, dict[str, str]] = dict(PluginManager._brand_colors)
+        self._badge_labels: dict[str, str] = dict(PluginManager._badge_labels)
 
         # Badge visibility (toggled from Settings → Appearance)
         self._show_game_mode_badges = True
@@ -708,7 +722,7 @@ class ScreenshotView(QWidget):
 
     DEFAULT_SCREENSHOT_WIDTH = 280
 
-    def __init__(self, parent: Optional[QWidget] = None):
+    def __init__(self, parent: QWidget | None = None):
         super().__init__(parent)
         self.setObjectName("screenshotView")
 
@@ -716,13 +730,13 @@ class ScreenshotView(QWidget):
         self._image_cache = get_screenshot_cache()
         self._screenshot_callback = None  # Callback to fetch screenshots
         self._screenshot_invalidate_callback = None  # Callback for 404 retry
-        self._url_to_game: Dict[str, Dict] = {}  # Map screenshot URL → game data
+        self._url_to_game: dict[str, dict] = {}  # Map screenshot URL → game data
 
         # Worker queue (same pattern as CoverView)
-        self._pending_requests: Set[str] = set()  # Game IDs queued or in-flight
-        self._no_screenshots: Set[str] = set()  # Games confirmed to have no screenshots
-        self._active_workers: List[ScreenshotFetchWorker] = []
-        self._request_queue: List[str] = []
+        self._pending_requests: set[str] = set()  # Game IDs queued or in-flight
+        self._no_screenshots: set[str] = set()  # Games confirmed to have no screenshots
+        self._active_workers: list[ScreenshotFetchWorker] = []
+        self._request_queue: list[str] = []
         self._max_concurrent_workers = 2
         self._scroll_rows = 0  # 0 = system default
 
@@ -948,7 +962,7 @@ class ScreenshotView(QWidget):
             global_pos = self.list_view.viewport().mapToGlobal(pos)
             self.context_menu_requested.emit(game_data, global_pos)
 
-    def append_games(self, games: List[Dict[str, Any]]) -> None:
+    def append_games(self, games: list[dict[str, Any]]) -> None:
         """Append games incrementally during progressive loading."""
         if not games:
             return
@@ -960,7 +974,7 @@ class ScreenshotView(QWidget):
             if game_id:
                 self._game_id_to_row[game_id] = start + i
 
-    def set_games(self, games: List[Dict[str, Any]]) -> None:
+    def set_games(self, games: list[dict[str, Any]]) -> None:
         """Set games to display
 
         Args:
@@ -1026,36 +1040,11 @@ class ScreenshotView(QWidget):
         return False
 
     def _get_visible_range(self) -> tuple:
-        """Get (first_row, last_row) of visible items using indexAt().
-
-        Much faster than iterating all model rows — O(1) instead of O(n).
-        """
-        from PySide6.QtCore import QPoint
-
-        viewport = self.list_view.viewport()
-        rect = viewport.rect()
-
-        # Offset probe point by spacing — QPoint(0,0) may land in the
-        # inter-item gap in IconMode, causing indexAt() to return invalid.
-        spacing = self.list_view.spacing() + 1
-        top_index = self.list_view.indexAt(rect.topLeft() + QPoint(spacing, spacing))
-        if not top_index.isValid():
-            return (0, 0)
-
-        bottom_index = self.list_view.indexAt(rect.bottomRight() - QPoint(spacing, spacing))
-        if not bottom_index.isValid():
-            # Estimate visible count from viewport dimensions instead of
-            # falling back to rowCount()-1 (which iterates entire model)
-            grid = self.list_view.gridSize()
-            item_h = grid.height() if grid.height() > 0 else 250
-            item_w = grid.width() if grid.width() > 0 else 250
-            cols = max(1, viewport.width() // item_w)
-            visible_count = ((viewport.height() // item_h) + 2) * cols
-            last_row = min(top_index.row() + visible_count, self.model.rowCount() - 1)
-        else:
-            last_row = bottom_index.row()
-
-        return (top_index.row(), last_row)
+        """(first_row, last_row) of visible items; (0, 0) when the layout
+        is not ready (kept for the retry loop in
+        _lazy_load_visible_screenshots_inner)."""
+        rng = visible_row_range(self.list_view, self.model)
+        return rng if rng is not None else (0, 0)
 
     def _lazy_load_visible_screenshots(self) -> None:
         """Load screenshots for visible games that don't have them.
@@ -1204,7 +1193,7 @@ class ScreenshotView(QWidget):
             self.list_view.doItemsLayout()
             self.list_view.scrollTo(index)
 
-    def update_game_covers(self, modified: Dict[str, Dict[str, str]]) -> None:
+    def update_game_covers(self, modified: dict[str, dict[str, str]]) -> None:
         """Update cover fields in model data for consistency.
 
         Screenshot view doesn't display covers, so no repaint is triggered —

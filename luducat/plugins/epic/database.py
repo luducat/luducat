@@ -25,12 +25,25 @@ from sqlalchemy import (
     String,
     Text,
     create_engine,
+    event,
     inspect,
     text,
 )
-from sqlalchemy.orm import DeclarativeBase, Session, relationship, sessionmaker
+from sqlalchemy.orm import DeclarativeBase, Session, scoped_session, relationship, sessionmaker
+from sqlalchemy.pool import NullPool
 
 logger = logging.getLogger(__name__)
+
+
+def _sqlite_connect_pragmas(dbapi_connection, _record) -> None:
+    """Same connection setup as the main database: WAL so readers do not
+    wait on the sync's writes, busy timeout for the rest, no mmap (FUSE)."""
+    cursor = dbapi_connection.cursor()
+    cursor.execute("PRAGMA journal_mode=WAL")
+    cursor.execute("PRAGMA busy_timeout=30000")
+    cursor.execute("PRAGMA synchronous=NORMAL")
+    cursor.execute("PRAGMA mmap_size=0")
+    cursor.close()
 
 
 class Base(DeclarativeBase):
@@ -90,6 +103,10 @@ class EpicGame(Base):
     is_installed = Column(Boolean, default=False)
     install_path = Column(String(1000), nullable=True)
     last_updated = Column(DateTime, default=utc_now)
+    # When the public product page was last asked for this row (answer or
+    # 404). NULL means the catalog fill is still owed: on demand, and by the
+    # sync through get_ids_needing_refetch().
+    enriched_at = Column(DateTime, nullable=True)
 
     # Indexes
     __table_args__ = (
@@ -177,6 +194,12 @@ class EpicGame(Base):
     def screenshots(self, value: List[str]):
         self._screenshots = json.dumps(value)
         self.__dict__.pop('_c_screenshots', None)
+
+    @property
+    def needs_catalog_fill(self) -> bool:
+        """Incomplete and never asked of the product page. Asking is done
+        once; a page that stays sparse is not asked again."""
+        return self.enriched_at is None and not self.is_metadata_complete
 
     @property
     def is_metadata_complete(self) -> bool:
@@ -271,6 +294,7 @@ class EpicGame(Base):
             "mac": self.mac,
             "is_installed": self.is_installed,
             "install_path": self.install_path,
+            "enriched_at": self.enriched_at,
         }
 
         if include_description:
@@ -312,9 +336,15 @@ class EpicDatabase:
 
     def __init__(self, db_path: Path):
         self.db_path = db_path
-        self.engine = create_engine(f"sqlite:///{db_path}", echo=False)
-        self._session_factory = sessionmaker(bind=self.engine)
-        self._session: Optional[Session] = None
+        self.engine = create_engine(
+            f"sqlite:///{db_path}",
+            echo=False,
+            poolclass=NullPool,
+            connect_args={"check_same_thread": False, "timeout": 30},
+        )
+        event.listen(self.engine, "connect", _sqlite_connect_pragmas)
+        # One session per thread (cover workers, GUI, sync); never shared
+        self._scoped = scoped_session(sessionmaker(bind=self.engine))
 
     # Columns added after initial schema — need ALTER TABLE for existing DBs
     _MIGRATION_COLUMNS = {
@@ -322,6 +352,7 @@ class EpicDatabase:
             ("third_party_store", "VARCHAR(100)"),
             ("cloud_save_folder", "VARCHAR(500)"),
             ("additional_cli_args", "VARCHAR(500)"),
+            ("enriched_at", "DATETIME"),
         ],
     }
 
@@ -352,21 +383,17 @@ class EpicDatabase:
 
     @property
     def session(self) -> Session:
-        """Get or create session"""
-        if self._session is None:
-            self._session = self._session_factory()
-        return self._session
+        """The calling thread's session (created on first use)."""
+        return self._scoped()
 
     def close(self) -> None:
-        """Close database connection"""
-        if self._session:
-            self._session.close()
-            self._session = None
+        """Release the calling thread's session and pooled connections."""
+        self._scoped.remove()
         self.engine.dispose()
 
     def get_game(self, app_name: str) -> Optional[EpicGame]:
         """Get game by app_name"""
-        return self.session.query(EpicGame).filter(
+        return self.session.query(EpicGame).populate_existing().filter(
             EpicGame.app_name == app_name
         ).first()
 

@@ -81,10 +81,80 @@ def _should_exclude(path: Path) -> bool:
     for part in path.parts:
         if part == "__pycache__":
             return True
+    # Journal side files: a .db is archived as a committed snapshot, and a raw
+    # journal read at another moment would be replayed over it on restore
+    if path.name.endswith(("-wal", "-shm", "-journal")):
+        return True
     # Check file extension
     if path.suffix == ".pyc":
         return True
     return False
+
+
+def _database_files() -> List[Path]:
+    """games.db and every plugin catalog under plugins-data/."""
+    data_dir = get_data_dir()
+    files = [data_dir / "games.db"]
+    plugins_data_dir = data_dir / "plugins-data"
+    if plugins_data_dir.exists():
+        files.extend(sorted(plugins_data_dir.rglob("*.db")))
+    return [f for f in files if f.is_file()]
+
+
+def _sqlite_uri(db_path: Path, mode: str) -> str:
+    """file: URI for sqlite3.connect(uri=True); a UNC host becomes an empty
+    authority, the only one SQLite accepts besides localhost."""
+    uri = db_path.as_uri()
+    if uri.startswith("file://") and not uri.startswith("file:///"):
+        uri = "file:////" + uri[len("file://"):]
+    return f"{uri}?mode={mode}"
+
+
+def _checkpoint_wal(db_path: Path) -> None:
+    """Fold the WAL into the .db so the snapshot reads less; mode=rw leaves a
+    vanished file alone instead of creating it empty."""
+    try:
+        conn = sqlite3.connect(_sqlite_uri(db_path, "rw"), uri=True)
+        try:
+            row = conn.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchone()
+        finally:
+            conn.close()
+    except Exception as e:
+        logger.warning(f"WAL checkpoint before backup failed for {db_path.name}: {e}")
+        return
+    # (busy, log frames, checkpointed frames): busy=1 means a writer held it
+    if row and row[0]:
+        logger.warning(f"WAL checkpoint for {db_path.name} was busy; the copy may lag a writer")
+
+
+def _read_backup_item(source_path: Path) -> bytes:
+    """File bytes; a SQLite database comes as an online-backup snapshot taken
+    in memory, so a WAL the checkpoint could not fold in is still in the copy
+    and nothing lands in the backup location before the archive itself."""
+    if source_path.suffix != ".db":
+        return source_path.read_bytes()
+    # mode=rw: a file that vanished meanwhile raises instead of being created empty
+    try:
+        src = sqlite3.connect(_sqlite_uri(source_path, "rw"), uri=True)
+    except sqlite3.OperationalError:
+        if not source_path.exists():
+            raise FileNotFoundError(str(source_path)) from None
+        raise
+    try:
+        try:
+            dst = sqlite3.connect(":memory:")
+            try:
+                src.backup(dst)
+                return dst.serialize()
+            finally:
+                dst.close()
+        except sqlite3.DatabaseError as e:
+            if getattr(e, "sqlite_errorname", "") != "SQLITE_NOTADB":
+                raise
+            logger.warning(f"Backup: {source_path.name} is not a SQLite database, copied as is")
+            return source_path.read_bytes()
+    finally:
+        src.close()
 
 
 def collect_backup_items() -> List[Tuple[str, Path]]:
@@ -233,18 +303,11 @@ def create_backup(
     if not health.writable:
         return False, f"Backup directory not writable: {health.error or backup_dir}", None
 
-    # Flush WAL to ensure games.db is fully up to date before copying
-    db_path = get_data_dir() / "games.db"
-    if db_path.exists():
-        try:
-            conn = sqlite3.connect(str(db_path))
-            conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
-            conn.close()
-        except Exception as e:
-            logger.warning(f"WAL checkpoint before backup failed: {e}")
+    # Shrink the WAL of the WAL-mode databases before the snapshots are taken
+    for db_path in _database_files():
+        _checkpoint_wal(db_path)
 
     backup_items = collect_backup_items()
-
     if not backup_items:
         return False, "No configuration or data files found to backup.", None
 
@@ -283,7 +346,12 @@ def create_backup(
 
             # Add all files, computing checksums as we go
             for archive_name, source_path in backup_items:
-                data = source_path.read_bytes()
+                try:
+                    data = _read_backup_item(source_path)
+                except FileNotFoundError:
+                    logger.warning(f"Backup: {archive_name} vanished before it was copied, skipped")
+                    current += 1
+                    continue
                 digest = hashlib.sha256(data).hexdigest()
                 file_checksums[archive_name] = {
                     "sha256": digest,

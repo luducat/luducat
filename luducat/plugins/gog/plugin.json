@@ -1,7 +1,7 @@
 {
   "name": "gog",
   "display_name": "GOG",
-  "version": "2.7.6",
+  "version": "2.7.9",
   "author": "luducat",
   "author_email": "luducat@trinity2k.net",
   "description": "GOG.com game library integration",

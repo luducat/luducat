@@ -1,7 +1,7 @@
 {
   "name": "epic",
   "display_name": "Epic Games",
-  "version": "2.0.2",
+  "version": "2.0.4",
   "author": "luducat",
   "author_email": "luducat@trinity2k.net",
   "description": "Epic library integration",

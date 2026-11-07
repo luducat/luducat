@@ -14,9 +14,7 @@ Tables:
 
 import logging
 from pathlib import Path
-from typing import Any, Dict, List, Optional
-
-from luducat.plugins.sdk.datetime import utc_now
+from typing import Any
 
 from sqlalchemy import (
     Column,
@@ -32,6 +30,8 @@ from sqlalchemy import (
     text,
 )
 from sqlalchemy.orm import DeclarativeBase, Session, relationship, sessionmaker
+
+from luducat.plugins.sdk.datetime import utc_now
 
 logger = logging.getLogger(__name__)
 
@@ -296,7 +296,7 @@ class PcgwDatabase:
     # Game CRUD
     # -------------------------------------------------------------------------
 
-    def get_game(self, page_id: int) -> Optional[PcgwGame]:
+    def get_game(self, page_id: int) -> PcgwGame | None:
         """Get game by PCGW page ID with multiplayer data loaded"""
         with self.get_session() as session:
             game = session.query(PcgwGame).filter_by(page_id=page_id).first()
@@ -308,9 +308,9 @@ class PcgwDatabase:
 
     def save_game_from_api(
         self,
-        data: Dict[str, Any],
-        session: Optional[Session] = None,
-    ) -> Optional[PcgwGame]:
+        data: dict[str, Any],
+        session: Session | None = None,
+    ) -> PcgwGame | None:
         """Save or update a game from Cargo API response data
 
         Args:
@@ -438,7 +438,7 @@ class PcgwDatabase:
                 session.close()
 
     @staticmethod
-    def _extract_multiplayer_data(data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    def _extract_multiplayer_data(data: dict[str, Any]) -> dict[str, Any] | None:
         """Extract multiplayer fields from Cargo API response
 
         Returns None if no multiplayer data present.
@@ -469,7 +469,7 @@ class PcgwDatabase:
 
     def get_store_match(
         self, store_name: str, store_app_id: str
-    ) -> Optional[PcgwStoreMatch]:
+    ) -> PcgwStoreMatch | None:
         """Get cached store match"""
         with self.get_session() as session:
             match = session.query(PcgwStoreMatch).filter_by(
@@ -484,11 +484,11 @@ class PcgwDatabase:
         self,
         store_name: str,
         store_app_id: str,
-        pcgw_page_id: Optional[int],
-        pcgw_page_name: Optional[str] = None,
+        pcgw_page_id: int | None,
+        pcgw_page_name: str | None = None,
         match_method: str = "store_id",
         confidence: float = 1.0,
-        session: Optional[Session] = None,
+        session: Session | None = None,
     ) -> PcgwStoreMatch:
         """Save or update a store match"""
         own_session = session is None
@@ -537,8 +537,8 @@ class PcgwDatabase:
     # -------------------------------------------------------------------------
 
     def get_game_modes_for_store_ids(
-        self, store_name: str, app_ids: List[str]
-    ) -> Dict[str, List[str]]:
+        self, store_name: str, app_ids: list[str]
+    ) -> dict[str, list[str]]:
         """Get normalized game modes for multiple store games
 
         Queries local database only (no API calls). Joins store_matches
@@ -553,8 +553,8 @@ class PcgwDatabase:
             Dict mapping app_id -> list of normalized game mode names
             e.g. {"440": ["Multiplayer"], "620": ["Single player", "Multiplayer", "Co-operative", "Split screen"]}
         """
-        result: Dict[str, List[str]] = {}
-        app_id_set = set(str(aid) for aid in app_ids)
+        result: dict[str, list[str]] = {}
+        app_id_set = {str(aid) for aid in app_ids}
 
         try:
             from sqlalchemy import text
@@ -601,8 +601,8 @@ class PcgwDatabase:
         return result
 
     def get_steam_ids_for_store(
-        self, store_name: str, app_ids: List[str]
-    ) -> Dict[str, tuple]:
+        self, store_name: str, app_ids: list[str]
+    ) -> dict[str, tuple]:
         """Resolve Steam AppIDs for non-Steam store games via PCGW cross-references.
 
         Joins pcgw_store_matches → pcgw_games to find the Steam AppID
@@ -616,8 +616,8 @@ class PcgwDatabase:
             Dict mapping store_app_id -> (steam_app_id, page_name)
             Only includes entries where a Steam AppID was found.
         """
-        result: Dict[str, tuple] = {}
-        app_id_set = set(str(aid) for aid in app_ids)
+        result: dict[str, tuple] = {}
+        app_id_set = {str(aid) for aid in app_ids}
 
         try:
             from sqlalchemy import text
@@ -653,7 +653,7 @@ class PcgwDatabase:
 
         return result
 
-    def get_match_count(self) -> Dict[str, int]:
+    def get_match_count(self) -> dict[str, int]:
         """Get match statistics"""
         with self.get_session() as session:
             total = session.query(PcgwStoreMatch).count()
@@ -676,14 +676,14 @@ class PcgwDatabase:
 # =============================================================================
 
 def _normalize_game_modes(
-    basic_modes: Optional[str],
-    local: Optional[str] = None,
-    local_modes: Optional[str] = None,
-    lan: Optional[str] = None,
-    lan_modes: Optional[str] = None,
-    online: Optional[str] = None,
-    online_modes: Optional[str] = None,
-) -> List[str]:
+    basic_modes: str | None,
+    local: str | None = None,
+    local_modes: str | None = None,
+    lan: str | None = None,
+    lan_modes: str | None = None,
+    online: str | None = None,
+    online_modes: str | None = None,
+) -> list[str]:
     """Convert PCGamingWiki mode data to game mode names for constants.py
 
     Produces strings matching GAME_MODE_LABELS keys:

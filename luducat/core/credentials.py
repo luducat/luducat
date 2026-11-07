@@ -10,13 +10,15 @@ Storage priority:
 Plugins should use this manager for credential storage.
 """
 
-from luducat.core.json_compat import json
 import logging
-import oschmod
 from concurrent.futures import ThreadPoolExecutor, TimeoutError
 from pathlib import Path
-from typing import Optional
 
+import oschmod
+
+from luducat.core.json_compat import json
+
+from .config import get_config_dir
 from .constants import APP_NAME
 
 logger = logging.getLogger(__name__)
@@ -54,7 +56,7 @@ class CredentialManager:
         creds.delete("steam", "api_key")
     """
 
-    def __init__(self, config_dir: Optional[Path] = None, service_prefix: str = APP_NAME):
+    def __init__(self, config_dir: Path | None = None, service_prefix: str = APP_NAME):
         """Initialize credential manager
 
         Args:
@@ -66,10 +68,9 @@ class CredentialManager:
 
         # Set up fallback file storage
         if config_dir is None:
-            import platformdirs
-            config_dir = Path(platformdirs.user_config_dir(APP_NAME))
+            config_dir = get_config_dir()
         self._credentials_file = config_dir / "credentials.json"
-        self._credentials_cache: Optional[dict] = None
+        self._credentials_cache: dict | None = None
 
         if self._use_keyring:
             logger.debug("Using system keyring for credential storage")
@@ -110,9 +111,9 @@ class CredentialManager:
             return self._credentials_cache
 
         try:
-            with open(self._credentials_file, 'r', encoding="utf-8") as f:
+            with open(self._credentials_file, encoding="utf-8") as f:
                 self._credentials_cache = json.load(f)
-        except (json.JSONDecodeError, IOError) as e:
+        except (OSError, json.JSONDecodeError) as e:
             logger.warning(f"Failed to load credentials file: {e}")
             self._credentials_cache = {}
 
@@ -146,7 +147,7 @@ class CredentialManager:
                 print(f"OS error: {e}")
 
             return True
-        except IOError as e:
+        except OSError as e:
             logger.error(f"Failed to save credentials file: {e}")
             return False
 
@@ -158,7 +159,7 @@ class CredentialManager:
         creds[plugin_name][key] = value
         return self._save_credentials_file()
 
-    def _file_get(self, plugin_name: str, key: str) -> Optional[str]:
+    def _file_get(self, plugin_name: str, key: str) -> str | None:
         """Get credential from file"""
         creds = self._load_credentials_file()
         return creds.get(plugin_name, {}).get(key)
@@ -199,7 +200,7 @@ class CredentialManager:
 
         return self._file_store(plugin_name, key, value)
 
-    def get(self, plugin_name: str, key: str) -> Optional[str]:
+    def get(self, plugin_name: str, key: str) -> str | None:
         """Retrieve a credential
 
         Args:

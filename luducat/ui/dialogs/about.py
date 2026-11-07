@@ -168,7 +168,7 @@ class AboutDialog(QDialog):
             update_link.linkActivated.connect(self._on_update_clicked)
 
             # Tooltip with summary
-            tip = _("Version {ver} available — click to update").format(
+            tip = _("Version {ver} available, click to update").format(
                 ver=self._update_info.version
             )
             if self._update_info.changelog:
@@ -229,28 +229,29 @@ class AboutDialog(QDialog):
 
         description_text = (
             _("{name} is a game catalogue browser that brings your Steam, GOG, "
-              "and Epic libraries together in one place. Everything stays on "
-              "your machine — no cloud, no accounts, no telemetry. After the "
-              "first sync, it works entirely offline.").format(
+              "Epic, Amazon, ZOOM Platform, JAST USA and MangaGamer libraries "
+              "together in one place. Everything stays on your machine: no "
+              "cloud, no accounts, no telemetry. After the first sync it works "
+              "offline.").format(
                 name=APP_NAME
             ) + "\n\n"
 
-            + _("Browse your collection with pretty covers, or a "
-                "screenshot mosaic. Open any game to see its full description, "
-                "rich metadata, everything {name} knows about "
-                "it. Pick a theme, adjust the zoom, and make it yours.").format(
+            + _("Browse your collection as a wall of covers or a screenshot "
+                "mosaic. Open any game to see its description and everything "
+                "{name} knows about it. Pick a theme, adjust the zoom, make it "
+                "yours.").format(
                 name=APP_NAME
             ) + "\n\n"
 
-            + _("Metadata arrives automatically — cover art, genres, ratings, "
-                "compatibility info, game modes — so you spend time browsing, "
-                "not cataloguing. When you find something to play, {name} "
-                "hands it off to the right launcher.").format(
+            + _("Metadata arrives on its own: cover art, genres, ratings, "
+                "compatibility, game modes. You spend the time browsing, not "
+                "cataloguing. When you find something to play, {name} hands it "
+                "to the right launcher.").format(
                 name=APP_NAME
             ) + "\n\n"
 
             + _("Built for anyone who looked at their library one day and "
-                "thought \"I own how many games?\" — tens, hundreds, thousands? "
+                "wondered how many games they own. Tens, hundreds, thousands: "
                 "{name} handles that with ease.").format(
                 name=APP_NAME
             )
@@ -327,13 +328,15 @@ class AboutDialog(QDialog):
         # Required third-party license attributions (GPL, LGPL, Apache)
         attribution_text = _(
             "Contains code adapted from "
-            "<a href='https://github.com/derrod/legendary'>Legendary</a> "
-            "(<a href='https://www.gnu.org/licenses/gpl-3.0.html'>GPLv3+</a>). "
+            "<a href='https://github.com/derrod/legendary'>Legendary</a> and a "
+            "protocol documented from "
+            "<a href='https://github.com/imLinguin/nile'>Nile</a> "
+            "(<a href='https://www.gnu.org/licenses/gpl-3.0.html'>GPLv3</a>). "
             "Uses components licensed under "
             "<a href='https://www.gnu.org/licenses/lgpl-3.0.html'>LGPL v3</a> "
             "(Qt/PySide6, browser_cookie3) and "
             "<a href='https://www.apache.org/licenses/LICENSE-2.0'>Apache 2.0</a> "
-            "(requests, aiohttp, orjson). See Credits tab for full attribution."
+            "(requests, aiohttp, orjson, cryptography). See the Credits tab."
         )
         attribution_label = QLabel(attribution_text)
         attribution_label.setObjectName("aboutLicenseText")  # Reuse same style
@@ -370,53 +373,67 @@ class AboutDialog(QDialog):
         layout.setSpacing(8)
         layout.setContentsMargins(16, 16, 16, 16)
 
-        # Data Sources
-        layout.addWidget(self._create_section_header(_("Data Sources")))
-        layout.addWidget(self._create_credit_item(
-            "Steam Web API",
-            "https://steamcommunity.com/dev",
-            _("Game library and metadata from Valve's Steam platform."),
-            "Steam API Terms",
-            "https://steamcommunity.com/dev/apiterms",
-        ))
-        layout.addWidget(self._create_credit_item(
-            "GOGdb",
-            "https://www.gogdb.org",
-            _("GOG game database dumps. Maintained by Yepoleb."),
-            "MIT",
-            "https://github.com/Yepoleb/gogdb/blob/master/LICENSE",
-        ))
-        layout.addWidget(self._create_credit_item(
-            "Epic Games Store",
-            "https://store.epicgames.com",
-            _("Game library and metadata via direct Epic API."),
-        ))
-        layout.addWidget(self._create_credit_item(
-            "IGDB",
-            "https://www.igdb.com",
-            _("Game metadata database by Twitch/Amazon."),
-            "IGDB Terms",
-            "https://www.igdb.com/api-terms-of-service",
-        ))
-        layout.addWidget(self._create_credit_item(
-            "SteamGridDB",
-            "https://www.steamgriddb.com",
-            _("Community game artwork: covers, heroes, logos, icons."),
-        ))
-        layout.addWidget(self._create_credit_item(
-            "ProtonDB",
-            "https://www.protondb.com",
-            _("Linux and Steam Deck compatibility reports."),
-        ))
-        layout.addWidget(self._create_credit_item(
-            "PCGamingWiki",
-            "https://www.pcgamingwiki.com",
-            _("Game mode data: multiplayer, co-op, split screen."),
-            "CC BY-SA 3.0",
-            "https://creativecommons.org/licenses/by-sa/3.0/",
-        ))
+        layout.addWidget(self._create_section_header(_("Stores")))
+        stores = [
+            ("Steam Web API", "https://steamcommunity.com/dev",
+             _("Game library and metadata from Valve's Steam platform."),
+             "Steam API Terms", "https://steamcommunity.com/dev/apiterms"),
+            ("GOG.com", "https://www.gog.com",
+             _("Game library, store metadata and offline installers."), "", ""),
+            ("GOGdb", "https://www.gogdb.org",
+             _("GOG game database dumps, maintained by Yepoleb."),
+             "MIT", "https://github.com/Yepoleb/gogdb/blob/master/LICENSE"),
+            ("Epic Games Store", "https://store.epicgames.com",
+             _("Game library and metadata via the Epic API."), "", ""),
+            ("Amazon Games", "https://gaming.amazon.com",
+             _("Game library and metadata via the Amazon Games API."), "", ""),
+            ("ZOOM Platform", "https://www.zoom-platform.com",
+             _("DRM-free store: library and product details."), "", ""),
+            ("JAST USA", "https://jastusa.com",
+             _("DRM-free store: library and product details."), "", ""),
+            ("MangaGamer", "https://www.mangagamer.com",
+             _("DRM-free store: library and product details."), "", ""),
+        ]
+        for name, url, desc, lic_name, lic_url in stores:
+            layout.addWidget(self._create_credit_item(name, url, desc, lic_name, lic_url))
 
-        # Adapted Code (GPL-licensed source adaptations)
+        layout.addWidget(self._create_section_header(_("Metadata Sources")))
+        sources = [
+            ("IGDB", "https://www.igdb.com",
+             _("Game metadata database by Twitch/Amazon."),
+             "IGDB Terms", "https://www.igdb.com/api-terms-of-service"),
+            ("SteamGridDB", "https://www.steamgriddb.com",
+             _("Community game artwork: covers, heroes, logos, icons."), "", ""),
+            ("ProtonDB", "https://www.protondb.com",
+             _("Linux and Steam Deck compatibility reports."), "", ""),
+            ("PCGamingWiki", "https://www.pcgamingwiki.com",
+             _("Game mode data: multiplayer, co-op, split screen."),
+             "CC BY-SA 3.0", "https://creativecommons.org/licenses/by-sa/3.0/"),
+        ]
+        for name, url, desc, lic_name, lic_url in sources:
+            layout.addWidget(self._create_credit_item(name, url, desc, lic_name, lic_url))
+
+        layout.addWidget(self._create_section_header(_("Launchers and Platforms")))
+        integrations = [
+            ("Heroic Games Launcher", "https://heroicgameslauncher.com",
+             _("Launches GOG, Epic and Amazon games; tags and favourites are imported.")),
+            ("Lutris", "https://lutris.net",
+             _("Launches games managed by Lutris.")),
+            ("Playnite", "https://playnite.link",
+             _("Remote launching on a Windows machine through the Luducat Bridge plugin.")),
+            ("umu-launcher", "https://github.com/Open-Wine-Components/umu-launcher",
+             _("Runs Windows games with Proton outside Steam.")),
+            ("Wine", "https://www.winehq.org",
+             _("Windows games in Wine prefixes.")),
+            ("DOSBox", "https://www.dosbox.com",
+             _("DOS games, detected and launched with their configuration.")),
+            ("ScummVM", "https://www.scummvm.org",
+             _("Adventure games supported by ScummVM.")),
+        ]
+        for name, url, desc in integrations:
+            layout.addWidget(self._create_credit_item(name, url, desc))
+
+        # Adapted code and documented protocols (GPL)
         layout.addWidget(self._create_section_header(_("Adapted Code (GPLv3)")))
         layout.addWidget(self._create_credit_item(
             "Legendary",
@@ -425,6 +442,14 @@ class AboutDialog(QDialog):
               "from Legendary by derrod. Used in the Epic store plugin."),
             "GPLv3+",
             "https://github.com/derrod/legendary/blob/master/LICENSE",
+        ))
+        layout.addWidget(self._create_credit_item(
+            "Nile",
+            "https://github.com/imLinguin/nile",
+            _("Amazon Games protocol documented from Nile by imLinguin; the "
+              "Amazon store plugin is a clean-room implementation of it."),
+            "GPLv3",
+            "https://github.com/imLinguin/nile/blob/main/LICENSE",
         ))
 
         # Core Frameworks (LGPL - require attribution and source availability)
@@ -438,8 +463,9 @@ class AboutDialog(QDialog):
         ))
         layout.addWidget(self._create_credit_item(
             "browser_cookie3",
-            "https://github.com/borisbabic/browser_cookie3",
-            _("Browser cookie extraction library."),
+            "https://github.com/luducat/browser_cookie3",
+            _("Browser cookie extraction library by borisbabic; luducat ships "
+              "its own fork with fixes."),
             "LGPL v3",
             "https://github.com/borisbabic/browser_cookie3/blob/master/LICENSE",
         ))
@@ -467,9 +493,9 @@ class AboutDialog(QDialog):
             ("platformdirs", "https://github.com/platformdirs/platformdirs",
              _("Platform-specific directories."),
              "https://github.com/platformdirs/platformdirs/blob/main/LICENSE"),
-            ("tomli-w", "https://github.com/hukkin/tomli",
+            ("tomli-w", "https://github.com/hukkin/tomli-w",
              _("TOML writer."),
-             "https://github.com/hukkin/tomli/blob/master/LICENSE"),
+             "https://github.com/hukkin/tomli-w/blob/master/LICENSE"),
             ("keyring", "https://github.com/jaraco/keyring",
              _("Secure credential storage."),
              "https://github.com/jaraco/keyring/blob/main/LICENSE"),
@@ -501,11 +527,13 @@ class AboutDialog(QDialog):
             ("oschmod", "https://github.com/YakDriver/oschmod",
              _("Cross-platform file permissions."),
              "https://github.com/YakDriver/oschmod/blob/main/LICENSE"),
+            ("cryptography", "https://cryptography.io",
+             _("Cryptographic primitives for the Playnite Bridge pairing."),
+             "https://github.com/pyca/cryptography/blob/main/LICENSE.APACHE"),
         ]
         for name, url, desc, lic_url in apache_libs:
             layout.addWidget(self._create_credit_item(name, url, desc, "Apache 2.0", lic_url))
 
-        # BSD Licensed Libraries
         layout.addWidget(self._create_section_header(_("Libraries (BSD License)")))
         bsd_libs = [
             ("python-dateutil", "https://github.com/dateutil/dateutil",
@@ -536,8 +564,8 @@ class AboutDialog(QDialog):
         for name, url, desc, lic_name, lic_url in bsd_libs:
             layout.addWidget(self._create_credit_item(name, url, desc, lic_name, lic_url))
 
-        # Bundled Tools (Windows/WINE)
-        layout.addWidget(self._create_section_header(_("Bundled Tools (Windows/WINE)")))
+        # Shipped with the Windows source installer only (tools/wine)
+        layout.addWidget(self._create_section_header(_("Bundled Tools (Windows source installer)")))
         layout.addWidget(self._create_credit_item(
             "curl",
             "https://curl.se",

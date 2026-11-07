@@ -10,10 +10,17 @@ rebuildable at any time.
 
 import logging
 import sqlite3
+import time
 from pathlib import Path
-from typing import Dict, List, Optional, Set, Tuple
 
 logger = logging.getLogger(__name__)
+
+# Unknown (type=NULL) rows are re-queried after this long. Steam's
+# soft throttle can hide apps from a response; unknown is a retryable
+# observation, not a permanent fact. Typed rows never expire.
+NULL_RETRY_TTL_SECONDS = 7 * 86400
+
+_SCHEMA_VERSION = 2
 
 
 class AppTypeCache:
@@ -31,37 +38,71 @@ class AppTypeCache:
                 appid INTEGER PRIMARY KEY,
                 type TEXT,
                 name TEXT,
-                is_free INTEGER DEFAULT 0
+                is_free INTEGER DEFAULT 0,
+                resolved_at INTEGER NOT NULL DEFAULT 0
             )
         """)
+        version = self._conn.execute("PRAGMA user_version").fetchone()[0]
+        if version < _SCHEMA_VERSION:
+            self._migrate(version)
         self._conn.commit()
 
-    def store(self, appid: int, app_type: Optional[str],
-              name: Optional[str], is_free: bool):
+    def _migrate(self, from_version: int):
+        """Upgrade a pre-v2 database in place.
+
+        v1 had no resolved_at column. Typed rows are stamped now
+        (permanent); NULL rows get 0 so they are retried immediately -
+        this heals caches poisoned by soft-throttled empty responses.
+        """
+        columns = {
+            row[1] for row in
+            self._conn.execute("PRAGMA table_info(apps)").fetchall()
+        }
+        if "resolved_at" not in columns:
+            self._conn.execute(
+                "ALTER TABLE apps ADD COLUMN "
+                "resolved_at INTEGER NOT NULL DEFAULT 0"
+            )
+        self._conn.execute(
+            "UPDATE apps SET resolved_at = ? "
+            "WHERE type IS NOT NULL AND resolved_at = 0",
+            (int(time.time()),),
+        )
+        self._conn.execute(f"PRAGMA user_version = {_SCHEMA_VERSION}")
+        logger.info(
+            "App type cache migrated from schema v%d to v%d",
+            from_version, _SCHEMA_VERSION,
+        )
+
+    def store(self, appid: int, app_type: str | None,
+              name: str | None, is_free: bool):
         """Store or update a single app's type info."""
         self._conn.execute(
-            "INSERT OR REPLACE INTO apps (appid, type, name, is_free) "
-            "VALUES (?, ?, ?, ?)",
-            (appid, app_type, name, 1 if is_free else 0),
+            "INSERT OR REPLACE INTO apps "
+            "(appid, type, name, is_free, resolved_at) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (appid, app_type, name, 1 if is_free else 0, int(time.time())),
         )
         self._conn.commit()
 
-    def store_batch(self, entries: List[Tuple[int, Optional[str],
-                                              Optional[str], bool]]):
+    def store_batch(self, entries: list[tuple[int, str | None,
+                                              str | None, bool]]):
         """Store multiple entries at once.
 
         Each tuple: (appid, type, name, is_free).
         """
         if not entries:
             return
+        now = int(time.time())
         self._conn.executemany(
-            "INSERT OR REPLACE INTO apps (appid, type, name, is_free) "
-            "VALUES (?, ?, ?, ?)",
-            [(a, t, n, 1 if f else 0) for a, t, n, f in entries],
+            "INSERT OR REPLACE INTO apps "
+            "(appid, type, name, is_free, resolved_at) "
+            "VALUES (?, ?, ?, ?, ?)",
+            [(a, t, n, 1 if f else 0, now) for a, t, n, f in entries],
         )
         self._conn.commit()
 
-    def get_type(self, appid: int) -> Optional[str]:
+    def get_type(self, appid: int) -> str | None:
         """Get cached type for an app, or None if not cached."""
         row = self._conn.execute(
             "SELECT type FROM apps WHERE appid = ?", (appid,)
@@ -75,7 +116,7 @@ class AppTypeCache:
         ).fetchone()
         return row is not None
 
-    def get_cached_types(self, appids: Set[int]) -> Dict[int, Optional[str]]:
+    def get_cached_types(self, appids: set[int]) -> dict[int, str | None]:
         """Bulk lookup: return {appid: type} for all cached entries."""
         if not appids:
             return {}
@@ -92,7 +133,7 @@ class AppTypeCache:
                 results[appid] = app_type
         return results
 
-    def get_names(self, appids: Set[int]) -> Dict[int, Optional[str]]:
+    def get_names(self, appids: set[int]) -> dict[int, str | None]:
         """Bulk lookup: return {appid: name} for cached entries that have a name."""
         if not appids:
             return {}
@@ -110,10 +151,27 @@ class AppTypeCache:
                 results[appid] = name
         return results
 
-    def get_uncached(self, appids: Set[int]) -> Set[int]:
-        """Return app IDs that are NOT in the cache."""
-        cached = self.get_cached_types(appids)
-        return appids - set(cached.keys())
+    def get_uncached(self, appids: set[int]) -> set[int]:
+        """Return app IDs that need (re-)resolution.
+
+        Not present at all, or cached as unknown longer ago than
+        NULL_RETRY_TTL_SECONDS.
+        """
+        if not appids:
+            return set()
+        cutoff = int(time.time()) - NULL_RETRY_TTL_SECONDS
+        settled = set()
+        batch = sorted(appids)
+        for i in range(0, len(batch), 500):
+            chunk = batch[i:i + 500]
+            placeholders = ",".join("?" * len(chunk))
+            rows = self._conn.execute(
+                f"SELECT appid FROM apps WHERE appid IN ({placeholders}) "
+                "AND (type IS NOT NULL OR resolved_at >= ?)",
+                (*chunk, cutoff),
+            ).fetchall()
+            settled.update(row[0] for row in rows)
+        return appids - settled
 
     def close(self):
         """Close the database connection."""

@@ -485,6 +485,7 @@ def draw_overflow_pill(
     path.addRoundedRect(pill_rect, 3, 3)
     painter.fillPath(path, bg)
     painter.setPen(_border_pen_for_bg(bg))
+    painter.setBrush(Qt.BrushStyle.NoBrush)
     painter.drawPath(path)
 
     painter.setFont(font)

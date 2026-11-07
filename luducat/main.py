@@ -15,20 +15,37 @@ _os.environ.setdefault("MALLOC_ARENA_MAX", "2")
 
 import faulthandler
 import sys as _sys
-# faulthandler.enable() defaults to sys.stderr which is None in frozen
-# no-console builds (PyInstaller console=False on Windows).
-if _sys.stderr is not None:
-    faulthandler.enable()
+
+from .crash_traces import stderr_usable
+
+# Otherwise setup_logging sends crash traces to logs/crash.log.
+if stderr_usable(_sys.stderr):
+    faulthandler.enable(_sys.stderr)
 
 import argparse
 import logging
+import platform
+import subprocess
 import sys
 from pathlib import Path
-from typing import Optional
 
-from .core.config import Config, get_cache_dir, get_config_dir, get_data_dir
-from .core.constants import APP_NAME, APP_VERSION, APP_VERSION_FULL, APP_ICON_BASENAME, APP_ID
+from .core.config import (
+    Config,
+    LayoutError,
+    check_current_layout,
+    get_cache_dir,
+    get_config_dir,
+    get_data_dir,
+    platform_layout,
+)
+from .core.constants import APP_ICON_BASENAME, APP_ID, APP_NAME, APP_VERSION_FULL
 from .core.database import Database
+from .core.instance_lock import acquire_instance_lock
+from .core.layout_migration import (
+    LayoutMigrationError,
+    legacy_merged_dir,
+    migrate_layout,
+)
 from .core.logging import ColoredFormatter, SecretRedactingFilter, install_memory_handler
 from .core.plugin_manager import PluginManager
 
@@ -56,6 +73,9 @@ logging.root.addHandler(_memory_handler)
 logging.root.setLevel(logging.INFO)
 
 logger = logging.getLogger(__name__)
+
+# Kept open for faulthandler when stderr is unusable.
+_crash_trace_file = None
 
 
 def setup_logging(debug: bool = False, log_file: Path = None) -> None:
@@ -104,6 +124,11 @@ def setup_logging(debug: bool = False, log_file: Path = None) -> None:
     file_handler.addFilter(SecretRedactingFilter())
     root_logger.addHandler(file_handler)
 
+    if not faulthandler.is_enabled():
+        global _crash_trace_file
+        _crash_trace_file = open(log_path.parent / "crash.log", "a", encoding="utf-8")
+        faulthandler.enable(_crash_trace_file)
+
 
 def print_info() -> None:
     """Print application and environment information"""
@@ -151,7 +176,7 @@ def _install_dark_titlebar_filter(app) -> None:
     if sys.platform != "win32":
         return
 
-    from PySide6.QtCore import QObject, QEvent
+    from PySide6.QtCore import QEvent, QObject
 
     class DarkTitleBarFilter(QObject):
         def eventFilter(self, obj, event):
@@ -218,6 +243,131 @@ def init_application(config: Config) -> tuple[Database, PluginManager]:
     return database, plugin_manager
 
 
+# Held for the life of the process; restart_application() must release it,
+# because os.execv keeps the PID and QLockFile would refuse the new image.
+_instance_lock = None
+
+
+def _restart_args() -> list[str]:
+    # Frozen builds: argv[0] is the executable itself, not a script to pass on.
+    if getattr(sys, "frozen", False):
+        return [sys.executable] + sys.argv[1:]
+    # Under "python -m luducat" argv[0] is __main__.py, which cannot be
+    # exec'd directly (relative imports need the package context).
+    if sys.argv and sys.argv[0].endswith("__main__.py"):
+        return [sys.executable, "-m", "luducat"] + sys.argv[1:]
+    return [sys.executable] + sys.argv
+
+
+_restart_requested = False
+
+
+def request_restart() -> None:
+    """Restart once run_cli has shut down cleanly (DBs closed, config saved)."""
+    global _restart_requested
+    _restart_requested = True
+
+
+def restart_application() -> None:
+    """Release the instance lock and replace this process with a fresh start.
+
+    Callers close databases and save what must survive before calling;
+    this does not return.
+    """
+    global _instance_lock
+    if _instance_lock is not None:
+        _instance_lock.unlock()
+        _instance_lock = None
+    logger.info("Restarting luducat")
+    if sys.platform == "win32":
+        # The Windows CRT execv joins argv without quoting; paths with spaces split.
+        subprocess.Popen(_restart_args())  # nosec B603 - our own interpreter and argv
+        _os._exit(0)
+    _os.execv(sys.executable, _restart_args())
+
+
+def _prepare_qt_environment(config: Config) -> None:
+    """Set the environment Qt reads once, when the first QApplication is created."""
+    saved_zoom = config.get("appearance.ui_zoom", 100)
+    if saved_zoom != 100:
+        scale_factor = saved_zoom / 100.0
+        _os.environ["QT_SCALE_FACTOR"] = str(scale_factor)
+        logger.info("Applied UI scale factor: %s (%s%%)", scale_factor, saved_zoom)
+
+    if sys.platform.startswith("linux") and "QT_IM_MODULE" not in _os.environ:
+        try:
+            board_vendor = Path("/sys/devices/virtual/dmi/id/board_vendor").read_text(
+                encoding="utf-8").strip()
+        except OSError as e:
+            logger.debug("No DMI board vendor: %s", e)
+            return
+        if board_vendor == "Valve":
+            _os.environ["QT_IM_MODULE"] = "maliit"
+            logger.info("Steam Deck detected, enabled Maliit virtual keyboard")
+
+
+def _show_error_dialog(message: str) -> None:
+    from PySide6.QtWidgets import QApplication, QMessageBox
+
+    app = QApplication.instance() or QApplication(sys.argv)
+    dlg = QMessageBox(
+        QMessageBox.Icon.Warning, APP_NAME, message, QMessageBox.StandardButton.Ok,
+    )
+    # Parentless QMessageBox.warning(None, ...) segfaults in shiboken.
+    screen = app.primaryScreen()
+    if screen is not None:
+        screen_geo = screen.availableGeometry()
+        dlg.adjustSize()
+        dlg.move(
+            screen_geo.center().x() - dlg.width() // 2,
+            screen_geo.center().y() - dlg.height() // 2,
+        )
+    dlg.exec()
+
+
+def _report_startup_error(message: str, gui: bool) -> None:
+    """Report a startup problem: stderr always, a dialog in GUI mode."""
+    logger.error("Startup problem: %s", message.replace("\n\n", " "))
+    print(message, file=sys.stderr)
+    if not gui:
+        return
+    try:
+        _show_error_dialog(message)
+    except Exception as e:
+        logger.warning("Could not show the error dialog: %s", e)
+
+
+def _migrate_old_layout() -> list[str]:
+    system = platform.system()
+    old = legacy_merged_dir(system)
+    if old is None:
+        return []
+    return migrate_layout(old, platform_layout(system), system)
+
+
+def _run_startup_moves(config: Config, gui: bool) -> None:
+    from luducat.core.startup_move import run_pending_moves
+
+    if gui:
+        from luducat.ui.startup_move_progress import copy_with_progress as copy_fn
+    else:
+        from luducat.core.directory_migrate import DirectoryMigration
+
+        def copy_fn(kind: str, source: Path, target: Path) -> list[Path]:
+            return DirectoryMigration().migrate(source, target)
+
+    for outcome in run_pending_moves(config, copy_fn):
+        if not outcome.error:
+            continue
+        if outcome.kind == "data":
+            message = _("The data folder was not moved. Luducat starts with "
+                        "the old folder.\n\n{error}")
+        else:
+            message = _("The cache folder was not moved. Luducat starts with "
+                        "the old folder.\n\n{error}")
+        _report_startup_error(message.format(error=outcome.error), gui=gui)
+
+
 def run_cli(args: argparse.Namespace) -> int:
     """Run CLI commands
 
@@ -227,8 +377,24 @@ def run_cli(args: argparse.Namespace) -> int:
     Returns:
         Exit code
     """
+    # Before logging and config: both create files in the new config dir,
+    # which would collide with the entries the migration moves there.
+    try:
+        moved = _migrate_old_layout()
+    except LayoutMigrationError as e:
+        from luducat.core.i18n import init_i18n
+        init_i18n("")
+        _report_startup_error(
+            _("Luducat could not move its folders to the new layout.\n\n{error}")
+            .format(error=e),
+            gui=args.command is None,
+        )
+        return 1
+
     setup_logging(debug=args.debug, log_file=args.log_file)
     logger.info("Starting luducat v%s", APP_VERSION_FULL)
+    if moved:
+        logger.info("Moved to the new folder layout: %s", ", ".join(moved))
 
     if args.info:
         print_info()
@@ -241,10 +407,40 @@ def run_cli(args: argparse.Namespace) -> int:
     # Initialize i18n (must happen after config load, before any UI imports)
     from luducat.core.i18n import init_i18n
     init_i18n(config.get("app.language", ""))
+    _prepare_qt_environment(config)
+
+    # One instance in every mode. A second process would otherwise migrate
+    # the DBs, swap plugin files and save its config under the live one.
+    global _instance_lock
+    _instance_lock = acquire_instance_lock(get_config_dir())
+    if _instance_lock is None:
+        _report_startup_error(
+            _("Luducat is already running.\n\nOnly one instance can run at a time."),
+            gui=args.command is None,
+        )
+        return 1
+
+    # Recorded directory moves run while nothing has the files open
+    _run_startup_moves(config, gui=args.command is None)
 
     # Apply directory overrides before anything opens databases or caches
     from luducat.core.config import apply_dir_overrides
     apply_dir_overrides(config)
+
+    try:
+        check_current_layout()
+    except LayoutError as e:
+        _report_startup_error(
+            _("Luducat cannot start because its folders overlap.\n\n{error}").format(error=e),
+            gui=args.command is None,
+        )
+        return 1
+
+    # Reunify a parallel AppImage cache left by 0.8.5 (lud-vuvy) before
+    # any plugin opens its cache files
+    if sys.platform == "linux":
+        from luducat.core.cache_migration import migrate_appimage_cache
+        migrate_appimage_cache(get_cache_dir())
 
     # Initialize browser cookie manager with config (for plugin browser preference)
     from luducat.core.browser_cookies import get_browser_cookie_manager
@@ -283,7 +479,7 @@ def run_cli(args: argparse.Namespace) -> int:
             import asyncio
 
             async def sync_all():
-                for name, plugin in plugins.items():
+                for plugin in plugins.values():
                     print(f"Syncing {plugin.display_name}...")
 
                     if not plugin.is_authenticated():
@@ -351,7 +547,7 @@ def install_desktop_icons(config: Config) -> bool:
         True if icons were installed, False if skipped or failed
     """
     import shutil
-    import subprocess
+
     import platformdirs
 
     # Check if already installed
@@ -359,7 +555,7 @@ def install_desktop_icons(config: Config) -> bool:
         logger.debug("Desktop icons already installed, skipping")
         return False
 
-    from .core.constants import APP_ID, APP_ICON_BASENAME
+    from .core.constants import APP_ICON_BASENAME, APP_ID
 
     # Source icon directory
     base_dir = Path(__file__).resolve().parent
@@ -480,7 +676,7 @@ def _check_startup_disk_health() -> None:
 
     Warns user if directories are not writable (red) or low on space (yellow).
     """
-    from .core.config import get_data_dir, get_cache_dir
+    from .core.config import get_cache_dir, get_data_dir
     from .core.directory_health import check_directory
 
     checks = [
@@ -523,31 +719,12 @@ def run_gui(config: Config, database: Database, plugin_manager: PluginManager) -
     Returns:
         Exit code
     """
-    import os
-
-    # Apply UI zoom via QT_SCALE_FACTOR BEFORE creating QApplication
-    # This scales the entire interface (fonts, widgets, images, margins, icons)
-    saved_zoom = config.get("appearance.ui_zoom", 100)
-    if saved_zoom != 100:
-        scale_factor = saved_zoom / 100.0
-        os.environ["QT_SCALE_FACTOR"] = str(scale_factor)
-        logger.info(f"Applied UI scale factor: {scale_factor} ({saved_zoom}%)")
-
-    # Enable virtual keyboard on Steam Deck (must be set before QApplication)
-    if sys.platform.startswith("linux") and "QT_IM_MODULE" not in os.environ:
-        try:
-            board_vendor = Path("/sys/devices/virtual/dmi/id/board_vendor").read_text().strip()
-            if board_vendor == "Valve":
-                os.environ["QT_IM_MODULE"] = "maliit"
-                logger.info("Steam Deck detected — enabled Maliit virtual keyboard")
-        except OSError:
-            pass
 
     # setup application metadata
 
     try:
-        from PySide6.QtWidgets import QApplication
         from PySide6.QtGui import QIcon
+        from PySide6.QtWidgets import QApplication
 
     except ImportError:
         logger.error("PySide6 not installed. Install with: pip install PySide6")
@@ -555,29 +732,12 @@ def run_gui(config: Config, database: Database, plugin_manager: PluginManager) -
         print("Install with: pip install PySide6")
         return 1
 
+    from .core.theme_manager import THEME_SYSTEM, ThemeManager, install_bundled_themes
     from .ui import MainWindow
-    from .core.theme_manager import (
-        ThemeManager, THEME_SYSTEM, install_bundled_themes
-    )
 
-    # Create application
-    app = QApplication(sys.argv)
+    app = QApplication.instance() or QApplication(sys.argv)
     app.setApplicationName(APP_NAME)
     app.setApplicationVersion(APP_VERSION_FULL)
-
-    # Single-instance guard — prevent multiple GUI instances
-    from PySide6.QtCore import QLockFile
-    lock_file = QLockFile(str(get_config_dir() / "luducat.lock"))
-    lock_file.setStaleLockTime(0)  # Always check PID, never time-based
-    if not lock_file.tryLock(100):  # 100ms timeout
-        from PySide6.QtWidgets import QMessageBox
-        QMessageBox.warning(
-            None,
-            APP_NAME,
-            _("Luducat is already running.\n\n"
-              "Only one instance can run at a time."),
-        )
-        return 1
 
     # Patch QComboBox popup to suppress QSS-triggered check indicators.
     # QComboBox::item:hover/selected QSS rules activate indicator rendering
@@ -647,7 +807,7 @@ def run_gui(config: Config, database: Database, plugin_manager: PluginManager) -
     base_dir = Path(__file__).resolve().parent
     icon_dir = base_dir / "assets" / "appicons"
 
-    def select_icon_for_platform() -> Optional[QIcon]:
+    def select_icon_for_platform() -> QIcon | None:
         """Return a QIcon appropriate to the current OS, or None."""
         platform = sys.platform
 
@@ -743,9 +903,9 @@ def run_gui(config: Config, database: Database, plugin_manager: PluginManager) -
         theme_manager.apply_theme(THEME_SYSTEM)
         config.set("appearance.theme", THEME_SYSTEM)
 
-    # Note: UI zoom is applied via QT_SCALE_FACTOR before QApplication creation
-    # The theme_manager tracks the current zoom level for the settings dialog
-    theme_manager.set_current_zoom(saved_zoom)
+    # Zoom itself took effect via QT_SCALE_FACTOR (_prepare_qt_environment);
+    # the theme manager only tracks it for the settings dialog.
+    theme_manager.set_current_zoom(config.get("appearance.ui_zoom", 100))
 
     # Startup disk health check — warn user before problems snowball
     _check_startup_disk_health()
@@ -875,7 +1035,10 @@ def main() -> int:
     args = parser.parse_args()
 
     try:
-        return run_cli(args)
+        exit_code = run_cli(args)
+        if _restart_requested:
+            restart_application()
+        return exit_code
     except KeyboardInterrupt:
         print("\nInterrupted.")
         return 130

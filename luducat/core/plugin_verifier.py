@@ -20,10 +20,11 @@ import logging
 import os
 import secrets
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
+from .config import get_data_dir
 from .constants import APP_NAME, APP_VERSION
 
 logger = logging.getLogger(__name__)
@@ -65,7 +66,7 @@ class TrustTier:
 
 # --- I.3a: Merkle Fingerprinting ---
 
-def compute_plugin_fingerprint(plugin_dir: Path) -> Optional[str]:
+def compute_plugin_fingerprint(plugin_dir: Path) -> str | None:
     """Compute a deterministic Merkle fingerprint for a plugin directory.
 
     Algorithm:
@@ -85,7 +86,7 @@ def compute_plugin_fingerprint(plugin_dir: Path) -> Optional[str]:
         return None
 
     # Collect files to hash
-    files: List[Path] = []
+    files: list[Path] = []
     for item in _walk_plugin_dir(plugin_dir):
         rel = item.relative_to(plugin_dir)
         name = rel.name
@@ -102,13 +103,13 @@ def compute_plugin_fingerprint(plugin_dir: Path) -> Optional[str]:
     files.sort(key=lambda p: p.relative_to(plugin_dir).as_posix())
 
     # Build the Merkle concatenation
-    parts: List[str] = []
+    parts: list[str] = []
     for filepath in files:
         try:
             file_hash = _hash_file(filepath)
             rel_posix = filepath.relative_to(plugin_dir).as_posix()
             parts.append(f"{rel_posix}:{file_hash}\n")
-        except (OSError, IOError) as e:
+        except OSError as e:
             logger.warning("Cannot hash %s: %s", filepath, e)
             return None
 
@@ -164,25 +165,18 @@ class TrustStore:
     unavailable (logged as a warning).
     """
 
-    def __init__(self, credential_manager, data_dir: Optional[Path] = None):
-        """Initialize with an existing CredentialManager instance.
-
-        Args:
-            credential_manager: The application's CredentialManager
-            data_dir: Directory for trust-state.json (defaults to
-                      platformdirs user_data_dir)
-        """
+    def __init__(self, credential_manager, data_dir: Path | None = None):
+        """data_dir holds trust-state.json and defaults to the luducat data dir."""
         self._creds = credential_manager
-        self._trust_data: Optional[Dict[str, Any]] = None
+        self._trust_data: dict[str, Any] | None = None
 
         if data_dir is None:
-            import platformdirs
-            data_dir = Path(platformdirs.user_data_dir(APP_NAME))
+            data_dir = get_data_dir()
         self._trust_file = data_dir / TRUST_FILE_NAME
 
     # ── HMAC helpers ──────────────────────────────────────────────
 
-    def _get_or_create_hmac_key(self) -> Optional[str]:
+    def _get_or_create_hmac_key(self) -> str | None:
         """Get the HMAC key from keyring, creating one if needed.
 
         Returns:
@@ -217,7 +211,7 @@ class TrustStore:
 
     # ── File I/O ──────────────────────────────────────────────────
 
-    def _read_trust_file(self) -> Optional[Dict[str, Any]]:
+    def _read_trust_file(self) -> dict[str, Any] | None:
         """Read and verify trust data from file.
 
         Returns:
@@ -229,9 +223,9 @@ class TrustStore:
             return None
 
         try:
-            with open(self._trust_file, "r", encoding="utf-8") as f:
+            with open(self._trust_file, encoding="utf-8") as f:
                 wrapper = json.load(f)
-        except (json.JSONDecodeError, IOError, OSError) as e:
+        except (json.JSONDecodeError, OSError) as e:
             logger.warning("Cannot read trust file: %s", e)
             return None
 
@@ -268,14 +262,15 @@ class TrustStore:
 
         return data_dict
 
-    def _write_trust_file(self, data: Dict[str, Any]) -> bool:
+    def _write_trust_file(self, data: dict[str, Any]) -> bool:
         """Write trust data to file with HMAC signature.
 
         Returns:
             True if written successfully
         """
-        from .json_compat import json
         import oschmod
+
+        from .json_compat import json
 
         data_json = json.dumps(data, separators=(",", ":"), sort_keys=True)
         data_bytes = data_json.encode("utf-8")
@@ -306,13 +301,13 @@ class TrustStore:
                     "Trust data saved WITHOUT HMAC — keyring unavailable"
                 )
             return True
-        except (IOError, OSError) as e:
+        except OSError as e:
             logger.error("Failed to write trust file: %s", e)
             return False
 
     # ── Migration from v1 (keyring-only) ──────────────────────────
 
-    def _migrate_from_keyring(self) -> Optional[Dict[str, Any]]:
+    def _migrate_from_keyring(self) -> dict[str, Any] | None:
         """Check for legacy v1 trust data in keyring and migrate.
 
         Returns:
@@ -348,7 +343,7 @@ class TrustStore:
 
     # ── Public API ────────────────────────────────────────────────
 
-    def load(self) -> Dict[str, Any]:
+    def load(self) -> dict[str, Any]:
         """Load trust data from HMAC-signed file (or migrate from keyring).
 
         Returns:
@@ -383,7 +378,7 @@ class TrustStore:
             return True
         return self._write_trust_file(self._trust_data)
 
-    def get_fingerprint(self, plugin_name: str) -> Optional[Dict[str, str]]:
+    def get_fingerprint(self, plugin_name: str) -> dict[str, str] | None:
         """Get stored fingerprint for a plugin.
 
         Returns:
@@ -408,7 +403,7 @@ class TrustStore:
             is_bundled: Whether this is a bundled plugin
         """
         data = self.load()
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
 
         entry = {"version": version, "hash": fingerprint}
         if is_bundled:
@@ -417,7 +412,7 @@ class TrustStore:
             entry["trusted_at"] = now
             data.setdefault("user_trusted", {})[plugin_name] = entry
 
-    def is_disabled(self, plugin_name: str) -> Optional[Dict[str, str]]:
+    def is_disabled(self, plugin_name: str) -> dict[str, str] | None:
         """Check if a plugin is disabled by the integrity system.
 
         Returns:
@@ -434,7 +429,7 @@ class TrustStore:
             reason: Why it was disabled (e.g. "fingerprint_mismatch")
         """
         data = self.load()
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         data.setdefault("disabled_plugins", {})[plugin_name] = {
             "reason": reason,
             "since": now,
@@ -450,7 +445,7 @@ class TrustStore:
         data = self.load()
         return data.get("trust_source", "unknown")
 
-    def _empty_trust_data(self) -> Dict[str, Any]:
+    def _empty_trust_data(self) -> dict[str, Any]:
         """Create an empty trust data structure."""
         return {
             "v": TRUST_SCHEMA_VERSION,
@@ -458,7 +453,7 @@ class TrustStore:
             "user_trusted": {},
             "disabled_plugins": {},
             "trust_source": "initial_install",
-            "initialized_at": datetime.now(timezone.utc).isoformat(),
+            "initialized_at": datetime.now(UTC).isoformat(),
         }
 
 
@@ -474,19 +469,19 @@ class PluginVerifier:
     def __init__(self, trust_store: TrustStore):
         self._trust_store = trust_store
         # plugin_name -> VerificationResult
-        self._results: Dict[str, "VerificationResult"] = {}
+        self._results: dict[str, VerificationResult] = {}
 
     @property
-    def results(self) -> Dict[str, "VerificationResult"]:
+    def results(self) -> dict[str, "VerificationResult"]:
         """All verification results from the last run."""
         return self._results
 
     def verify_all(
         self,
-        discovered: Dict[str, Any],
+        discovered: dict[str, Any],
         *,
-        source_tree_dir: Optional[Path] = None,
-    ) -> Dict[str, "VerificationResult"]:
+        source_tree_dir: Path | None = None,
+    ) -> dict[str, "VerificationResult"]:
         """Verify all discovered plugins.
 
         Args:
@@ -514,7 +509,7 @@ class PluginVerifier:
         self,
         plugin_name: str,
         metadata,
-        source_tree_dir: Optional[Path],
+        source_tree_dir: Path | None,
         first_run: bool,
     ) -> "VerificationResult":
         """Verify a single plugin.
@@ -698,14 +693,14 @@ class PluginVerifier:
             expected_hash=stored_hash,
         )
 
-    def get_failed_plugins(self) -> List[str]:
+    def get_failed_plugins(self) -> list[str]:
         """Get names of plugins that failed verification."""
         return [
             name for name, r in self._results.items()
             if r.trust_state == TrustState.MISMATCH
         ]
 
-    def get_unverified_plugins(self) -> List[str]:
+    def get_unverified_plugins(self) -> list[str]:
         """Get names of unverified third-party plugins."""
         return [
             name for name, r in self._results.items()
@@ -726,11 +721,11 @@ class VerificationResult:
         plugin_name: str,
         trust_state: str,
         trust_tier: str,
-        fingerprint: Optional[str] = None,
-        version: Optional[str] = None,
-        reason: Optional[str] = None,
-        expected_hash: Optional[str] = None,
-        disabled_since: Optional[str] = None,
+        fingerprint: str | None = None,
+        version: str | None = None,
+        reason: str | None = None,
+        expected_hash: str | None = None,
+        disabled_since: str | None = None,
     ):
         self.plugin_name = plugin_name
         self.trust_state = trust_state
@@ -758,7 +753,7 @@ def _is_under_source_tree(plugin_dir: Path, source_tree_dir: Path) -> bool:
 
 # --- I.3f: Distribution Format Detection ---
 
-def detect_distribution_format() -> Tuple[str, Optional[str]]:
+def detect_distribution_format() -> tuple[str, str | None]:
     """Detect how luducat was installed/distributed.
 
     Returns:
@@ -802,9 +797,9 @@ def detect_distribution_format() -> Tuple[str, Optional[str]]:
 # --- I.3e: Trust State Logging ---
 
 def log_trust_state(
-    results: Dict[str, VerificationResult],
+    results: dict[str, VerificationResult],
     trust_source: str,
-    distribution: Tuple[str, Optional[str]],
+    distribution: tuple[str, str | None],
     *,
     event: str = "startup",
 ) -> None:

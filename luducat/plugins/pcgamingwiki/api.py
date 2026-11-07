@@ -13,22 +13,32 @@ Handles:
 
 import logging
 import time
-from typing import Any, Callable, Dict, List, Optional
+from collections.abc import Callable
+from typing import Any
+from urllib.parse import unquote
 
+from luducat.plugins.sdk.constants import USER_AGENT_GW
 from luducat.plugins.sdk.network import (
     ConnectionError as RequestConnectionError,
+)
+from luducat.plugins.sdk.network import (
     RequestException,
     Response,
 )
-from luducat.plugins.sdk.constants import USER_AGENT_GW
+
+from .wikitext import parse_page
 
 logger = logging.getLogger(__name__)
 
 # Type alias for progress callback: (message, current, total)
-ProgressCallback = Optional[Callable[[str, int, int], None]]
+ProgressCallback = Callable[[str, int, int], None] | None
+CancelCheck = Callable[[], bool] | None
 
 # PCGamingWiki API
 PCGW_API_URL = "https://www.pcgamingwiki.com/w/api.php"
+# Steam AppID -> page redirect endpoint (documented, survives the
+# Cargo lockdown)
+PCGW_APPID_URL = "https://www.pcgamingwiki.com/api/appid.php"
 # Status page (separate infrastructure, stays up when wiki is down)
 PCGW_STATUS_URL = "https://status.pcgamingwiki.com"
 
@@ -161,12 +171,20 @@ class PcgwApi:
             no_retry = AdapterClass(max_retries=0)
             session.mount("https://www.pcgamingwiki.com", no_retry)
             session.mount("https://status.pcgamingwiki.com", no_retry)
-        except Exception:
-            pass  # Non-critical
+        except Exception as e:
+            # Non-critical: urllib3 retries just make dead-server checks slow
+            logger.debug("Could not mount no-retry adapter: %s", e)
 
     def cancel(self):
         """Signal cancellation — interrupts batch loops"""
         self._cancelled = True
+
+    def _should_stop(self, cancel_check: CancelCheck) -> bool:
+        """True when a batch loop must break: explicit cancel, open
+        breaker, or the caller's cancel_check says so."""
+        if self._cancelled or self.breaker_open:
+            return True
+        return bool(cancel_check and cancel_check())
 
     def reset_cancel(self):
         """Reset cancel flag for reuse"""
@@ -359,8 +377,8 @@ class PcgwApi:
         join_on: str = "",
         limit: int = MAX_RESULTS_PER_QUERY,
         offset: int = 0,
-        max_attempts: Optional[int] = None,
-    ) -> List[Dict[str, Any]]:
+        max_attempts: int | None = None,
+    ) -> list[dict[str, Any]]:
         """Execute a Cargo query against PCGamingWiki API
 
         Includes exponential backoff on HTTP 429, 5xx, and connection errors.
@@ -380,16 +398,6 @@ class PcgwApi:
         Raises:
             PcgwApiError: On API errors or circuit breaker open
         """
-        # Circuit breaker check (may probe if cooldown expired)
-        if self._check_breaker():
-            raise PcgwApiError(
-                "PCGamingWiki API unavailable (circuit breaker open)"
-            )
-
-        self._rate_limit()
-
-        attempts = max_attempts if max_attempts is not None else MAX_ATTEMPTS
-
         params = {
             "action": "cargoquery",
             "format": "json",
@@ -403,13 +411,68 @@ class PcgwApi:
         if join_on:
             params["join_on"] = join_on
 
-        last_error = None
+        response = self._get_with_retries(
+            PCGW_API_URL, params, max_attempts=max_attempts
+        )
+
+        try:
+            data = response.json()
+        except ValueError as e:
+            raise PcgwApiError("Invalid JSON response from API") from e
+
+        if "error" in data:
+            error_info = data["error"].get("info", str(data["error"]))
+            raise PcgwApiError(f"Cargo API error: {error_info}")
+
+        results = []
+        for item in data.get("cargoquery", []):
+            results.append(item.get("title", {}))
+        return results
+
+    def _get_with_retries(
+        self,
+        url: str,
+        params: dict[str, str],
+        max_attempts: int | None = None,
+        allow_redirects: bool = True,
+        accept_statuses: frozenset = frozenset(),
+    ) -> Response:
+        """HTTP GET with breaker check, pacing and exponential backoff.
+
+        Args:
+            url: Request URL
+            params: Query parameters
+            max_attempts: Total attempts (default MAX_ATTEMPTS)
+            allow_redirects: Follow HTTP redirects
+            accept_statuses: Status codes returned to the caller as-is
+                (e.g. 302/404 for the appid.php redirect endpoint)
+
+        Returns:
+            The Response on success or accepted status.
+
+        Raises:
+            PcgwApiError: breaker open, DB outage, connection error, or
+                attempts exhausted on server errors.
+        """
+        if self._check_breaker():
+            raise PcgwApiError(
+                "PCGamingWiki API unavailable (circuit breaker open)"
+            )
+
+        self._rate_limit()
+
+        attempts = max_attempts if max_attempts is not None else MAX_ATTEMPTS
+
         for attempt in range(attempts):
             try:
                 response = self._http.get(
-                    PCGW_API_URL, params=params,
-                    headers=self._headers, timeout=15
+                    url, params=params, headers=self._headers,
+                    timeout=15, allow_redirects=allow_redirects,
                 )
+
+                if response.status_code in accept_statuses:
+                    self._consecutive_server_errors = 0
+                    return response
 
                 # Confirmed DB outage → trip breaker immediately, don't retry
                 if self._is_db_outage(response):
@@ -448,29 +511,165 @@ class PcgwApi:
                 self._record_query_failure()
                 raise PcgwApiError(f"HTTP request failed: {e}") from e
 
-            # Parse response
-            try:
-                data = response.json()
-            except ValueError as e:
-                raise PcgwApiError("Invalid JSON response from API") from e
-
-            if "error" in data:
-                error_info = data["error"].get("info", str(data["error"]))
-                raise PcgwApiError(f"Cargo API error: {error_info}")
-
             # Success — reset consecutive error counter
             self._consecutive_server_errors = 0
-
-            results = []
-            for item in data.get("cargoquery", []):
-                results.append(item.get("title", {}))
-            return results
+            return response
 
         # All attempts exhausted with server errors — record for breaker
         self._record_query_failure()
-        raise PcgwApiError(
-            f"Request failed after {attempts} attempts: {last_error}"
+        raise PcgwApiError(f"Request failed after {attempts} attempts")
+
+    # -------------------------------------------------------------------------
+    # Wikitext fetch path (Cargo lockdown replacement, lud-8rdr)
+    # -------------------------------------------------------------------------
+
+    def resolve_steam_appid(
+        self, steam_id: str, max_attempts: int | None = None,
+    ) -> str | None:
+        """Resolve a Steam AppID to its PCGW page title via appid.php.
+
+        Returns:
+            Page title (spaces, unquoted) or None when no page exists.
+        """
+        if not steam_id:
+            return None
+        response = self._get_with_retries(
+            PCGW_APPID_URL, {"appid": str(steam_id)},
+            max_attempts=max_attempts,
+            allow_redirects=False,
+            accept_statuses=frozenset({301, 302, 404}),
         )
+        if response.status_code == 404:
+            return None
+        location = response.headers.get("Location", "")
+        marker = "/wiki/"
+        idx = location.find(marker)
+        if idx < 0:
+            return None
+        title = unquote(location[idx + len(marker):]).replace("_", " ").strip()
+        return title or None
+
+    def fetch_page_data(
+        self, page_title: str, max_attempts: int | None = None,
+    ) -> dict[str, Any] | None:
+        """Fetch a page's wikitext and parse it into a Cargo-shaped dict.
+
+        Returns:
+            Parsed data dict, or None when the page does not exist.
+        """
+        if not page_title:
+            return None
+        params = {
+            "action": "parse",
+            "format": "json",
+            "prop": "wikitext",
+            "redirects": "1",
+            "page": page_title,
+        }
+        response = self._get_with_retries(
+            PCGW_API_URL, params, max_attempts=max_attempts
+        )
+        try:
+            data = response.json()
+        except ValueError as e:
+            raise PcgwApiError("Invalid JSON response from API") from e
+        if "error" in data:
+            if data["error"].get("code") == "missingtitle":
+                return None
+            error_info = data["error"].get("info", str(data["error"]))
+            raise PcgwApiError(f"Parse API error: {error_info}")
+        parse = data.get("parse", {})
+        wikitext = parse.get("wikitext", {}).get("*", "")
+        if not wikitext:
+            return None
+        return parse_page(
+            wikitext, parse.get("pageid", ""), parse.get("title", page_title)
+        )
+
+    def search_pages(
+        self, title: str, limit: int = 2,
+        max_attempts: int | None = None,
+    ) -> list[str]:
+        """Search PCGW page titles (MediaWiki full-text search)."""
+        if not title:
+            return []
+        params = {
+            "action": "query",
+            "format": "json",
+            "list": "search",
+            "srsearch": title,
+            "srlimit": str(limit),
+        }
+        response = self._get_with_retries(
+            PCGW_API_URL, params, max_attempts=max_attempts
+        )
+        try:
+            data = response.json()
+        except ValueError as e:
+            raise PcgwApiError("Invalid JSON response from API") from e
+        if "error" in data:
+            error_info = data["error"].get("info", str(data["error"]))
+            raise PcgwApiError(f"Search API error: {error_info}")
+        return [
+            r.get("title", "")
+            for r in data.get("query", {}).get("search", [])
+            if r.get("title")
+        ]
+
+    @staticmethod
+    def _row_holds_gog_id(row: dict[str, Any], gog_id: str) -> bool:
+        raw = row.get("GOGcom ID", "") or ""
+        return gog_id in {p.strip() for p in raw.split(",") if p.strip()}
+
+    def lookup_by_page_names(
+        self,
+        page_names: dict[str, str],
+        status_callback: ProgressCallback = None,
+        max_attempts: int | None = None,
+        cancel_check: CancelCheck = None,
+        attempted: list[str] | None = None,
+    ) -> dict[str, dict[str, Any]]:
+        """Fetch pages by already-known PCGW page name.
+
+        For refresh flows where the store-id -> page match is already
+        established; skips the appid.php/search resolution roundtrip.
+
+        Args:
+            page_names: Dict mapping store_app_id -> PCGW page name
+            status_callback: Progress callback (message, current, total)
+            max_attempts: Total attempts per request (default MAX_ATTEMPTS)
+            cancel_check: Returns True to stop before the next page
+            attempted: Out-list; receives each store_id that got a
+                definitive answer
+
+        Returns:
+            Dict mapping store_app_id -> parsed page data
+        """
+        results: dict[str, dict[str, Any]] = {}
+        total = len(page_names)
+        for index, (store_id, page_name) in enumerate(page_names.items()):
+            if self._should_stop(cancel_check):
+                break
+            if status_callback:
+                status_callback(
+                    f"PCGamingWiki: Refreshing game {index + 1}/{total}...",
+                    index, total,
+                )
+            try:
+                row = self.fetch_page_data(
+                    page_name, max_attempts=max_attempts
+                )
+                if row:
+                    results[store_id] = row
+                if attempted is not None:
+                    attempted.append(store_id)
+            except PcgwApiError as e:
+                logger.warning(
+                    "PCGamingWiki refresh failed for %s: %s", page_name, e,
+                )
+                if self.breaker_open:
+                    break
+        return results
 
     # -------------------------------------------------------------------------
     # Batch Lookup Methods
@@ -478,64 +677,168 @@ class PcgwApi:
 
     def lookup_by_steam_ids_batch(
         self,
-        steam_ids: List[str],
+        steam_ids: list[str],
         batch_size: int = DEFAULT_BATCH_SIZE,
         status_callback: ProgressCallback = None,
-        max_attempts: Optional[int] = None,
-    ) -> Dict[str, Dict[str, Any]]:
-        """Look up games by Steam AppID in batches
+        max_attempts: int | None = None,
+        cancel_check: CancelCheck = None,
+        attempted: list[str] | None = None,
+    ) -> dict[str, dict[str, Any]]:
+        """Look up games by Steam AppID.
 
-        Queries Infobox_game joined with Multiplayer table using
-        OR-chained HOLDS conditions for batch efficiency.
+        Per game: appid.php redirect resolution + one wikitext parse
+        (the batched cargoquery path is disabled by PCGW's Cargo
+        lockdown; the machinery is kept for the authenticated revival,
+        see lud-8qvd/Phase 2).
 
         Args:
             steam_ids: List of Steam AppID strings
-            batch_size: IDs per API request
+            batch_size: Unused on the wikitext path, kept for signature
+                compatibility
             status_callback: Progress callback (message, current, total)
-            max_attempts: Total attempts (default MAX_ATTEMPTS)
+            max_attempts: Total attempts per request (default MAX_ATTEMPTS)
+            cancel_check: Returns True to stop before the next game
+            attempted: Out-list; receives each steam_id that got a
+                definitive answer (match or confirmed no-match)
 
         Returns:
             Dict mapping steam_app_id -> combined Infobox+Multiplayer data
         """
-        return self._lookup_by_store_ids_batch(
-            store_ids=steam_ids,
-            id_field="Infobox_game.Steam_AppID",
-            store_label="Steam",
-            batch_size=batch_size,
-            status_callback=status_callback,
-            max_attempts=max_attempts,
+        results: dict[str, dict[str, Any]] = {}
+        total = len(steam_ids)
+        for index, steam_id in enumerate(steam_ids):
+            if self._should_stop(cancel_check):
+                break
+            if status_callback:
+                status_callback(
+                    f"PCGamingWiki: Looking up Steam game "
+                    f"{index + 1}/{total}...",
+                    index, total,
+                )
+            try:
+                page_title = self.resolve_steam_appid(
+                    steam_id, max_attempts=max_attempts
+                )
+                if page_title:
+                    row = self.fetch_page_data(
+                        page_title, max_attempts=max_attempts
+                    )
+                    if row:
+                        results[steam_id] = row
+                # Reached here without an API error: match or a real
+                # no-match, either way a cacheable answer
+                if attempted is not None:
+                    attempted.append(steam_id)
+            except PcgwApiError as e:
+                logger.warning(
+                    "PCGamingWiki lookup failed for Steam %s: %s",
+                    steam_id, e,
+                )
+                if self.breaker_open:
+                    if status_callback:
+                        status_callback(
+                            "PCGamingWiki: Server unavailable, "
+                            "skipping remaining lookups",
+                            total, total,
+                        )
+                    break
+
+        if status_callback:
+            status_callback(
+                f"PCGamingWiki: Found {len(results)} of {total} Steam games",
+                total, total,
+            )
+        logger.info(
+            "PCGamingWiki: Matched %d/%d Steam games", len(results), total
         )
+        return results
 
     def lookup_by_gog_ids_batch(
         self,
-        gog_ids: List[str],
+        gog_ids: list[str],
         batch_size: int = DEFAULT_BATCH_SIZE,
         status_callback: ProgressCallback = None,
-        max_attempts: Optional[int] = None,
-    ) -> Dict[str, Dict[str, Any]]:
-        """Look up games by GOG ID in batches
+        max_attempts: int | None = None,
+        titles: dict[str, str] | None = None,
+        cancel_check: CancelCheck = None,
+        attempted: list[str] | None = None,
+    ) -> dict[str, dict[str, Any]]:
+        """Look up games by GOG ID.
 
-        Same as Steam lookup but using GOGcom_ID field.
+        GOG IDs have no appid.php equivalent, so resolution goes title
+        search -> parse -> verify the page's GOGcom ID actually holds
+        the queried ID (guards against wrong search hits). IDs without
+        a title in ``titles`` are skipped and not reported as attempted:
+        they were never looked up, so the caller must not cache them.
         """
-        return self._lookup_by_store_ids_batch(
-            store_ids=gog_ids,
-            id_field="Infobox_game.GOGcom_ID",
-            store_label="GOG",
-            batch_size=batch_size,
-            status_callback=status_callback,
-            max_attempts=max_attempts,
+        results: dict[str, dict[str, Any]] = {}
+        total = len(gog_ids)
+        titles = titles or {}
+        for index, gog_id in enumerate(gog_ids):
+            if self._should_stop(cancel_check):
+                break
+            title = titles.get(gog_id)
+            if not title:
+                logger.debug(
+                    "PCGamingWiki: no title for GOG id %s, skipping", gog_id
+                )
+                continue
+            if status_callback:
+                status_callback(
+                    f"PCGamingWiki: Looking up GOG game "
+                    f"{index + 1}/{total}...",
+                    index, total,
+                )
+            try:
+                for candidate in self.search_pages(
+                    title, limit=2, max_attempts=max_attempts
+                ):
+                    row = self.fetch_page_data(
+                        candidate, max_attempts=max_attempts
+                    )
+                    if row and self._row_holds_gog_id(row, gog_id):
+                        results[gog_id] = row
+                        break
+                if attempted is not None:
+                    attempted.append(gog_id)
+            except PcgwApiError as e:
+                logger.warning(
+                    "PCGamingWiki lookup failed for GOG %s: %s", gog_id, e,
+                )
+                if self.breaker_open:
+                    if status_callback:
+                        status_callback(
+                            "PCGamingWiki: Server unavailable, "
+                            "skipping remaining lookups",
+                            total, total,
+                        )
+                    break
+
+        if status_callback:
+            status_callback(
+                f"PCGamingWiki: Found {len(results)} of {total} GOG games",
+                total, total,
+            )
+        logger.info(
+            "PCGamingWiki: Matched %d/%d GOG games", len(results), total
         )
+        return results
 
     def _lookup_by_store_ids_batch(
         self,
-        store_ids: List[str],
+        store_ids: list[str],
         id_field: str,
         store_label: str,
         batch_size: int,
         status_callback: ProgressCallback,
-        max_attempts: Optional[int] = None,
-    ) -> Dict[str, Dict[str, Any]]:
-        """Internal batch lookup for any store ID field
+        max_attempts: int | None = None,
+    ) -> dict[str, dict[str, Any]]:
+        """Internal cargoquery batch lookup for any store ID field.
+
+        UNREACHABLE since PCGW's Cargo lockdown (anonymous cargoquery
+        returns permissiondenied). Kept for the authenticated revival:
+        any logged-in account holds the runcargoqueries right (probed
+        2026-08-20), see lud-8qvd / Phase 2 of the compliant-fetch plan.
 
         Builds OR-chained WHERE clauses using HOLDS operator
         (required for virtual/list fields in Cargo).
@@ -558,7 +861,7 @@ class PcgwApi:
         tables = "Infobox_game,Multiplayer,Input"
         join_on = "Infobox_game._pageID=Multiplayer._pageID,Infobox_game._pageID=Input._pageID"
 
-        results: Dict[str, Dict[str, Any]] = {}
+        results: dict[str, dict[str, Any]] = {}
         total = len(store_ids)
         processed = 0
 
@@ -633,10 +936,10 @@ class PcgwApi:
 
     def _map_results_to_store_ids(
         self,
-        rows: List[Dict[str, Any]],
-        queried_ids: List[str],
+        rows: list[dict[str, Any]],
+        queried_ids: list[str],
         id_field_key: str,
-        results: Dict[str, Dict[str, Any]],
+        results: dict[str, dict[str, Any]],
     ) -> None:
         """Map Cargo API results back to queried store IDs
 
@@ -663,7 +966,7 @@ class PcgwApi:
     # Single Lookups
     # -------------------------------------------------------------------------
 
-    def lookup_by_steam_id(self, steam_id: str) -> Optional[Dict[str, Any]]:
+    def lookup_by_steam_id(self, steam_id: str) -> dict[str, Any] | None:
         """Look up a single game by Steam AppID
 
         Uses reduced retries (1) to avoid long blocking on server errors.
@@ -676,13 +979,17 @@ class PcgwApi:
         )
         return result.get(steam_id)
 
-    def lookup_by_gog_id(self, gog_id: str) -> Optional[Dict[str, Any]]:
+    def lookup_by_gog_id(
+        self, gog_id: str, title: str | None = None,
+    ) -> dict[str, Any] | None:
         """Look up a single game by GOG ID
 
         Uses reduced retries (1) to avoid long blocking on server errors.
+        Without a title the wikitext path cannot resolve the page.
         """
+        titles = {gog_id: title} if title else None
         result = self.lookup_by_gog_ids_batch(
-            [gog_id], batch_size=1, max_attempts=1
+            [gog_id], batch_size=1, max_attempts=1, titles=titles
         )
         return result.get(gog_id)
 

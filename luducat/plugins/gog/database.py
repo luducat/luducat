@@ -25,12 +25,25 @@ from sqlalchemy import (
     String,
     Text,
     create_engine,
+    event,
     inspect,
     text,
 )
-from sqlalchemy.orm import DeclarativeBase, Session, relationship, sessionmaker
+from sqlalchemy.orm import DeclarativeBase, Session, scoped_session, relationship, sessionmaker
+from sqlalchemy.pool import NullPool
 
 logger = logging.getLogger(__name__)
+
+
+def _sqlite_connect_pragmas(dbapi_connection, _record) -> None:
+    """Same connection setup as the main database: WAL so readers do not
+    wait on the sync's writes, busy timeout for the rest, no mmap (FUSE)."""
+    cursor = dbapi_connection.cursor()
+    cursor.execute("PRAGMA journal_mode=WAL")
+    cursor.execute("PRAGMA busy_timeout=30000")
+    cursor.execute("PRAGMA synchronous=NORMAL")
+    cursor.execute("PRAGMA mmap_size=0")
+    cursor.close()
 
 
 class Base(DeclarativeBase):
@@ -626,9 +639,15 @@ class GogDatabase:
 
     def __init__(self, db_path: Path):
         self.db_path = db_path
-        self.engine = create_engine(f"sqlite:///{db_path}", echo=False)
-        self._session_factory = sessionmaker(bind=self.engine)
-        self._session: Optional[Session] = None
+        self.engine = create_engine(
+            f"sqlite:///{db_path}",
+            echo=False,
+            poolclass=NullPool,
+            connect_args={"check_same_thread": False, "timeout": 30},
+        )
+        event.listen(self.engine, "connect", _sqlite_connect_pragmas)
+        # One session per thread (cover workers, GUI, sync); never shared
+        self._scoped = scoped_session(sessionmaker(bind=self.engine))
 
     def initialize(self) -> None:
         """Create tables if they don't exist, then migrate new columns"""
@@ -668,21 +687,19 @@ class GogDatabase:
 
     @property
     def session(self) -> Session:
-        """Get or create session"""
-        if self._session is None:
-            self._session = self._session_factory()
-        return self._session
+        """The calling thread's session (created on first use)."""
+        return self._scoped()
 
     def close(self) -> None:
-        """Close database connection"""
-        if self._session:
-            self._session.close()
-            self._session = None
+        """Release the calling thread's session and pooled connections."""
+        self._scoped.remove()
         self.engine.dispose()
 
     def get_game(self, gogid: int) -> Optional[GogGame]:
         """Get game by GOG ID"""
-        return self.session.query(GogGame).filter(GogGame.gogid == gogid).first()
+        return self.session.query(GogGame).populate_existing().filter(
+            GogGame.gogid == gogid
+        ).first()
 
     def get_game_by_slug(self, slug: str) -> Optional[GogGame]:
         """Look up a game by its URL slug."""

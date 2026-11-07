@@ -12,13 +12,15 @@ import hashlib
 import logging
 import re
 import sqlite3
+import threading
 import time
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 from urllib.parse import quote, urlencode, urlparse, parse_qs
 
-from luducat.plugins.base import AbstractGameStore, AuthenticationError, Game
-from luducat.plugins.sdk.network import HTTPError
+from luducat.plugins.base import AbstractGameStore, AuthenticationError, Game, Lookup
+from luducat.plugins.sdk.lookup import ON_MISS_MAX_WAIT_SECONDS
+from luducat.plugins.sdk.network import HTTPError, is_online
 from luducat.plugins.sdk.cookies import get_browser_cookie_manager
 
 from .engine import Ruleset, load_rulesets, extract_json_path, apply_field_spec, absolutize_html_urls
@@ -48,26 +50,28 @@ _URL_FIELDS = {"cover", "screenshots", "header_url", "hero", "background_url"}
 # Fields that may contain HTML with embedded relative URLs (src, href).
 _HTML_FIELDS = {"description", "short_description"}
 
+# Marker returned by the detail fetch when the page redirected away for good.
+DETAIL_GONE = "_detail_gone"
+
 # Matches src="/" or href="/" in HTML content (not protocol-relative //).
 _RE_RELATIVE_HTML_URL = re.compile(r'((?:src|href)\s*=\s*["\'])(/(?!/))', re.IGNORECASE)
 
 
 class EngineDatabase:
-    """Simple SQLite catalog DB for a virtual store.
-
-    Stores fetched game data in a flat table. One DB per virtual store.
-    """
+    """SQLite catalog of a virtual store: one connection, every call under a lock.
+    luducat starts a thread per cover request, so per-thread connections would pile up."""
 
     def __init__(self, db_path: Path):
         self._path = db_path
         self._conn: Optional[sqlite3.Connection] = None
+        self._lock = threading.RLock()
 
     def _ensure_db(self) -> sqlite3.Connection:
         if self._conn is None:
             self._path.parent.mkdir(parents=True, exist_ok=True)
-            self._conn = sqlite3.connect(str(self._path), check_same_thread=False)
-            self._conn.execute("PRAGMA journal_mode=WAL")
-            self._conn.execute("""
+            conn = sqlite3.connect(str(self._path), timeout=30, check_same_thread=False)
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("""
                 CREATE TABLE IF NOT EXISTS games (
                     app_id TEXT PRIMARY KEY,
                     title TEXT NOT NULL,
@@ -75,36 +79,38 @@ class EngineDatabase:
                     fetched_at REAL DEFAULT 0
                 )
             """)
-            self._conn.execute("""
+            conn.execute("""
                 CREATE TABLE IF NOT EXISTS meta (
                     key TEXT PRIMARY KEY,
                     value TEXT
                 )
             """)
-            self._conn.commit()
+            conn.commit()
+            self._conn = conn
         return self._conn
 
     def upsert_game(self, app_id: str, title: str, metadata: dict) -> None:
         from luducat.core.json_compat import json
-        conn = self._ensure_db()
-        conn.execute(
-            """INSERT INTO games (app_id, title, metadata_json, fetched_at)
-               VALUES (?, ?, ?, ?)
-               ON CONFLICT(app_id) DO UPDATE SET
-                   title=excluded.title,
-                   metadata_json=excluded.metadata_json,
-                   fetched_at=excluded.fetched_at""",
-            (app_id, title, json.dumps(metadata), time.time()),
-        )
-        conn.commit()
+        with self._lock:
+            conn = self._ensure_db()
+            conn.execute(
+                """INSERT INTO games (app_id, title, metadata_json, fetched_at)
+                   VALUES (?, ?, ?, ?)
+                   ON CONFLICT(app_id) DO UPDATE SET
+                       title=excluded.title,
+                       metadata_json=excluded.metadata_json,
+                       fetched_at=excluded.fetched_at""",
+                (app_id, title, json.dumps(metadata), time.time()),
+            )
+            conn.commit()
 
     def get_game(self, app_id: str) -> Optional[dict]:
         from luducat.core.json_compat import json
-        conn = self._ensure_db()
-        row = conn.execute(
-            "SELECT app_id, title, metadata_json FROM games WHERE app_id=?",
-            (app_id,),
-        ).fetchone()
+        with self._lock:
+            row = self._ensure_db().execute(
+                "SELECT app_id, title, metadata_json FROM games WHERE app_id=?",
+                (app_id,),
+            ).fetchone()
         if row is None:
             return None
         meta = json.loads(row[2]) if row[2] else {}
@@ -113,17 +119,16 @@ class EngineDatabase:
         return meta
 
     def get_all_app_ids(self) -> List[str]:
-        conn = self._ensure_db()
-        return [
-            r[0] for r in conn.execute("SELECT app_id FROM games").fetchall()
-        ]
+        with self._lock:
+            rows = self._ensure_db().execute("SELECT app_id FROM games").fetchall()
+        return [r[0] for r in rows]
 
     def get_all_games(self) -> List[dict]:
         from luducat.core.json_compat import json
-        conn = self._ensure_db()
-        rows = conn.execute(
-            "SELECT app_id, title, metadata_json FROM games"
-        ).fetchall()
+        with self._lock:
+            rows = self._ensure_db().execute(
+                "SELECT app_id, title, metadata_json FROM games"
+            ).fetchall()
         results = []
         for row in rows:
             meta = json.loads(row[2]) if row[2] else {}
@@ -133,20 +138,21 @@ class EngineDatabase:
         return results
 
     def get_meta(self, key: str) -> Optional[str]:
-        conn = self._ensure_db()
-        row = conn.execute(
-            "SELECT value FROM meta WHERE key=?", (key,)
-        ).fetchone()
+        with self._lock:
+            row = self._ensure_db().execute(
+                "SELECT value FROM meta WHERE key=?", (key,)
+            ).fetchone()
         return row[0] if row else None
 
     def set_meta(self, key: str, value: str) -> None:
-        conn = self._ensure_db()
-        conn.execute(
-            "INSERT INTO meta (key, value) VALUES (?, ?) "
-            "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
-            (key, value),
-        )
-        conn.commit()
+        with self._lock:
+            conn = self._ensure_db()
+            conn.execute(
+                "INSERT INTO meta (key, value) VALUES (?, ?) "
+                "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                (key, value),
+            )
+            conn.commit()
 
     def clear_detail_fetched(self) -> int:
         """Nullify _detail_fetched in all games' metadata_json.
@@ -154,37 +160,39 @@ class EngineDatabase:
         Returns count of rows cleared.
         """
         from luducat.core.json_compat import json
-        conn = self._ensure_db()
-        rows = conn.execute(
-            "SELECT app_id, metadata_json FROM games "
-            "WHERE json_extract(metadata_json, '$._detail_fetched') = 1"
-        ).fetchall()
-        if not rows:
-            return 0
-        for app_id, meta_json in rows:
-            meta = json.loads(meta_json) if meta_json else {}
-            meta.pop("_detail_fetched", None)
-            conn.execute(
-                "UPDATE games SET metadata_json=? WHERE app_id=?",
-                (json.dumps(meta), app_id),
-            )
-        conn.commit()
+        with self._lock:
+            conn = self._ensure_db()
+            rows = conn.execute(
+                "SELECT app_id, metadata_json FROM games "
+                "WHERE json_extract(metadata_json, '$._detail_fetched') = 1"
+            ).fetchall()
+            if not rows:
+                return 0
+            for app_id, meta_json in rows:
+                meta = json.loads(meta_json) if meta_json else {}
+                meta.pop("_detail_fetched", None)
+                conn.execute(
+                    "UPDATE games SET metadata_json=? WHERE app_id=?",
+                    (json.dumps(meta), app_id),
+                )
+            conn.commit()
         return len(rows)
 
     def get_ids_needing_detail(self) -> List[str]:
         """Return app_ids where detail has not been fetched (or was cleared)."""
-        conn = self._ensure_db()
-        rows = conn.execute(
-            "SELECT app_id FROM games "
-            "WHERE json_extract(metadata_json, '$._detail_fetched') IS NULL "
-            "   OR json_extract(metadata_json, '$._detail_fetched') != 1"
-        ).fetchall()
+        with self._lock:
+            rows = self._ensure_db().execute(
+                "SELECT app_id FROM games "
+                "WHERE json_extract(metadata_json, '$._detail_fetched') IS NULL "
+                "   OR json_extract(metadata_json, '$._detail_fetched') != 1"
+            ).fetchall()
         return [r[0] for r in rows]
 
     def close(self):
-        if self._conn:
-            self._conn.close()
-            self._conn = None
+        with self._lock:
+            if self._conn is not None:
+                self._conn.close()
+                self._conn = None
 
 
 class VirtualStore(AbstractGameStore):
@@ -207,6 +215,7 @@ class VirtualStore(AbstractGameStore):
         self._engine = engine
         self._db = EngineDatabase(data_dir / "catalog.db")
         self._cookie_auth_cache: tuple = (0.0, None)  # (timestamp, result)
+        self._title_index: dict[str, str] | None = None
 
     @property
     def store_name(self) -> str:
@@ -433,10 +442,18 @@ class VirtualStore(AbstractGameStore):
         logger.debug("[%s] fetching library via %s backend", self.store_name, backend_type)
         all_items = []
 
+        complete = True
         if backend_type == "html":
-            all_items = await self._fetch_library_html(library, status_callback, cancel_check)
+            all_items, complete = await self._fetch_library_html(library, status_callback, cancel_check)
         elif backend_type == "api":
-            all_items = await self._fetch_library_api(library, status_callback, cancel_check)
+            all_items, complete = await self._fetch_library_api(library, status_callback, cancel_check)
+
+        if not complete:
+            # A partial page walk is not the library: handing it on would
+            # let the sync remove every game it did not reach as unowned
+            logger.warning("[%s] library fetch stopped early (%d items seen), "
+                           "ownership left unchanged", self.store_name, len(all_items))
+            return []
 
         logger.debug("[%s] library returned %d raw items", self.store_name, len(all_items))
 
@@ -486,13 +503,14 @@ class VirtualStore(AbstractGameStore):
         library: dict,
         status_callback: Optional[Callable],
         cancel_check: Optional[Callable],
-    ) -> List[dict]:
+    ) -> Tuple[List[dict], bool]:
         """Fetch library pages using HTML backend."""
         pagination = library.get("pagination", {})
         pag_type = pagination.get("type", "page_param")
         item_selector = library.get("item_selector", "")
         fields = library.get("fields", {})
         all_items = []
+        complete = True
 
         # Get auth cookies
         cookies = self._get_auth_cookies()
@@ -500,6 +518,7 @@ class VirtualStore(AbstractGameStore):
         page = pagination.get("start", 1)
         while True:
             if cancel_check and cancel_check():
+                complete = False
                 break
 
             url = library["url"].replace("{page}", str(page))
@@ -521,9 +540,11 @@ class VirtualStore(AbstractGameStore):
                         f"{self.store_name}: authentication failed (session expired)"
                     ) from e
                 logger.error("Failed to fetch %s page %d: %s", self.store_name, page, e)
+                complete = False
                 break
             except Exception as e:
                 logger.error("Failed to fetch %s page %d: %s", self.store_name, page, e)
+                complete = False
                 break
 
             # Detect session expiry (redirected to login page)
@@ -534,6 +555,7 @@ class VirtualStore(AbstractGameStore):
                 self.delete_credential("session_cookies")
                 if status_callback:
                     status_callback("Session expired — please re-connect")
+                complete = False
                 break
 
             items = html_backend.extract_items(html_text, item_selector, fields)
@@ -562,14 +584,14 @@ class VirtualStore(AbstractGameStore):
             page += 1
             time.sleep(_PAGE_DELAY)
 
-        return all_items
+        return all_items, complete
 
     async def _fetch_library_api(
         self,
         library: dict,
         status_callback: Optional[Callable],
         cancel_check: Optional[Callable],
-    ) -> List[dict]:
+    ) -> Tuple[List[dict], bool]:
         """Fetch library using API backend."""
         from luducat.core.json_compat import json
 
@@ -577,6 +599,7 @@ class VirtualStore(AbstractGameStore):
         items_path = library.get("items_path", "")
         fields = library.get("fields", {})
         all_items = []
+        complete = True
 
         headers = {"Accept": "application/json"}
         headers.update(self._get_auth_headers())
@@ -596,6 +619,7 @@ class VirtualStore(AbstractGameStore):
         page = pagination.get("start", 1)
         while True:
             if cancel_check and cancel_check():
+                complete = False
                 break
 
             url = library["url"].replace("{page}", str(page))
@@ -616,9 +640,11 @@ class VirtualStore(AbstractGameStore):
                         f"{self.store_name}: authentication failed (token expired or invalid)"
                     ) from e
                 logger.error("Failed to fetch %s page %d: %s", self.store_name, page, e)
+                complete = False
                 break
             except Exception as e:
                 logger.error("Failed to fetch %s page %d: %s", self.store_name, page, e)
+                complete = False
                 break
 
             items = api_backend.extract_items(data, items_path, fields)
@@ -637,7 +663,7 @@ class VirtualStore(AbstractGameStore):
             page += 1
             time.sleep(_PAGE_DELAY)
 
-        return all_items
+        return all_items, complete
 
     def _detail_fingerprint(self) -> str:
         """SHA-256 fingerprint of the ruleset's detail section (16 hex chars).
@@ -697,7 +723,7 @@ class VirtualStore(AbstractGameStore):
             # Fetch detail if configured and not yet enriched
             if detail and not cached.get("_detail_fetched"):
                 detail_data = await self._fetch_detail(app_id, cached, detail)
-                if detail_data:
+                if detail_data and DETAIL_GONE not in detail_data:
                     cached.update(detail_data)
                     cached["_detail_fetched"] = True
                     self._db.upsert_game(app_id, cached.get("title", ""), cached)
@@ -725,20 +751,31 @@ class VirtualStore(AbstractGameStore):
         game_data: dict,
         detail: dict,
     ) -> Optional[dict]:
-        """Fetch detail page/API for a single game."""
-        from luducat.core.json_compat import json
+        """The HTTP client is synchronous; the sync pipeline awaits this wrapper."""
+        return self._fetch_detail_sync(app_id, game_data, detail)
 
+    @staticmethod
+    def _detail_url(template: str, app_id: str, game_data: dict) -> str:
+        url = template.replace("{id}", str(app_id))
+        for key, val in game_data.items():
+            if isinstance(val, str):
+                url = url.replace("{" + key + "}", val)
+        return url
+
+    def _fetch_detail_sync(
+        self,
+        app_id: str,
+        game_data: dict,
+        detail: dict,
+    ) -> dict | None:
+        """None: the detail could not be fetched now. {DETAIL_GONE: True}: the page
+        redirected away without a fallback. delisted=True: the store dropped the product."""
         url_template = detail.get("url_template", "")
         if not url_template:
             return None
 
         fallback_template = detail.get("fallback_url_template", "")
-
-        # Replace placeholders
-        url = url_template.replace("{id}", str(app_id))
-        for key, val in game_data.items():
-            if isinstance(val, str):
-                url = url.replace("{" + key + "}", val)
+        url = self._detail_url(url_template, app_id, game_data)
 
         backend_type = detail.get("backend", "api")
         fields = detail.get("fields", {})
@@ -757,11 +794,7 @@ class VirtualStore(AbstractGameStore):
         # Try primary URL, then fallback if redirected away
         urls_to_try = [url]
         if fallback_template:
-            fallback_url = fallback_template.replace("{id}", str(app_id))
-            for key, val in game_data.items():
-                if isinstance(val, str):
-                    fallback_url = fallback_url.replace("{" + key + "}", val)
-            urls_to_try.append(fallback_url)
+            urls_to_try.append(self._detail_url(fallback_template, app_id, game_data))
 
         for try_url in urls_to_try:
             logger.debug("[%s] detail GET %s (backend=%s)", self.store_name, try_url, backend_type)
@@ -783,7 +816,7 @@ class VirtualStore(AbstractGameStore):
                         return {"delisted": True}
                     logger.debug("[%s] detail redirected for %s (no more fallbacks)",
                                  self.store_name, app_id)
-                    return None
+                    return {DETAIL_GONE: True}
 
                 if backend_type == "api":
                     data = resp.json()
@@ -984,6 +1017,78 @@ class VirtualStore(AbstractGameStore):
         """Get cached metadata for a single game."""
         data = self._db.get_game(app_id)
         return self._normalize_metadata(data) if data else None
+
+    def get_metadata_for_store_game(
+        self,
+        store_name: str,
+        store_id: str,
+        normalized_title: str = "",
+    ) -> Lookup:
+        """Resolve a game against this store's catalog cache; a missing own-store
+        row has no per-id fetch, the detail URL needs fields the library sync writes."""
+        if store_name == self.store_name:
+            return self._lookup_own_store(store_id)
+
+        if not normalized_title:
+            return Lookup.not_found("no title")
+        metadata = self._find_game_by_title(normalized_title)
+        if metadata:
+            return Lookup.found(metadata)
+        return Lookup.not_found("no title match")
+
+    def _lookup_own_store(self, store_id: str) -> Lookup:
+        """Own-store lookup. When the detail fetch cannot run now, a row with a
+        library cover is served as is; a coverless row answers unavailable."""
+        row = self._db.get_game(store_id)
+        if row is None:
+            return Lookup.not_found("no catalog row")
+        detail = self._ruleset.detail
+        if not detail or row.get("_detail_fetched"):
+            return Lookup.found(self._normalize_metadata(row))
+
+        stub = self._normalize_metadata(row)
+        has_cover = bool(stub.get("cover"))
+
+        def settle(reason: str) -> Lookup:
+            return Lookup.found(stub) if has_cover else Lookup.unavailable(reason)
+
+        if not is_online():
+            return settle("offline")
+        if self._ruleset.auth.get("type", "none") != "none" and not self.is_authenticated():
+            return settle("auth")
+        url = self._detail_url(detail.get("url_template", ""), store_id, row)
+        pending = self.http.rate_limit_wait(url)
+        if pending > ON_MISS_MAX_WAIT_SECONDS:
+            logger.debug("[%s] detail fill for %s skipped: limiter busy for %.1fs",
+                         self.store_name, store_id, pending)
+            return settle("rate_limited")
+
+        detail_data = self._fetch_detail_sync(store_id, row, detail)
+        if detail_data is None:
+            return settle("network")
+        if DETAIL_GONE in detail_data:
+            # Not persisted: the next lookup asks the store again
+            return Lookup.found(stub) if has_cover else Lookup.not_found("detail page gone")
+        row.update(detail_data)
+        row["_detail_fetched"] = True
+        self._db.upsert_game(store_id, row.get("title", ""), row)
+        return Lookup.found(self._normalize_metadata(row))
+
+    def _find_game_by_title(self, normalized_title: str) -> dict | None:
+        if self._title_index is None:
+            self._build_title_index()
+        app_id = self._title_index.get(normalized_title)
+        return self.get_game_metadata(app_id) if app_id else None
+
+    def _build_title_index(self) -> None:
+        from luducat.plugins.sdk.text import normalize_title
+
+        self._title_index = {}
+        for row in self._db.get_all_games():
+            nt = normalize_title(row.get("title", ""))
+            if nt and not row.get("_not_found"):
+                self._title_index[nt] = row["app_id"]
+        logger.debug("[%s] title index: %d entries", self.store_name, len(self._title_index))
 
     def get_games_metadata_bulk(self, app_ids: List[str]) -> Dict[str, Dict[str, Any]]:
         """Batch metadata from plugin DB (no HTTP)."""

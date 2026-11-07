@@ -12,26 +12,30 @@ Phase 2: Full metadata (genres, DRM, controller support, etc.)
 """
 
 import logging
+from collections.abc import Callable
 from datetime import timedelta
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
-
-from luducat.plugins.sdk.datetime import utc_now
+from typing import Any
 
 from luducat.plugins.base import (
     AbstractMetadataProvider,
     EnrichmentData,
     Game,
+    Lookup,
     MetadataSearchResult,
 )
+from luducat.plugins.sdk.datetime import utc_now
 
-from .api import DEFAULT_RATE_LIMIT_DELAY, PcgwApi, PcgwApiError, ProgressCallback
+from luducat.plugins.sdk.lookup import ON_MISS_MAX_WAIT_SECONDS
+
+from .api import DEFAULT_RATE_LIMIT_DELAY, PCGW_API_URL, PcgwApi, PcgwApiError
 from .database import PcgwDatabase, PcgwGame, PcgwStoreMatch
 
 logger = logging.getLogger(__name__)
 
-# Re-fetch cached PCGW data after 30 days
-CACHE_TTL_DAYS = 30
+# Re-fetch cached PCGW data after 90 days. The wikitext path costs
+# 2-3 requests per game at 30 req/min, so refresh rarely.
+CACHE_TTL_DAYS = 90
 
 
 class PcgwProvider(AbstractMetadataProvider):
@@ -46,8 +50,8 @@ class PcgwProvider(AbstractMetadataProvider):
 
     def __init__(self, config_dir: Path, cache_dir: Path, data_dir: Path):
         super().__init__(config_dir, cache_dir, data_dir)
-        self._api: Optional[PcgwApi] = None
-        self._db: Optional[PcgwDatabase] = None
+        self._api: PcgwApi | None = None
+        self._db: PcgwDatabase | None = None
 
     # =========================================================================
     # PROPERTIES
@@ -106,7 +110,7 @@ class PcgwProvider(AbstractMetadataProvider):
 
     async def lookup_by_store_id(
         self, store_name: str, store_id: str
-    ) -> Optional[str]:
+    ) -> str | None:
         """Look up PCGW page ID using store ID
 
         Checks local cache first, falls back to API query.
@@ -118,8 +122,8 @@ class PcgwProvider(AbstractMetadataProvider):
         return str(page_id) if page_id else None
 
     async def search_game(
-        self, title: str, year: Optional[int] = None
-    ) -> List[MetadataSearchResult]:
+        self, title: str, year: int | None = None
+    ) -> list[MetadataSearchResult]:
         """Not supported - PCGamingWiki Cargo API has no title search
 
         Returns empty list. Use store ID lookup instead.
@@ -128,7 +132,7 @@ class PcgwProvider(AbstractMetadataProvider):
 
     async def get_enrichment(
         self, provider_id: str
-    ) -> Optional[EnrichmentData]:
+    ) -> EnrichmentData | None:
         """Get enrichment data for a game by PCGW page_id"""
         try:
             db = self._get_db()
@@ -144,8 +148,8 @@ class PcgwProvider(AbstractMetadataProvider):
     # =========================================================================
 
     def get_game_modes_bulk(
-        self, store_app_ids: Dict[str, List[str]]
-    ) -> Dict[str, Dict[str, List[str]]]:
+        self, store_app_ids: dict[str, list[str]]
+    ) -> dict[str, dict[str, list[str]]]:
         """Get game modes for multiple store games at once
 
         Queries local database only (no API calls). Called at startup
@@ -160,7 +164,7 @@ class PcgwProvider(AbstractMetadataProvider):
         Returns:
             {"steam": {"440": ["Multiplayer"], "730": ["Multiplayer"]}}
         """
-        result: Dict[str, Dict[str, List[str]]] = {}
+        result: dict[str, dict[str, list[str]]] = {}
         db = self._get_db()
 
         for store_name, app_ids in store_app_ids.items():
@@ -183,8 +187,8 @@ class PcgwProvider(AbstractMetadataProvider):
     # =========================================================================
 
     def resolve_steam_app_ids(
-        self, store_name: str, app_ids: List[str]
-    ) -> Dict[str, tuple]:
+        self, store_name: str, app_ids: list[str]
+    ) -> dict[str, tuple]:
         """Resolve Steam AppIDs for non-Steam games using PCGW data.
 
         Pure local database query, no API calls.
@@ -239,11 +243,11 @@ class PcgwProvider(AbstractMetadataProvider):
 
     async def enrich_games(
         self,
-        games: List[Game],
-        status_callback: Optional[Callable[[str, int, int], None]] = None,
-        cancel_check: Optional[Callable[[], bool]] = None,
-        cross_store_ids: Optional[Dict[str, str]] = None,
-    ) -> Dict[str, EnrichmentData]:
+        games: list[Game],
+        status_callback: Callable[[str, int, int], None] | None = None,
+        cancel_check: Callable[[], bool] | None = None,
+        cross_store_ids: dict[str, str] | None = None,
+    ) -> dict[str, EnrichmentData]:
         """Enrich multiple games during store sync
 
         Groups games by store, batch-queries uncached games via
@@ -265,8 +269,8 @@ class PcgwProvider(AbstractMetadataProvider):
         total = len(games)
 
         # Phase 1: Group games by store
-        steam_games: Dict[str, Game] = {}
-        gog_games: Dict[str, Game] = {}
+        steam_games: dict[str, Game] = {}
+        gog_games: dict[str, Game] = {}
 
         for game in games:
             if game.store_name == "steam":
@@ -293,45 +297,60 @@ class PcgwProvider(AbstractMetadataProvider):
             gid for gid in gog_games if _needs_fetch("gog", gid)
         ]
 
-        # Phase 3: Batch fetch uncached Steam games
-        # Cancel is checked AFTER each phase so that parallel plugins
-        # (running via asyncio.gather) always complete their current batch
-        # before a sibling's cancel flag stops them.
-        if uncached_steam:
+        def _cancelled() -> bool:
+            return bool(cancel_check and cancel_check())
+
+        # Phase 3: Batch fetch uncached Steam games. cancel_check goes
+        # into the API loop so Skip/Cancel stops within one game, not
+        # one orchestrator batch (10 games, ~40s on the rate limiter).
+        # _store_api_results caches no_match for every id it is handed
+        # that has no result, so it only gets the ids the API answered.
+        if uncached_steam and not _cancelled():
             if status_callback:
                 status_callback(
                     f"PCGamingWiki: Looking up {len(uncached_steam)} Steam games...",
                     0, total,
                 )
 
+            attempted: list[str] = []
             try:
                 api_results = api.lookup_by_steam_ids_batch(
                     uncached_steam,
                     status_callback=status_callback,
+                    cancel_check=cancel_check,
+                    attempted=attempted,
                 )
-                self._store_api_results("steam", api_results, uncached_steam, db)
+                self._store_api_results("steam", api_results, attempted, db)
             except Exception as e:
                 logger.warning(f"PCGamingWiki: Steam batch lookup failed: {e}")
 
         # Phase 4: Batch fetch uncached GOG games
-        if uncached_gog and not (cancel_check and cancel_check()):
+        if uncached_gog and not _cancelled():
             if status_callback:
                 status_callback(
                     f"PCGamingWiki: Looking up {len(uncached_gog)} GOG games...",
                     0, total,
                 )
 
+            attempted = []
             try:
                 api_results = api.lookup_by_gog_ids_batch(
                     uncached_gog,
                     status_callback=status_callback,
+                    titles={
+                        gid: gog_games[gid].title
+                        for gid in uncached_gog
+                        if gog_games[gid].title
+                    },
+                    cancel_check=cancel_check,
+                    attempted=attempted,
                 )
-                self._store_api_results("gog", api_results, uncached_gog, db)
+                self._store_api_results("gog", api_results, attempted, db)
             except Exception as e:
                 logger.warning(f"PCGamingWiki: GOG batch lookup failed: {e}")
 
         # Phase 5: Build enrichment results from local DB
-        results: Dict[str, EnrichmentData] = {}
+        results: dict[str, EnrichmentData] = {}
         for game in games:
             match = db.get_store_match(game.store_name, game.store_app_id)
             if match and match.pcgw_page_id:
@@ -353,8 +372,8 @@ class PcgwProvider(AbstractMetadataProvider):
     def _store_api_results(
         self,
         store_name: str,
-        api_results: Dict[str, Dict[str, Any]],
-        all_ids: List[str],
+        api_results: dict[str, dict[str, Any]],
+        all_ids: list[str],
         db: PcgwDatabase,
     ) -> None:
         """Store API lookup results in local database
@@ -413,41 +432,54 @@ class PcgwProvider(AbstractMetadataProvider):
         store_name: str,
         store_id: str,
         normalized_title: str = "",
-    ) -> Optional[Dict[str, Any]]:
-        """Get metadata for a store game on demand
+    ) -> dict[str, Any] | Lookup | None:
+        """Resolve a game against PCGamingWiki on demand."""
+        from luducat.plugins.sdk.lookup import miss_is_valid
 
-        Checks local cache first, falls back to API if needed.
-        """
         db = self._get_db()
 
-        # Check cache
         match = db.get_store_match(store_name, store_id)
         if match is not None:
             if match.pcgw_page_id:
                 game = db.get_game(match.pcgw_page_id)
                 if game:
-                    return self._game_to_metadata_dict(game)
-            return None  # Cached no_match
+                    return Lookup.found(self._game_to_metadata_dict(game))
+            if miss_is_valid(match.updated_at, timedelta(days=CACHE_TTL_DAYS)):
+                return Lookup.not_found()
+            # expired miss, fall through to re-lookup
 
-        # Not cached - try API lookup
-        page_id = self._lookup_page_id(store_name, store_id)
+        pending = self.http.rate_limit_wait(PCGW_API_URL)
+        if pending > ON_MISS_MAX_WAIT_SECONDS:
+            logger.debug("PCGW lookup for %s/%s skipped: limiter busy for %.1fs",
+                         store_name, store_id, pending)
+            return Lookup.unavailable("rate_limited")
+
+        try:
+            page_id = self._lookup_page_id(
+                store_name, store_id, title=normalized_title,
+            )
+        except PcgwApiError as e:
+            logger.debug("PCGW lookup failed for %s/%s: %s", store_name, store_id, e)
+            return Lookup.unavailable(f"error: {type(e).__name__}")
+
         if page_id:
             game = db.get_game(page_id)
             if game:
-                return self._game_to_metadata_dict(game)
+                return Lookup.found(self._game_to_metadata_dict(game))
 
-        return None
+        return Lookup.not_found()
 
     # =========================================================================
     # INTERNAL HELPERS
     # =========================================================================
 
     def _lookup_page_id(
-        self, store_name: str, store_id: str
-    ) -> Optional[int]:
+        self, store_name: str, store_id: str, title: str = "",
+    ) -> int | None:
         """Look up PCGW page_id for a store game
 
-        Checks local DB first, then queries API.
+        Checks local DB first, then queries API. GOG lookups need a
+        title for the wikitext path's search resolution.
         """
         db = self._get_db()
 
@@ -462,7 +494,7 @@ class PcgwProvider(AbstractMetadataProvider):
             if store_name == "steam":
                 data = api.lookup_by_steam_id(store_id)
             elif store_name == "gog":
-                data = api.lookup_by_gog_id(store_id)
+                data = api.lookup_by_gog_id(store_id, title=title or None)
             else:
                 return None
 
@@ -488,8 +520,8 @@ class PcgwProvider(AbstractMetadataProvider):
                     match_method="no_match",
                     confidence=0.0,
                 )
-        except PcgwApiError as e:
-            logger.warning(f"PCGamingWiki API error looking up {store_name}/{store_id}: {e}")
+        except PcgwApiError:
+            raise
 
         return None
 
@@ -522,7 +554,7 @@ class PcgwProvider(AbstractMetadataProvider):
         engine = engines[0] if engines else None
 
         # Build extra data dict for provider-specific fields
-        extra: Dict[str, Any] = {
+        extra: dict[str, Any] = {
             "game_modes": game_modes,
         }
         if mp:
@@ -558,7 +590,7 @@ class PcgwProvider(AbstractMetadataProvider):
             extra=extra,
         )
 
-    def _game_to_metadata_dict(self, game: PcgwGame) -> Dict[str, Any]:
+    def _game_to_metadata_dict(self, game: PcgwGame) -> dict[str, Any]:
         """Convert PcgwGame to standard metadata dict format"""
         from .database import _normalize_game_modes
 
@@ -600,7 +632,7 @@ class PcgwProvider(AbstractMetadataProvider):
         full_controller_support = getattr(game, "full_controller_support", None)
 
         # Build per-platform release_date dict
-        release_dates_dict: Dict[str, str] = {}
+        release_dates_dict: dict[str, str] = {}
         if game.released_windows:
             release_dates_dict["windows"] = game.released_windows
 
@@ -656,7 +688,7 @@ class PcgwProvider(AbstractMetadataProvider):
     # SYNC OPERATIONS
     # =========================================================================
 
-    def get_sync_stats(self) -> Dict[str, int]:
+    def get_sync_stats(self) -> dict[str, int]:
         """Get match statistics for sync dialog
 
         Returns:
@@ -667,8 +699,8 @@ class PcgwProvider(AbstractMetadataProvider):
 
     def sync_failed_matches(
         self,
-        progress_callback: Optional[Callable[[str, int, int, int], None]] = None,
-    ) -> Dict[str, int]:
+        progress_callback: Callable[[str, int, int, int], None] | None = None,
+    ) -> dict[str, int]:
         """Retry all failed store matches
 
         Re-queries entries with match_method='no_match' against the
@@ -750,8 +782,8 @@ class PcgwProvider(AbstractMetadataProvider):
 
     def sync_refresh_all(
         self,
-        progress_callback: Optional[Callable[[str, int, int, int], None]] = None,
-    ) -> Dict[str, int]:
+        progress_callback: Callable[[str, int, int, int], None] | None = None,
+    ) -> dict[str, int]:
         """Refresh metadata for all matched games
 
         Re-fetches PCGamingWiki data for all entries that have a
@@ -779,9 +811,19 @@ class PcgwProvider(AbstractMetadataProvider):
         finally:
             session.close()
 
-        steam_ids = [m.store_app_id for m in matched if m.store_name == "steam"]
-        gog_ids = [m.store_app_id for m in matched if m.store_name == "gog"]
-        total = len(steam_ids) + len(gog_ids)
+        # Page names are known for matched entries: fetch directly,
+        # skipping the appid.php/search resolution roundtrip
+        steam_pages = {
+            m.store_app_id: m.pcgw_page_name
+            for m in matched
+            if m.store_name == "steam" and m.pcgw_page_name
+        }
+        gog_pages = {
+            m.store_app_id: m.pcgw_page_name
+            for m in matched
+            if m.store_name == "gog" and m.pcgw_page_name
+        }
+        total = len(steam_pages) + len(gog_pages)
 
         if total == 0:
             return {"total": 0, "success": 0, "failed": 0}
@@ -796,25 +838,27 @@ class PcgwProvider(AbstractMetadataProvider):
             return _cb
 
         # Refresh Steam games
-        if steam_ids:
+        if steam_pages:
             try:
-                results = api.lookup_by_steam_ids_batch(
-                    steam_ids,
+                results = api.lookup_by_page_names(
+                    steam_pages,
                     status_callback=_make_batch_progress(0),
                 )
-                self._store_api_results("steam", results, steam_ids, db)
+                self._store_api_results(
+                    "steam", results, list(steam_pages), db
+                )
                 success += len(results)
             except PcgwApiError as e:
                 logger.warning(f"PCGamingWiki: Steam refresh batch failed: {e}")
 
         # Refresh GOG games
-        if gog_ids:
+        if gog_pages:
             try:
-                results = api.lookup_by_gog_ids_batch(
-                    gog_ids,
-                    status_callback=_make_batch_progress(len(steam_ids)),
+                results = api.lookup_by_page_names(
+                    gog_pages,
+                    status_callback=_make_batch_progress(len(steam_pages)),
                 )
-                self._store_api_results("gog", results, gog_ids, db)
+                self._store_api_results("gog", results, list(gog_pages), db)
                 success += len(results)
             except PcgwApiError as e:
                 logger.warning(f"PCGamingWiki: GOG refresh batch failed: {e}")
@@ -833,8 +877,8 @@ class PcgwProvider(AbstractMetadataProvider):
     def _process_retry_results(
         self,
         store_name: str,
-        all_ids: List[str],
-        api_results: Dict[str, Any],
+        all_ids: list[str],
+        api_results: dict[str, Any],
         db: PcgwDatabase,
     ) -> int:
         """Process retry results and update store matches
@@ -909,7 +953,7 @@ class PcgwProvider(AbstractMetadataProvider):
 # Helpers
 # =============================================================================
 
-def _split_field(value: Optional[str]) -> List[str]:
+def _split_field(value: str | None) -> list[str]:
     """Split a comma-delimited PCGW field into a list of strings"""
     if not value:
         return []

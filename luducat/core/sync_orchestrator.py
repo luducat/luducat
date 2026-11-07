@@ -10,23 +10,27 @@ Extracted from GameService to reduce its responsibilities.
 
 import asyncio
 import logging
-from typing import Any, Callable, Dict, List, Optional
+from collections.abc import Callable
+from typing import Any
 
 from sqlalchemy import or_, text
 from sqlalchemy.orm import load_only, selectinload
 from sqlalchemy.orm.attributes import flag_modified
 
+from ..plugins.base import Game as PluginGame
+from ..plugins.base import RateLimitError
+from . import enrichment_state as es
 from .database import (
     Database,
-    Game as DbGame,
     StoreGame,
     normalize_title,
 )
-from . import enrichment_state as es
+from .database import (
+    Game as DbGame,
+)
 from .enrichment_service import EnrichmentService
-from .metadata_resolver import MetadataResolver
+from .metadata_resolver import ENRICHMENT_FIELD_MAPPINGS, MetadataResolver
 from .plugin_manager import PluginManager
-from ..plugins.base import Game as PluginGame, RateLimitError
 
 logger = logging.getLogger(__name__)
 
@@ -59,26 +63,6 @@ def _build_progressive_entry(
 
 METADATA_JOB_BATCH_SIZE = 10
 
-# Enrichment field mappings: (metadata_key, priority_field_name)
-# Used for propagating enrichment data from primary to sibling store_games
-ENRICHMENT_FIELD_MAPPINGS = [
-    ("cover_url", "cover"),
-    ("background_url", "hero"),
-    ("screenshots", "screenshots"),
-    ("genres", "genres"),
-    ("developers", "developers"),
-    ("publishers", "publishers"),
-    ("franchise", "franchise"),
-    ("series", "series"),
-    ("themes", "themes"),
-    ("perspectives", "perspectives"),
-    ("platforms", "platforms"),
-    ("age_ratings", "age_rating"),
-    ("websites", "links"),
-    ("user_rating", "rating"),
-    ("engine", "engine"),
-]
-
 # Store preference order for dedup representative selection
 _STORE_PREFERENCE = {"steam": 0, "gog": 1, "epic": 2}
 
@@ -101,14 +85,14 @@ class SyncOrchestrator:
         self._config = config
 
         # Callbacks injected by GameService for operations that stay there
-        self._save_plugin_game_fn: Optional[Callable] = None
-        self._get_synced_app_ids_fn: Optional[Callable] = None
-        self._remove_family_shared_fn: Optional[Callable] = None
-        self._invalidate_cache_fn: Optional[Callable] = None
-        self._remove_store_data_fn: Optional[Callable] = None
-        self._reconcile_stale_fn: Optional[Callable] = None
-        self._save_account_id_fn: Optional[Callable] = None
-        self._update_status_flags_fn: Optional[Callable] = None
+        self._save_plugin_game_fn: Callable | None = None
+        self._get_synced_app_ids_fn: Callable | None = None
+        self._remove_family_shared_fn: Callable | None = None
+        self._invalidate_cache_fn: Callable | None = None
+        self._remove_store_data_fn: Callable | None = None
+        self._reconcile_stale_fn: Callable | None = None
+        self._save_account_id_fn: Callable | None = None
+        self._update_status_flags_fn: Callable | None = None
 
     def set_game_service_callbacks(
         self,
@@ -116,10 +100,10 @@ class SyncOrchestrator:
         get_synced_app_ids: Callable,
         remove_family_shared: Callable,
         invalidate_cache: Callable,
-        remove_store_data: Optional[Callable] = None,
-        reconcile_stale: Optional[Callable] = None,
-        save_account_id: Optional[Callable] = None,
-        update_status_flags: Optional[Callable] = None,
+        remove_store_data: Callable | None = None,
+        reconcile_stale: Callable | None = None,
+        save_account_id: Callable | None = None,
+        update_status_flags: Callable | None = None,
     ) -> None:
         """Inject callbacks to GameService methods that stay on GameService.
 
@@ -144,7 +128,7 @@ class SyncOrchestrator:
 
     def build_sync_jobs(
         self,
-        stores: Optional[List[str]] = None,
+        stores: list[str] | None = None,
         full_resync: bool = False,
     ) -> list:
         """Build the initial SyncJob list for the queue.
@@ -217,12 +201,10 @@ class SyncOrchestrator:
         self,
         store_name: str,
         full_resync: bool = False,
-        status_callback: Optional[Callable[[str], None]] = None,
-        cancel_check: Optional[Callable[[], bool]] = None,
+        status_callback: Callable[[str], None] | None = None,
+        cancel_check: Callable[[], bool] | None = None,
     ) -> tuple:
         """Fetch game IDs from a store.
-
-        Returns (all_ids, new_ids) where new_ids are games not yet synced.
 
         Args:
             store_name: Store to fetch from
@@ -231,7 +213,11 @@ class SyncOrchestrator:
             cancel_check: Optional callback returning True if cancelled
 
         Returns:
-            Tuple of (all_ids: List[str], new_ids: List[str])
+            Tuple of (all_ids, new_ids, discovered_ids, refetch_ids).
+            new_ids are unsynced games from the store API proper;
+            discovered_ids are unsynced games the gap-filler surfaced
+            (owned all along, so they are reported separately and
+            enriched behind the new ones).
         """
         plugin = self.plugin_manager.get_plugin(store_name)
         if not plugin:
@@ -259,7 +245,7 @@ class SyncOrchestrator:
                 self._remove_store_data_fn(store_name)
                 if self._save_account_id_fn:
                     self._save_account_id_fn(store_name, None)
-            return [], [], []
+            return [], [], [], []
 
         if (
             last_account
@@ -292,7 +278,17 @@ class SyncOrchestrator:
         )
 
         # --- Stale game removal (same account, games no longer owned) ---
-        if all_ids and self._reconcile_stale_fn:
+        # Strict `is True`: the attribute is optional and untyped across
+        # plugins (and MagicMock auto-attrs are truthy).
+        ownership_incomplete = (
+            getattr(plugin, "_ownership_signal_incomplete", False) is True
+        )
+        if all_ids and self._reconcile_stale_fn and ownership_incomplete:
+            logger.info(
+                "%s: ownership signal incomplete, skipping stale removal",
+                store_name,
+            )
+        if all_ids and self._reconcile_stale_fn and not ownership_incomplete:
             synced_ids = (
                 self._get_synced_app_ids_fn(store_name)
                 if self._get_synced_app_ids_fn else set()
@@ -345,28 +341,40 @@ class SyncOrchestrator:
             )
             new_ids = [app_id for app_id in all_ids if app_id not in synced_ids]
 
+        # Gap-filler discoveries are owned games the API missed, not
+        # new purchases - report them separately (lud-4r1g). Same
+        # isinstance guard as _catalog_id_strs: mocks auto-create attrs.
+        gap_ids = getattr(plugin, "_gap_app_ids", None)
+        discovered_ids: list[str] = []
+        if isinstance(gap_ids, set) and gap_ids:
+            discovered_ids = [i for i in new_ids if i in gap_ids]
+            new_ids = [i for i in new_ids if i not in gap_ids]
+
         # Check for existing games needing metadata re-fetch
-        refetch_ids: List[str] = []
+        refetch_ids: list[str] = []
         if not full_resync and hasattr(plugin, "get_ids_needing_refetch"):
             refetch_ids = plugin.get_ids_needing_refetch()
             # Don't double-process IDs already in new_ids
             if refetch_ids:
-                new_set = set(new_ids)
-                refetch_ids = [i for i in refetch_ids if i in all_ids and i not in new_set]
+                owned = set(all_ids)
+                seen = set(new_ids) | set(discovered_ids)
+                refetch_ids = [i for i in refetch_ids if i in owned and i not in seen]
 
         msg = f"{store_name}: {len(all_ids)} total, {len(new_ids)} new"
+        if discovered_ids:
+            msg += f", {len(discovered_ids)} discovered (ownership gap)"
         if refetch_ids:
             msg += f", {len(refetch_ids)} refetch"
         logger.info(msg)
-        return all_ids, new_ids, refetch_ids
+        return all_ids, new_ids, discovered_ids, refetch_ids
 
     def create_skeleton_games(
         self,
         store_name: str,
-        new_ids: List[str],
-        new_games_callback: Optional[Callable[[list], None]] = None,
-        progress_callback: Optional[Callable[[int, int], None]] = None,
-        cancel_check: Optional[Callable[[], bool]] = None,
+        new_ids: list[str],
+        new_games_callback: Callable[[list], None] | None = None,
+        progress_callback: Callable[[int, int], None] | None = None,
+        cancel_check: Callable[[], bool] | None = None,
     ) -> int:
         """Create skeleton Game+StoreGame entries from plugin DB data.
 
@@ -422,8 +430,8 @@ class SyncOrchestrator:
             launch_url = ""
             try:
                 launch_url = plugin.get_store_page_url(str(app_id))
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("No store page URL for %s: %s", app_id, e)
 
             plugin_game = PluginGame(
                 store_app_id=str(app_id),
@@ -471,14 +479,14 @@ class SyncOrchestrator:
     async def execute_store_metadata_batch(
         self,
         store_name: str,
-        app_ids: List[str],
-        progress_callback: Optional[Callable[[str, int, int], None]] = None,
-        cancel_check: Optional[Callable[[], bool]] = None,
-        status_callback: Optional[Callable[[str], None]] = None,
-        new_games_callback: Optional[Callable[[list], None]] = None,
-        countdown_callback: Optional[Callable[[int], None]] = None,
+        app_ids: list[str],
+        progress_callback: Callable[[str, int, int], None] | None = None,
+        cancel_check: Callable[[], bool] | None = None,
+        status_callback: Callable[[str], None] | None = None,
+        new_games_callback: Callable[[list], None] | None = None,
+        countdown_callback: Callable[[int], None] | None = None,
         budget_threshold: int = 0,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Fetch and save store metadata for a batch of game IDs.
 
         Args:
@@ -671,7 +679,7 @@ class SyncOrchestrator:
         self,
         plugin_name: str,
         full_resync: bool = False,
-    ) -> Dict[str, list]:
+    ) -> dict[str, list]:
         """Find games that need enrichment from a specific plugin.
 
         Uses SQL-level json_extract filtering to avoid loading already-enriched
@@ -728,12 +736,12 @@ class SyncOrchestrator:
             "  AND json_each.key NOT IN ('_attempted_by', '_enriched_via'))"
         )
 
-        params = dict(
-            via_path=enriched_via_path,
-            attempted_path=attempted_path,
-            sources_path=sources_path,
-            plugin=plugin_name,
-        )
+        params = {
+            "via_path": enriched_via_path,
+            "attempted_path": attempted_path,
+            "sources_path": sources_path,
+            "plugin": plugin_name,
+        }
 
         if full_resync:
             # Only skip truly enriched games, ignore attempted markers
@@ -768,13 +776,13 @@ class SyncOrchestrator:
         store_games = query.all()
 
         # Step 3: Group by parent Game.id for cross-store dedup
-        by_game_id: Dict[str, list] = {}
+        by_game_id: dict[str, list] = {}
         for sg in store_games:
             if sg.game:
                 by_game_id.setdefault(sg.game.id, []).append(sg)
 
-        by_store: Dict[str, list] = {}
-        for game_id, sgs in by_game_id.items():
+        by_store: dict[str, list] = {}
+        for sgs in by_game_id.values():
             # Pick the best representative (prefer steam > gog > epic)
             sgs_sorted = sorted(
                 sgs,
@@ -824,10 +832,10 @@ class SyncOrchestrator:
         plugin_name: str,
         games: list,
         store_name: str,
-        progress_callback: Optional[Callable] = None,
-        cancel_check: Optional[Callable[[], bool]] = None,
-        status_callback: Optional[Callable[[str], None]] = None,
-    ) -> Dict[str, Any]:
+        progress_callback: Callable | None = None,
+        cancel_check: Callable[[], bool] | None = None,
+        status_callback: Callable[[str], None] | None = None,
+    ) -> dict[str, Any]:
         """Execute one metadata enrichment batch for a single plugin.
 
         Calls the plugin's enrich_games() with the batch, then applies
@@ -878,11 +886,11 @@ class SyncOrchestrator:
     async def execute_metadata_plugin_run(
         self,
         plugin_name: str,
-        games_by_store: Dict[str, list],
-        batch_progress_callback: Optional[Callable[[int, int], None]] = None,
-        cancel_check: Optional[Callable[[], bool]] = None,
-        status_callback: Optional[Callable[[str], None]] = None,
-    ) -> Dict[str, Any]:
+        games_by_store: dict[str, list],
+        batch_progress_callback: Callable[[int, int], None] | None = None,
+        cancel_check: Callable[[], bool] | None = None,
+        status_callback: Callable[[str], None] | None = None,
+    ) -> dict[str, Any]:
         """Execute a consolidated metadata enrichment run for one plugin.
 
         Processes all stores and batches internally, calling
@@ -927,17 +935,22 @@ class SyncOrchestrator:
                 batch_offset = games_processed
                 batch_high_water = [0]  # mutable for closure
 
-                def per_game_progress(message, current, total):
+                def per_game_progress(
+                    message, current, total,
+                    _offset=batch_offset, _high_water=batch_high_water,
+                ):
                     """Forward per-game progress from plugin to UI.
 
                     Uses a high-water mark so progress only advances forward.
                     Plugins may report phase-local counters that reset between
                     phases (e.g. lookup → heroes → covers), but the UI should
-                    show smooth linear progress.
+                    show smooth linear progress. Batch-locals are bound via
+                    defaults so a callback held past its batch can't read the
+                    next batch's counters.
                     """
-                    if current > batch_high_water[0] and batch_progress_callback:
-                        batch_high_water[0] = current
-                        cumulative = batch_offset + current
+                    if current > _high_water[0] and batch_progress_callback:
+                        _high_water[0] = current
+                        cumulative = _offset + current
                         batch_progress_callback(
                             min(cumulative, total_games), total_games,
                         )
@@ -967,8 +980,8 @@ class SyncOrchestrator:
         self,
         store_app_id: str,
         store_name: str,
-        cancel_check: Optional[Callable[[], bool]] = None,
-    ) -> Dict[str, Any]:
+        cancel_check: Callable[[], bool] | None = None,
+    ) -> dict[str, Any]:
         """Priority enrichment for a single game using all plugins.
 
         Called when a user clicks a game during sync and it lacks metadata.
@@ -1079,6 +1092,8 @@ class SyncOrchestrator:
                 if not es.is_enriched_via_sibling(sib_meta, plugin_name):
                     es.mark_enriched_via_sibling(sib_meta, plugin_name)
                 sib_sg.metadata_json = sib_meta
+                # sib_meta is usually the same dict object, so assignment alone is not a change
+                flag_modified(sib_sg, "metadata_json")
                 any_changed = True
 
         if any_changed:
@@ -1088,7 +1103,7 @@ class SyncOrchestrator:
         self,
         store_name: str,
         games: list,
-        enrichments: Dict[str, Any],
+        enrichments: dict[str, Any],
         plugin_name: str,
     ) -> None:
         """Mark games as attempted by a plugin even when no data returned.

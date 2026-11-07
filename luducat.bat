@@ -232,6 +232,13 @@ echo.
 echo Checking for any module requirements that are missing...
 pip3 install -r "%REQUIREMENTS_FILE%"
 echo.
+REM Mute Qt's accessibility-bridge warnings about recycled list items,
+REM keeping any rules the user already set.
+if defined QT_LOGGING_RULES (
+    set "QT_LOGGING_RULES=%QT_LOGGING_RULES%;qt.accessibility.atspi.warning=false"
+) else (
+    set "QT_LOGGING_RULES=qt.accessibility.atspi.warning=false"
+)
 echo Starting luducat...
 "%PYTHON_CMD%" -m luducat %*
 set "EXIT_CODE=%ERRORLEVEL%"

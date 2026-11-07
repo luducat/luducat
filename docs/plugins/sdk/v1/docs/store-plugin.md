@@ -244,6 +244,39 @@ def get_metadata_for_store_game(self, store_name, store_id,
     return None
 ```
 
+The resolver walks the user's priority chain and asks every enabled
+plugin in turn, whether or not it is authenticated or online. What it
+needs from each hop is one of three answers, because "no record" may be
+cached as a miss and "could not ask" must not be:
+
+```python
+from luducat.plugins.base import Lookup, RateLimitError
+from luducat.plugins.sdk.network import is_online
+
+def get_metadata_for_store_game(self, store_name, store_id,
+                                 normalized_title=""):
+    if store_name != self.store_name:
+        return Lookup.not_found("foreign store")
+    row = self._catalog_row(store_id)
+    if row is not None:
+        return Lookup.found(self._to_metadata(row))
+    if not is_online():
+        return Lookup.not_found("no catalog row")
+    try:
+        record = self._fetch_record(store_id)
+    except RateLimitError:
+        return Lookup.unavailable("rate_limited")
+    if record is None:
+        return Lookup.not_found("delisted")
+    return Lookup.found(record)
+```
+
+Returning a plain dict or `None` still works and is read as found or
+not_found. Raising `OfflineError`, `RateLimitError`, `NetworkError` or
+`AuthenticationError` is read as unavailable. Any other exception is
+logged as a plugin error and also counts as unavailable, so the walk
+moves on to the next source either way.
+
 ### Store Page URL
 
 ```python
@@ -307,6 +340,22 @@ def get_install_sync_data(self) -> Optional[Dict[str, Any]]:
     """
     ...
 ```
+
+The sync calls `get_install_sync_data()` for the whole library. When the
+user clicks Install on a game the last sync saw as not installed, luducat
+first asks the plugin about that one game, so it can switch the button to
+Play instead of opening the store's install dialog again. This runs on the
+UI thread, so look up only that game, locally, and never touch the
+network:
+
+```python
+def check_single_install(self, store_app_id: str) -> Optional[Dict[str, Any]]:
+    """Return {"installed": True, "install_path": str | None} if the game
+    is installed right now, None if not or if you do not support it."""
+    ...
+```
+
+The default returns None, and the Install button then behaves as before.
 
 ### Config Actions
 

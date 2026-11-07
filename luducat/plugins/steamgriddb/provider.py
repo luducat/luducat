@@ -20,10 +20,18 @@ from luducat.plugins.base import (
     AbstractMetadataProvider,
     EnrichmentData,
     Game,
+    Lookup,
     MetadataSearchResult,
 )
 
-from .api import SgdbApi, SgdbApiError, SgdbAuthError, SgdbCancelledError, ProgressCallback
+from .api import (
+    ProgressCallback,
+    SgdbApi,
+    SgdbApiError,
+    SgdbAuthError,
+    SgdbCancelledError,
+    SgdbRateLimitError,
+)
 from .database import SgdbDatabase, SgdbStoreMatch
 
 logger = logging.getLogger(__name__)
@@ -208,15 +216,10 @@ class SgdbProvider(AbstractMetadataProvider):
         if match is not None:
             if match.sgdb_game_id:
                 return match.sgdb_game_id
-            # Cached no_match — check TTL
             if match.match_method == "no_match":
-                age = (
-                    utc_now() - match.updated_at
-                    if match.updated_at
-                    else timedelta(days=999)
-                )
-                if age <= self.FAILED_MATCH_TTL:
-                    return None  # Within TTL, don't retry
+                from luducat.plugins.sdk.lookup import miss_is_valid
+                if miss_is_valid(match.updated_at, self.FAILED_MATCH_TTL):
+                    return None
 
         # Cache miss or expired — try platform lookup
         api = self._get_api()
@@ -1045,29 +1048,31 @@ class SgdbProvider(AbstractMetadataProvider):
         store_name: str,
         store_id: str,
         normalized_title: str = "",
-    ) -> Optional[Dict[str, Any]]:
-        """Get metadata for a store game on demand
+    ) -> Dict[str, Any] | Lookup | None:
+        """Resolve a game against SteamGridDB on demand.
 
-        Checks local cache first, falls back to API if needed.
-        Returns hero as background_url and cover as cover_url.
+        Returns hero and cover URLs. A game that is matched in SGDB
+        but has no suitable assets is not_found with a distinct reason
+        so the resolver knows the id-lookup succeeded (ld-ko1z).
         """
         try:
+            # A cancelled sync leaves the shared API's cancel event set
+            self._get_api().reset_cancel()
+
             sgdb_id = self._lookup_sgdb_id(
-                store_name, store_id, normalized_title=normalized_title
+                store_name, store_id, normalized_title=normalized_title,
             )
             if not sgdb_id:
-                return None
+                return Lookup.not_found()
 
             db = self._get_db()
 
-            # Get hero (background)
             hero_url = self._get_best_hero_url(sgdb_id)
             if not hero_url:
                 if not db.has_assets(sgdb_id, "hero"):
                     self._fetch_and_cache_heroes(sgdb_id)
                     hero_url = self._get_best_hero_url(sgdb_id)
 
-            # Get grid (cover)
             cover_url = self._get_best_grid_url(sgdb_id)
             if not cover_url:
                 if not db.has_assets(sgdb_id, "grid"):
@@ -1075,18 +1080,27 @@ class SgdbProvider(AbstractMetadataProvider):
                     cover_url = self._get_best_grid_url(sgdb_id)
 
             if hero_url or cover_url:
-                result = {"steamgriddb_id": sgdb_id}
+                result: dict[str, Any] = {"steamgriddb_id": sgdb_id}
                 if hero_url:
                     result["hero"] = hero_url
                 if cover_url:
                     result["cover"] = cover_url
-                return result
-            return None
+                return Lookup.found(result)
+
+            return Lookup.not_found("matched, no assets")
+
+        except SgdbAuthError:
+            return Lookup.unavailable("auth")
+        except SgdbRateLimitError:
+            return Lookup.unavailable("rate_limited")
+        except SgdbCancelledError:
+            return Lookup.unavailable("cancelled")
+        except SgdbApiError as e:
+            logger.debug("SGDB on-demand failed for %s/%s: %s", store_name, store_id, e)
+            return Lookup.unavailable(f"error: {type(e).__name__}")
         except Exception as e:
-            logger.debug(
-                f"SteamGridDB on-demand lookup failed for {store_name}/{store_id}: {e}"
-            )
-            return None
+            logger.debug("SGDB on-demand failed for %s/%s: %s", store_name, store_id, e)
+            return Lookup.unavailable(f"error: {type(e).__name__}")
 
     def get_cache_metadata_bulk(
         self, store_app_ids: Dict[str, List[str]]

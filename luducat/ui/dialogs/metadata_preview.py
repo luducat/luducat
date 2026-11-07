@@ -37,6 +37,7 @@ from luducat.core.metadata_resolver import (
     MetadataResolver,  # for _PRIORITY_FIELD_ALIASES
 )
 from luducat.core.plugin_manager import PluginManager
+from luducat.plugins.sdk.lookup import Lookup
 
 logger = logging.getLogger(__name__)
 
@@ -512,9 +513,13 @@ class MetadataPreviewDialog(QDialog):
                 if not app_id:
                     continue
                 try:
-                    metadata = plugin.get_metadata_for_store_game(
+                    raw = plugin.get_metadata_for_store_game(
                         store_name, app_id, normalized_title=game_title
                     )
+                    if isinstance(raw, Lookup):
+                        metadata = raw.data if raw.is_found else None
+                    else:
+                        metadata = raw
                     if metadata:
                         logger.debug(
                             f"Preview: Got metadata from "

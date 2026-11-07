@@ -125,6 +125,9 @@ class Game(Base):
     # Metadata
     notes = Column(Text)
     last_updated = Column(DateTime, default=utc_now, onupdate=utc_now)
+    # Written by the on-miss light fetch (appdetails + asset names only);
+    # the next sync runs the full scrape and clears it.
+    partial = Column(Boolean, default=False)
     
     # Relationships
     images = relationship("Image", back_populates="game", cascade="all, delete-orphan")
@@ -138,6 +141,7 @@ class Game(Base):
         via has_library_assets (IStoreBrowseService probing).
         """
         return bool(
+            not self.partial and
             self.name and
             self.type and
             self.release_date and
@@ -147,6 +151,12 @@ class Game(Base):
             self.publishers and
             self.screenshots
         )
+
+    @property
+    def is_skeleton(self):
+        """Written by the owned-games sync with appid, name and playtime
+        only; appdetails has never been fetched for it. Not a catalog hit."""
+        return not self.partial and not self.type
 
     @property
     def has_library_assets(self):
@@ -317,6 +327,15 @@ class Database:
 
             except Exception as e:
                 logger.error(f"Failed to add screenshots column: {e}")
+
+        # Migration from v7 to v8: partial flag for rows written by the light fetch
+        if from_version <= 7 and to_version >= 8:
+            logger.info("Migrating schema v7 -> v8: Adding partial column")
+            try:
+                with self.engine.begin() as conn:
+                    conn.execute(text("ALTER TABLE games ADD COLUMN partial BOOLEAN DEFAULT 0"))
+            except Exception as e:
+                logger.error(f"Failed to add partial column: {e}")
 
         logger.info(f"Schema upgrade complete: v{from_version} -> v{to_version}")
     

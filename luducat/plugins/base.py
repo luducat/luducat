@@ -15,12 +15,14 @@ Plugin Type System:
 """
 
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Optional
 
+from luducat.plugins.sdk.lookup import Lookup, LookupOutcome  # noqa: F401  re-exported for plugins
 
 # =============================================================================
 # CANONICAL METADATA FIELD VOCABULARY
@@ -87,7 +89,7 @@ PER_STORE_FIELDS: frozenset = frozenset({
 # =============================================================================
 
 # IGDB platform IDs → canonical platform name
-IGDB_PLATFORM_NORMALIZATION: Dict[int, str] = {
+IGDB_PLATFORM_NORMALIZATION: dict[int, str] = {
     # PC
     6: "windows",       # PC (Microsoft Windows)
     13: "dos",          # DOS (includes MSDOS, Tandy, IBM PC/PCjr variants)
@@ -126,7 +128,7 @@ IGDB_PLATFORM_NORMALIZATION: Dict[int, str] = {
 }
 
 # Text-based platform name normalization (for non-IGDB sources or IGDB slug fallback)
-PLATFORM_NAME_NORMALIZATION: Dict[str, str] = {
+PLATFORM_NAME_NORMALIZATION: dict[str, str] = {
     # Windows variants
     "pc (microsoft windows)": "windows", "windows": "windows",
     "windows nt": "windows", "windows 7": "windows", "windows 8": "windows",
@@ -171,7 +173,7 @@ def generate_short_description(description: str, max_paragraphs: int = 2) -> str
     return "\n\n".join(paragraphs[:max_paragraphs])
 
 
-def compute_release_year(release_dates: Dict[str, str]) -> Optional[int]:
+def compute_release_year(release_dates: dict[str, str]) -> int | None:
     """Compute release year from oldest date across all platforms.
 
     Args:
@@ -227,13 +229,13 @@ class ConfigAction:
     """
     id: str
     label: str
-    callback: Union[str, Callable] = ""
+    callback: str | Callable = ""
     group: str = "general"
-    icon: Optional[str] = None
+    icon: str | None = None
     enabled: bool = True
-    tooltip: Optional[str] = None
+    tooltip: str | None = None
     requires_auth: bool = False
-    dialog_class: Optional[str] = None
+    dialog_class: str | None = None
 
 
 class PluginError(Exception):
@@ -287,36 +289,36 @@ class Game:
     launch_url: str
 
     # Optional metadata
-    short_description: Optional[str] = None
-    description: Optional[str] = None
-    header_image_url: Optional[str] = None
-    cover_image_url: Optional[str] = None  # 2:3 portrait cover (library_capsule)
-    background_image_url: Optional[str] = None
-    screenshots: List[str] = field(default_factory=list)
+    short_description: str | None = None
+    description: str | None = None
+    header_image_url: str | None = None
+    cover_image_url: str | None = None  # 2:3 portrait cover (library_capsule)
+    background_image_url: str | None = None
+    screenshots: list[str] = field(default_factory=list)
 
     # Release info
-    release_date: Optional[str] = None
-    publishers: List[str] = field(default_factory=list)
-    developers: List[str] = field(default_factory=list)
+    release_date: str | None = None
+    publishers: list[str] = field(default_factory=list)
+    developers: list[str] = field(default_factory=list)
 
     # Categorization
-    genres: List[str] = field(default_factory=list)
-    categories: List[str] = field(default_factory=list)
-    tags: List[str] = field(default_factory=list)  # Store-provided tags (not user tags)
+    genres: list[str] = field(default_factory=list)
+    categories: list[str] = field(default_factory=list)
+    tags: list[str] = field(default_factory=list)  # Store-provided tags (not user tags)
 
     # Play statistics (if available from store)
-    playtime_minutes: Optional[int] = None
-    last_played: Optional[datetime] = None
+    playtime_minutes: int | None = None
+    last_played: datetime | None = None
 
     # Achievement data (if available)
-    achievements_total: Optional[int] = None
-    achievements_unlocked: Optional[int] = None
+    achievements_total: int | None = None
+    achievements_unlocked: int | None = None
 
     # Licensing status
     # 0 = Owned (or shared to others), 1 = Borrowed via Family Sharing
     family_shared: int = 0
     # For borrowed games (family_shared=1), the SteamID of the owner
-    family_shared_owner: Optional[str] = None
+    family_shared_owner: str | None = None
 
     # Steam status flags
     # 0 = normal, 1 = marked private on user's Steam profile
@@ -325,12 +327,12 @@ class Game:
     is_delisted: int = 0
 
     # Additional metadata (store-specific, preserved as-is)
-    extra_metadata: Dict[str, Any] = field(default_factory=dict)
+    extra_metadata: dict[str, Any] = field(default_factory=dict)
 
     # Sibling store_games for cross-store enrichment propagation.
     # Set by sync_orchestrator when building deduped enrichment batches.
     # List of (store_name, store_app_id) tuples for other stores.
-    siblings: Optional[List[tuple]] = field(default_factory=list)
+    siblings: list[tuple] | None = field(default_factory=list)
 
 
 @dataclass
@@ -342,9 +344,9 @@ class MetadataSearchResult:
     """
     provider_id: str         # Provider-specific ID (e.g., IGDB game ID)
     title: str               # Game title from provider
-    release_year: Optional[int] = None
-    platforms: List[str] = field(default_factory=list)
-    cover_url: Optional[str] = None
+    release_year: int | None = None
+    platforms: list[str] = field(default_factory=list)
+    cover_url: str | None = None
     confidence: float = 0.0  # Match confidence 0.0-1.0
 
 
@@ -359,41 +361,41 @@ class EnrichmentData:
     provider_id: str         # Provider-specific ID
 
     # Categorization (primary enrichment targets)
-    genres: List[str] = field(default_factory=list)
-    tags: List[str] = field(default_factory=list)      # Themes in IGDB
-    franchise: Optional[str] = None
-    series: Optional[str] = None
+    genres: list[str] = field(default_factory=list)
+    tags: list[str] = field(default_factory=list)      # Themes in IGDB
+    franchise: str | None = None
+    series: str | None = None
 
     # Additional metadata (may override store data if higher quality)
-    developers: List[str] = field(default_factory=list)
-    publishers: List[str] = field(default_factory=list)
-    summary: Optional[str] = None
-    storyline: Optional[str] = None
-    release_date: Optional[str] = None
+    developers: list[str] = field(default_factory=list)
+    publishers: list[str] = field(default_factory=list)
+    summary: str | None = None
+    storyline: str | None = None
+    release_date: str | None = None
 
     # Images (fallback if store has none)
-    cover_url: Optional[str] = None
-    background_url: Optional[str] = None
-    screenshots: List[str] = field(default_factory=list)
+    cover_url: str | None = None
+    background_url: str | None = None
+    screenshots: list[str] = field(default_factory=list)
 
     # Ratings
-    user_rating: Optional[float] = None
-    user_rating_count: Optional[int] = None
+    user_rating: float | None = None
+    user_rating_count: int | None = None
 
     # Extended metadata (from IGDB, PCGamingWiki, etc.)
-    themes: List[str] = field(default_factory=list)
-    platforms: List[str] = field(default_factory=list)
-    perspectives: List[str] = field(default_factory=list)
-    age_ratings: List[Dict[str, str]] = field(default_factory=list)
-    engine: Optional[str] = None
-    websites: List[Dict[str, str]] = field(default_factory=list)
+    themes: list[str] = field(default_factory=list)
+    platforms: list[str] = field(default_factory=list)
+    perspectives: list[str] = field(default_factory=list)
+    age_ratings: list[dict[str, str]] = field(default_factory=list)
+    engine: str | None = None
+    websites: list[dict[str, str]] = field(default_factory=list)
 
     # Extra provider-specific data
-    extra: Dict[str, Any] = field(default_factory=dict)
+    extra: dict[str, Any] = field(default_factory=dict)
 
     # Per-field source map (field_name -> provider_name)
     # Populated when enrichment comes from merged multi-plugin results
-    source_map: Dict[str, str] = field(default_factory=dict)
+    source_map: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
@@ -412,36 +414,36 @@ class PluginMetadata:
     min_luducat_version: str
 
     # Class paths - one required depending on plugin type
-    store_class: Optional[str] = None      # For store plugins (e.g., "store.SteamStore")
-    provider_class: Optional[str] = None   # For metadata plugins (e.g., "provider.IgdbProvider")
-    entry_point: Optional[str] = None      # For runtime plugins (e.g., "provider.DOSBoxProvider")
+    store_class: str | None = None      # For store plugins (e.g., "store.SteamStore")
+    provider_class: str | None = None   # For metadata plugins (e.g., "provider.IgdbProvider")
+    entry_point: str | None = None      # For runtime plugins (e.g., "provider.DOSBoxProvider")
 
     # Plugin directory path (set during discovery)
-    plugin_dir: Optional[Path] = None
+    plugin_dir: Path | None = None
 
     # Optional fields (with defaults)
-    max_luducat_version: Optional[str] = None
+    max_luducat_version: str | None = None
 
     # Optional fields
-    author_email: Optional[str] = None
-    homepage: Optional[str] = None
-    icon: Optional[str] = None   # Relative path to icon file
+    author_email: str | None = None
+    homepage: str | None = None
+    icon: str | None = None   # Relative path to icon file
 
     # Dependencies
     python_version: str = ">=3.10"
-    packages: List[str] = field(default_factory=list)
+    packages: list[str] = field(default_factory=list)
 
     # Platform support
-    platforms: Dict[str, bool] = field(default_factory=lambda: {
+    platforms: dict[str, bool] = field(default_factory=lambda: {
         "linux": True, "windows": True, "macos": True
     })
 
     # Plugin types (required for type-based enumeration)
     # Valid types: "store", "metadata", "runtime", "launch_provider"
-    plugin_types: List[str] = field(default_factory=lambda: ["store"])
+    plugin_types: list[str] = field(default_factory=lambda: ["store"])
 
     # Capabilities
-    capabilities: Dict[str, bool] = field(default_factory=lambda: {
+    capabilities: dict[str, bool] = field(default_factory=lambda: {
         "fetch_library": True,
         "fetch_metadata": True,
         "launch_games": True,
@@ -451,44 +453,44 @@ class PluginMetadata:
     })
 
     # Settings schema for plugin configuration UI
-    settings_schema: Dict[str, Any] = field(default_factory=dict)
+    settings_schema: dict[str, Any] = field(default_factory=dict)
 
     # Per-field metadata declarations from plugin.json "provides_fields" section.
     # Maps field_name -> {"priority": int, ...}. Lower priority = higher preference.
     # If empty, this plugin uses fallback defaults in MetadataResolver.
-    provides_fields: Dict[str, Dict[str, Any]] = field(default_factory=dict)
+    provides_fields: dict[str, dict[str, Any]] = field(default_factory=dict)
 
     # Auth declaration from plugin.json "auth" block.
     # type: "none", "api_key", "oauth", "browser_cookies", "external_tool"
-    auth: Dict[str, Any] = field(default_factory=dict)
+    auth: dict[str, Any] = field(default_factory=dict)
 
     # Brand colors for UI badges/labels (from plugin.json "brand_colors")
-    brand_colors: Dict[str, str] = field(default_factory=dict)
+    brand_colors: dict[str, str] = field(default_factory=dict)
 
     # Badge label for UI store badges (3-char abbreviation, from plugin.json)
     badge_label: str = ""
 
     # Network configuration (from plugin.json "network" section)
-    network: Dict[str, Any] = field(default_factory=dict)
+    network: dict[str, Any] = field(default_factory=dict)
 
     # Privacy declaration (from plugin.json "privacy" section)
-    privacy: Dict[str, Any] = field(default_factory=dict)
+    privacy: dict[str, Any] = field(default_factory=dict)
 
     # Whether this plugin is bundled with the application (set by PluginManager)
     is_bundled: bool = False
 
     # Custom config dialog class path (e.g., "config_dialog.EpicConfigDialog")
-    config_dialog_class: Optional[str] = None
+    config_dialog_class: str | None = None
 
     # Declarative config dialog actions (from plugin.json "config_actions")
-    config_actions: List[Dict[str, Any]] = field(default_factory=list)
+    config_actions: list[dict[str, Any]] = field(default_factory=list)
 
     # Bridge plugin configuration (from plugin.json "bridge" section)
-    bridge_config: Dict[str, Any] = field(default_factory=dict)
+    bridge_config: dict[str, Any] = field(default_factory=dict)
 
     # Custom settings group title and intro text (from plugin.json)
-    settings_title: Optional[str] = None
-    settings_description: Optional[str] = None
+    settings_title: str | None = None
+    settings_description: str | None = None
 
     # Hidden: plugin not shown in Settings plugin list (e.g., multi_store engines
     # that only exist to spawn virtual stores)
@@ -499,7 +501,7 @@ class PluginMetadata:
 
     # Credential storage settings
     use_system_keyring: bool = True
-    keyring_service: Optional[str] = None  # Defaults to "luducat.{name}"
+    keyring_service: str | None = None  # Defaults to "luducat.{name}"
 
 
 class AbstractGameStore(ABC):
@@ -556,7 +558,7 @@ class AbstractGameStore(ABC):
 
         # Will be set by plugin manager after initialization
         self._credential_manager = None
-        self._settings: Dict[str, Any] = {}
+        self._settings: dict[str, Any] = {}
         self._local_data_consent = False
         self._storage = None  # PluginStorage, injected by plugin manager
         self._http_client = None  # PluginHttpClient, injected by plugin manager
@@ -586,7 +588,7 @@ class AbstractGameStore(ABC):
         """
         self._credential_manager = credential_manager
 
-    def set_settings(self, settings: Dict[str, Any]) -> None:
+    def set_settings(self, settings: dict[str, Any]) -> None:
         """Called by plugin manager to inject plugin settings"""
         self._settings = settings
 
@@ -704,9 +706,9 @@ class AbstractGameStore(ABC):
     @abstractmethod
     async def fetch_user_games(
         self,
-        status_callback: Optional[Callable[[str], None]] = None,
-        cancel_check: Optional[Callable[[], bool]] = None,
-    ) -> List[str]:
+        status_callback: Callable[[str], None] | None = None,
+        cancel_check: Callable[[], bool] | None = None,
+    ) -> list[str]:
         """Fetch list of game IDs owned by user
 
         This should be a relatively fast operation that just returns
@@ -729,8 +731,8 @@ class AbstractGameStore(ABC):
 
     @abstractmethod
     async def fetch_game_metadata(
-        self, app_ids: List[str], download_images: bool = False
-    ) -> List[Game]:
+        self, app_ids: list[str], download_images: bool = False
+    ) -> list[Game]:
         """Fetch detailed metadata for given app IDs
 
         Args:
@@ -803,7 +805,7 @@ class AbstractGameStore(ABC):
 
     # === OPTIONAL METHODS (override if supported) ===
 
-    def get_config_actions(self) -> List[ConfigAction]:
+    def get_config_actions(self) -> list[ConfigAction]:
         """Return dynamic config dialog actions.
 
         Override for actions that need runtime state (conditional enables,
@@ -819,7 +821,7 @@ class AbstractGameStore(ABC):
         """
         return []
 
-    def get_account_identifier(self) -> Optional[str]:
+    def get_account_identifier(self) -> str | None:
         """Return a string uniquely identifying the current account.
 
         Core uses this to detect account changes between syncs and
@@ -831,7 +833,7 @@ class AbstractGameStore(ABC):
         """
         return None
 
-    async def fetch_playtime(self, app_ids: List[str]) -> Dict[str, int]:
+    async def fetch_playtime(self, app_ids: list[str]) -> dict[str, int]:
         """Fetch playtime data for games (optional)
 
         Returns:
@@ -839,7 +841,7 @@ class AbstractGameStore(ABC):
         """
         return {}
 
-    async def fetch_achievements(self, app_id: str) -> Dict[str, Any]:
+    async def fetch_achievements(self, app_id: str) -> dict[str, Any]:
         """Fetch achievement data for a game (optional)
 
         Returns:
@@ -855,7 +857,7 @@ class AbstractGameStore(ABC):
         """
         return ""
 
-    def get_game_metadata(self, app_id: str) -> Optional[Dict[str, Any]]:
+    def get_game_metadata(self, app_id: str) -> dict[str, Any] | None:
         """Get metadata for a single game from plugin's database
 
         This is the canonical source for game metadata. The main database
@@ -880,7 +882,7 @@ class AbstractGameStore(ABC):
         """
         return None
 
-    def get_games_metadata_bulk(self, app_ids: List[str]) -> Dict[str, Dict[str, Any]]:
+    def get_games_metadata_bulk(self, app_ids: list[str]) -> dict[str, dict[str, Any]]:
         """Get metadata for multiple games efficiently
 
         For performance with large libraries (15k+ games), plugins should
@@ -900,7 +902,7 @@ class AbstractGameStore(ABC):
                 result[app_id] = metadata
         return result
 
-    def get_ids_needing_refetch(self) -> List[str]:
+    def get_ids_needing_refetch(self) -> list[str]:
         """Return IDs of existing games that need metadata re-fetched.
 
         Called after fetch_user_games() during sync. Allows plugins to signal
@@ -943,7 +945,7 @@ class AbstractGameStore(ABC):
         """
         return False
 
-    def get_cached_image_path(self, app_id: str, image_type: str) -> Optional[Path]:
+    def get_cached_image_path(self, app_id: str, image_type: str) -> Path | None:
         """Get path to cached image if it exists
 
         Args:
@@ -962,7 +964,7 @@ class AbstractGameStore(ABC):
         store_name: str,
         store_id: str,
         normalized_title: str = "",
-    ) -> Optional[Dict[str, Any]]:
+    ) -> dict[str, Any] | Lookup | None:
         """Resolve a game in this plugin's catalog and return standardized metadata.
 
         The plugin DB is a license-agnostic cache — contains ALL games ever
@@ -978,7 +980,11 @@ class AbstractGameStore(ABC):
             normalized_title: Optional normalized title for fallback search
 
         Returns:
-            Dict with standardized metadata, or None if game not found
+            A ``Lookup`` (found / not_found / unavailable), or the legacy
+            form: dict with standardized metadata, None if game not found.
+            Answer ``Lookup.unavailable(reason)`` when the source could not
+            be asked (offline, rate limit, expired auth) so the resolver
+            never caches that as a miss.
         """
         if store_name == self.store_name:
             return self.get_game_metadata(store_id)
@@ -986,7 +992,7 @@ class AbstractGameStore(ABC):
             return self._find_game_by_title(normalized_title)
         return None
 
-    def _find_game_by_title(self, normalized_title: str) -> Optional[Dict[str, Any]]:
+    def _find_game_by_title(self, normalized_title: str) -> dict[str, Any] | None:
         """Search own catalog by normalized title. Override in subclasses.
 
         Args:
@@ -1021,7 +1027,7 @@ class AbstractGameStore(ABC):
         """
         pass
 
-    def get_install_sync_data(self) -> Optional[Dict[str, Any]]:
+    def get_install_sync_data(self) -> dict[str, Any] | None:
         """Return installation status data for syncing to main DB.
 
         Store plugins override this to report which games are installed locally.
@@ -1033,7 +1039,14 @@ class AbstractGameStore(ABC):
         """
         return None
 
-    def get_playtime_sync_data(self) -> Optional[Dict[str, Any]]:
+    def check_single_install(self, store_app_id: str) -> dict[str, Any] | None:
+        """Return {"installed": True, "install_path": str|None} if the game is installed now, else None.
+
+        Runs on the UI thread: must be cheap, no library-wide scan, no network.
+        """
+        return None
+
+    def get_playtime_sync_data(self) -> dict[str, Any] | None:
         """Return playtime data for syncing to main DB.
 
         Store plugins override this to report playtime from local or API sources.
@@ -1045,7 +1058,7 @@ class AbstractGameStore(ABC):
         """
         return None
 
-    def on_sync_complete(self, progress_callback=None) -> Dict[str, Any]:
+    def on_sync_complete(self, progress_callback=None) -> dict[str, Any]:
         """Called after sync completes for this store
 
         Use this for post-sync tasks like repairing assets, cleanup, etc.
@@ -1059,7 +1072,7 @@ class AbstractGameStore(ABC):
         """
         return {}
 
-    async def get_download_info(self, app_id: str) -> Optional[Dict[str, Any]]:
+    async def get_download_info(self, app_id: str) -> dict[str, Any] | None:
         """Get download information for a game
 
         Override this method to provide download URLs, checksums, etc.
@@ -1081,7 +1094,7 @@ class AbstractGameStore(ABC):
 
     # === CREDENTIAL HELPERS ===
 
-    def get_credential(self, key: str) -> Optional[str]:
+    def get_credential(self, key: str) -> str | None:
         """Retrieve credential from secure storage
 
         Args:
@@ -1186,7 +1199,7 @@ class AbstractMetadataProvider(ABC):
 
         # Will be set by plugin manager after initialization
         self._credential_manager = None
-        self._settings: Dict[str, Any] = {}
+        self._settings: dict[str, Any] = {}
         self._local_data_consent = False
         self._storage = None  # PluginStorage, injected by plugin manager
         self._http_client = None  # PluginHttpClient, injected by plugin manager
@@ -1195,7 +1208,7 @@ class AbstractMetadataProvider(ABC):
         """Called by plugin manager to inject credential manager"""
         self._credential_manager = credential_manager
 
-    def set_settings(self, settings: Dict[str, Any]) -> None:
+    def set_settings(self, settings: dict[str, Any]) -> None:
         """Called by plugin manager to inject plugin settings"""
         self._settings = settings
 
@@ -1234,7 +1247,7 @@ class AbstractMetadataProvider(ABC):
 
     # === OPTIONAL METHODS ===
 
-    def get_config_actions(self) -> List[ConfigAction]:
+    def get_config_actions(self) -> list[ConfigAction]:
         """Return dynamic config dialog actions.
 
         Override for actions that need runtime state. See
@@ -1242,7 +1255,7 @@ class AbstractMetadataProvider(ABC):
         """
         return []
 
-    def get_asset_attribution(self, asset_url: str) -> Optional[Dict[str, Any]]:
+    def get_asset_attribution(self, asset_url: str) -> dict[str, Any] | None:
         """Get attribution info for an asset this plugin provided.
 
         Plugins that track asset authorship (e.g. community image sources)
@@ -1334,7 +1347,7 @@ class AbstractMetadataProvider(ABC):
         self,
         store_name: str,
         store_id: str
-    ) -> Optional[str]:
+    ) -> str | None:
         """Look up provider's game ID using store ID
 
         This is the primary matching method. Uses external_games
@@ -1353,8 +1366,8 @@ class AbstractMetadataProvider(ABC):
     async def search_game(
         self,
         title: str,
-        year: Optional[int] = None
-    ) -> List[MetadataSearchResult]:
+        year: int | None = None
+    ) -> list[MetadataSearchResult]:
         """Search for games by title (fallback when store ID lookup fails)
 
         Args:
@@ -1370,7 +1383,7 @@ class AbstractMetadataProvider(ABC):
     async def get_enrichment(
         self,
         provider_id: str
-    ) -> Optional[EnrichmentData]:
+    ) -> EnrichmentData | None:
         """Get enrichment data for a game
 
         Args:
@@ -1400,7 +1413,7 @@ class AbstractMetadataProvider(ABC):
     # === CACHE MANAGEMENT ===
 
     @property
-    def store_match_table(self) -> Optional[str]:
+    def store_match_table(self) -> str | None:
         """SQLAlchemy table name for store-to-plugin ID mapping.
 
         Override in subclasses to enable cache clearing during force-rescan.
@@ -1412,11 +1425,11 @@ class AbstractMetadataProvider(ABC):
 
     async def enrich_games(
         self,
-        games: List[Game],
-        status_callback: Optional[Callable[[str, int, int], None]] = None,
-        cancel_check: Optional[Callable[[], bool]] = None,
-        cross_store_ids: Optional[Dict[str, str]] = None,
-    ) -> Dict[str, EnrichmentData]:
+        games: list[Game],
+        status_callback: Callable[[str, int, int], None] | None = None,
+        cancel_check: Callable[[], bool] | None = None,
+        cross_store_ids: dict[str, str] | None = None,
+    ) -> dict[str, EnrichmentData]:
         """Enrich multiple games during sync
 
         This is the main entry point called during store sync.
@@ -1469,7 +1482,7 @@ class AbstractMetadataProvider(ABC):
 
         return results
 
-    def get_cached_enrichment(self, store_name: str, store_id: str) -> Optional[EnrichmentData]:
+    def get_cached_enrichment(self, store_name: str, store_id: str) -> EnrichmentData | None:
         """Get cached enrichment data from local database
 
         Use this to avoid API calls for already-enriched games.
@@ -1488,7 +1501,7 @@ class AbstractMetadataProvider(ABC):
         store_name: str,
         store_id: str,
         normalized_title: str = ""
-    ) -> Optional[Dict[str, Any]]:
+    ) -> dict[str, Any] | Lookup | None:
         """Get metadata for a game on-demand using store info (sync)
 
         This is the generic interface for on-demand metadata fetching.
@@ -1504,11 +1517,12 @@ class AbstractMetadataProvider(ABC):
             normalized_title: Optional normalized title for fallback search
 
         Returns:
-            Dict with metadata (description, cover_image_url, genres, etc.)
-            or None if game not found
+            A ``Lookup`` (found / not_found / unavailable), or the legacy
+            form: dict with metadata (description, cover_image_url, genres,
+            etc.), None if game not found. ``Lookup.unavailable(reason)``
+            means the source could not be asked and must not be cached
+            as a miss.
         """
-        # Default implementation returns None
-        # Subclasses should override to provide actual implementation
         return None
 
     # === LIFECYCLE HOOKS ===
@@ -1527,7 +1541,7 @@ class AbstractMetadataProvider(ABC):
 
     # === CREDENTIAL HELPERS ===
 
-    def get_credential(self, key: str) -> Optional[str]:
+    def get_credential(self, key: str) -> str | None:
         """Retrieve credential from secure storage"""
         if self._credential_manager is None:
             return None
@@ -1600,11 +1614,11 @@ class AbstractPlatformProvider(ABC):
         self.data_dir.mkdir(parents=True, exist_ok=True)
 
         # Will be set by plugin manager after initialization
-        self._settings: Dict[str, Any] = {}
+        self._settings: dict[str, Any] = {}
         self._storage = None  # PluginStorage, injected by plugin manager
         self._http_client = None  # PluginHttpClient, injected by plugin manager
 
-    def set_settings(self, settings: Dict[str, Any]) -> None:
+    def set_settings(self, settings: dict[str, Any]) -> None:
         """Called by plugin manager to inject plugin settings"""
         self._settings = settings
 
@@ -1661,7 +1675,7 @@ class AbstractPlatformProvider(ABC):
         pass
 
     @abstractmethod
-    def detect_platforms(self) -> List[Dict[str, Any]]:
+    def detect_platforms(self) -> list[dict[str, Any]]:
         """Detect available platforms of this type
 
         Scans the system for installed platforms and returns
@@ -1699,9 +1713,9 @@ class AbstractPlatformProvider(ABC):
     def create_launch_config(
         self,
         game: "Game",
-        platform_info: Dict[str, Any],
+        platform_info: dict[str, Any],
         **kwargs
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Create launch configuration for a game
 
         Args:
@@ -1722,7 +1736,7 @@ class AbstractPlatformProvider(ABC):
         """
         pass
 
-    def launch(self, config: Dict[str, Any]) -> Dict[str, Any]:
+    def launch(self, config: dict[str, Any]) -> dict[str, Any]:
         """Launch a game with the given configuration
 
         Default implementation handles common launch methods.
@@ -1746,7 +1760,7 @@ class AbstractPlatformProvider(ABC):
         except Exception as e:
             return {"success": False, "error": str(e)}
 
-    def _launch_url_scheme(self, config: Dict[str, Any]) -> Dict[str, Any]:
+    def _launch_url_scheme(self, config: dict[str, Any]) -> dict[str, Any]:
         """Launch via URL scheme"""
         from PySide6.QtCore import QUrl
         from PySide6.QtGui import QDesktopServices
@@ -1758,7 +1772,7 @@ class AbstractPlatformProvider(ABC):
         success = QDesktopServices.openUrl(QUrl(url))
         return {"success": success, "error": None if success else "Failed to open URL"}
 
-    def _launch_executable(self, config: Dict[str, Any]) -> Dict[str, Any]:
+    def _launch_executable(self, config: dict[str, Any]) -> dict[str, Any]:
         """Launch via direct executable"""
         import subprocess
         import sys
@@ -1805,7 +1819,7 @@ class AbstractPlatformProvider(ABC):
         except Exception as e:
             return {"success": False, "error": str(e)}
 
-    def get_platform_settings_schema(self) -> Dict[str, Any]:
+    def get_platform_settings_schema(self) -> dict[str, Any]:
         """Get JSON schema for platform-specific settings
 
         Override to provide custom settings UI.
@@ -1815,7 +1829,7 @@ class AbstractPlatformProvider(ABC):
         """
         return {}
 
-    def get_game_settings_schema(self, game: "Game") -> Dict[str, Any]:
+    def get_game_settings_schema(self, game: "Game") -> dict[str, Any]:
         """Get JSON schema for per-game platform settings
 
         Override to provide game-specific settings.
@@ -1924,12 +1938,12 @@ class AbstractRunnerPlugin(ABC):
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self.data_dir.mkdir(parents=True, exist_ok=True)
 
-        self._settings: Dict[str, Any] = {}
+        self._settings: dict[str, Any] = {}
         self._storage = None  # PluginStorage, injected by plugin manager
         self._http_client = None  # PluginHttpClient, injected by plugin manager
         self._local_data_consent: bool = False
 
-    def set_settings(self, settings: Dict[str, Any]) -> None:
+    def set_settings(self, settings: dict[str, Any]) -> None:
         """Called by plugin manager to inject plugin settings."""
         self._settings = settings
 
@@ -2012,7 +2026,7 @@ class AbstractRunnerPlugin(ABC):
 
     @property
     @abstractmethod
-    def supported_stores(self) -> List[str]:
+    def supported_stores(self) -> list[str]:
         """List of store plugin names this provider can launch games for.
 
         Examples: ["gog", "epic"] for Heroic, ["steam"] for Steam native
@@ -2060,8 +2074,10 @@ class AbstractRunnerPlugin(ABC):
         Returns:
             LaunchResult with success status
         """
-        from luducat.core.runtime_base import LaunchMethod as _LM, LaunchResult as _LR
         import logging as _logging
+
+        from luducat.core.runtime_base import LaunchMethod as _LM
+        from luducat.core.runtime_base import LaunchResult as _LR
         _logger = _logging.getLogger(__name__)
 
         try:
@@ -2113,7 +2129,7 @@ class AbstractRunnerPlugin(ABC):
         """
         return 100
 
-    def get_install_methods(self) -> List[Dict[str, Any]]:
+    def get_install_methods(self) -> list[dict[str, Any]]:
         """Return available installation methods for the launcher.
 
         Used by the runner config dialog to populate the Installation dropdown.
@@ -2151,13 +2167,16 @@ class AbstractRunnerPlugin(ABC):
                     "label": label,
                     "available": True,
                 })
-        except Exception:
-            pass
+        except Exception as e:
+            import logging as _logging
+            _logging.getLogger(__name__).debug(
+                "Install method lookup failed for %s: %s", self.runner_name, e
+            )
 
         methods.append({"value": "manual", "label": _("Manual"), "available": True})
         return methods
 
-    def build_install_url(self, store_name: str, app_id: str) -> Optional[str]:
+    def build_install_url(self, store_name: str, app_id: str) -> str | None:
         """Build URL to install a game via this runner.
 
         Returns a URL string that, when opened, triggers installation of
@@ -2172,7 +2191,7 @@ class AbstractRunnerPlugin(ABC):
         """
         return None
 
-    def get_installed_games(self) -> Optional[Dict[str, Dict[str, Any]]]:
+    def get_installed_games(self) -> dict[str, dict[str, Any]] | None:
         """Get games installed in this launcher.
 
         Optional method for runner plugins that can report installation
@@ -2187,7 +2206,7 @@ class AbstractRunnerPlugin(ABC):
 
     # === DEPRECATED METHODS (backward compat) ===
 
-    def get_launch_uri(self, store_name: str, app_id: str) -> Optional[str]:
+    def get_launch_uri(self, store_name: str, app_id: str) -> str | None:
         """Build a launch URI for a specific game.
 
         .. deprecated::
@@ -2225,9 +2244,11 @@ class AbstractRunnerPlugin(ABC):
 
     def _execute_url_launch(self, intent: "LaunchIntent") -> "LaunchResult":
         """Launch via URL scheme using QDesktopServices."""
-        from luducat.core.runtime_base import LaunchMethod as _LM, LaunchResult as _LR
         from PySide6.QtCore import QUrl
         from PySide6.QtGui import QDesktopServices
+
+        from luducat.core.runtime_base import LaunchMethod as _LM
+        from luducat.core.runtime_base import LaunchResult as _LR
 
         if not intent.url:
             return _LR(
@@ -2253,9 +2274,11 @@ class AbstractRunnerPlugin(ABC):
 
     def _execute_binary_launch(self, intent: "LaunchIntent") -> "LaunchResult":
         """Launch via direct binary execution with detached process."""
-        from luducat.core.runtime_base import LaunchMethod as _LM, LaunchResult as _LR
         import subprocess
         import sys
+
+        from luducat.core.runtime_base import LaunchMethod as _LM
+        from luducat.core.runtime_base import LaunchResult as _LR
 
         if not intent.executable:
             return _LR(
@@ -2326,8 +2349,8 @@ RunnerPlugin = AbstractRunnerPlugin
 
 # Re-export launch types so runner plugins import from base, not core
 from luducat.core.runtime_base import (  # noqa: E402
-    RunnerLauncherInfo,
     LaunchIntent,
-    LaunchMethod,
+    LaunchMethod,  # noqa: F401  re-exported for runner plugins
     LaunchResult,
+    RunnerLauncherInfo,
 )

@@ -150,6 +150,14 @@ class ProtonDbDatabase:
                 result[r.steam_app_id] = r
             return result
 
+    def get_no_match(self, steam_app_id: str) -> Optional[ProtonDbNoMatch]:
+        """Get a single no-match entry, or None."""
+        with self.get_session() as session:
+            row = session.get(ProtonDbNoMatch, steam_app_id)
+            if row:
+                session.expunge(row)
+            return row
+
     def get_all_no_match(self) -> List[ProtonDbNoMatch]:
         """Get all no-match entries for retry sync"""
         with self.get_session() as session:

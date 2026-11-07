@@ -14,7 +14,7 @@ import logging
 import random
 import time
 from collections import deque
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 try:
     import psutil
@@ -22,69 +22,77 @@ try:
 except ImportError:
     HAS_PSUTIL = False
 
-from PySide6.QtCore import Qt, Signal, Slot, QTimer, QMetaObject
+from PySide6.QtCore import QMetaObject, Qt, QTimer, Signal, Slot
 from PySide6.QtGui import QGuiApplication, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
     QDialog,
+    QFrame,
     QHBoxLayout,
     QMainWindow,
-    QProgressDialog,
-    QWidget,
-    QVBoxLayout,
-    QSplitter,
     QMessageBox,
+    QProgressDialog,
+    QSplitter,
+    QVBoxLayout,
+    QWidget,
     QWizard,
-    QFrame,
 )
 
 from ..core.config import Config
-from ..core.runtime_base import LaunchMethod
 from ..core.constants import (
     APP_NAME,
     APP_RELEASES_URL,
     APP_VERSION,
     APP_VERSION_FULL,
+    DEFAULT_IMAGE_FADE_MS,
     DEFAULT_LIST_PANEL_WIDTH,
     DEFAULT_WINDOW_HEIGHT,
     DEFAULT_WINDOW_WIDTH,
+    SORT_MODE_ADDED,
+    SORT_MODE_DEVELOPER,
+    SORT_MODE_FAMILY_LICENSES,
+    SORT_MODE_FRANCHISE,
+    SORT_MODE_NAME,
+    SORT_MODE_PUBLISHER,
+    SORT_MODE_RECENT,
+    SORT_MODE_RELEASE,
     VIEW_MODE_COVER,
     VIEW_MODE_LIST,
     VIEW_MODE_SCREENSHOT,
-    SORT_MODE_NAME,
-    SORT_MODE_RECENT,
-    SORT_MODE_ADDED,
-    SORT_MODE_PUBLISHER,
-    SORT_MODE_DEVELOPER,
-    SORT_MODE_RELEASE,
-    SORT_MODE_FRANCHISE,
-    SORT_MODE_FAMILY_LICENSES,
-    DEFAULT_IMAGE_FADE_MS,
 )
 from ..core.database import Database
 from ..core.game_entry import GameEntry
+from ..core.game_service import GameService
 from ..core.network_monitor import get_network_monitor
 from ..core.plugin_manager import PluginManager
-from ..core.game_service import GameService
+from ..core.runtime_base import LaunchMethod
+from ..core.sync_queue import JobPriority, SyncJob, SyncJobQueue, SyncPhase
 from ..utils.browser import open_url
-from ..utils.workers import SyncWorker, DataLoaderWorker
-from ..core.sync_queue import SyncJobQueue, SyncJob, SyncPhase, JobPriority
-
-from .toolbar import Toolbar
+from ..utils.workers import DataLoaderWorker, SyncWorker
+from .content_area import ContentArea
+from .dialogs import (
+    AboutDialog,
+    ImageViewerDialog,
+    PluginConfigDialog,
+    SettingsDialog,
+    SetupWizard,
+    TagEditorDialog,
+)
 from .filter_bar import FilterBar
 from .game_list import GameList
-from .content_area import ContentArea
-from .status_bar import StatusBar
 from .sidebar_handle import SidebarHandle
+from .status_bar import StatusBar
 from .sync_widget import SyncWidget
-from .dialogs import (
-    AboutDialog, SettingsDialog, PluginConfigDialog,
-    TagEditorDialog, ImageViewerDialog, SetupWizard,
-)
-from .widgets import LoadingOverlay, LaunchOverlay
+from .toolbar import Toolbar
+from .widgets import LaunchOverlay, LoadingOverlay
 
 logger = logging.getLogger(__name__)
+
+
+def _quit_application() -> None:
+    # Patching Qt class methods crashes shiboken; stubbing this function does not.
+    QApplication.quit()
 
 
 class MainWindow(QMainWindow):
@@ -121,7 +129,7 @@ class MainWindow(QMainWindow):
         theme_manager=None,  # Optional ThemeManager for live updates
         runtime_manager=None,  # Optional RuntimeManager for game execution
         game_manager=None,  # Optional GameManager for installation
-        parent: Optional[QWidget] = None,
+        parent: QWidget | None = None,
     ):
         super().__init__(parent)
         self.theme_manager = theme_manager
@@ -148,18 +156,18 @@ class MainWindow(QMainWindow):
         )
 
         # Track sync worker
-        self._sync_worker: Optional[SyncWorker] = None
+        self._sync_worker: SyncWorker | None = None
 
         # Track data loader worker
-        self._data_loader: Optional[DataLoaderWorker] = None
+        self._data_loader: DataLoaderWorker | None = None
         self._loading_in_progress = False
 
         # All games cache
-        self._all_games: List[Dict[str, Any]] = []
-        self._filtered_games: List[Dict[str, Any]] = []
+        self._all_games: list[dict[str, Any]] = []
+        self._filtered_games: list[dict[str, Any]] = []
 
         # Pre-built filter indexes (built once in _build_filter_indexes)
-        self._games_by_id: Dict[str, Dict[str, Any]] = {}
+        self._games_by_id: dict[str, dict[str, Any]] = {}
         self._all_game_ids: set = set()
         self._non_hidden_ids: set = set()
         self._hidden_ids: set = set()
@@ -167,14 +175,15 @@ class MainWindow(QMainWindow):
         self._free_ids: set = set()
         self._installed_ids: set = set()
         self._demo_ids: set = set()
-        self._store_index: Dict[str, set] = {}
-        self._tag_index: Dict[str, set] = {}
-        self._game_mode_index: Dict[str, set] = {}
-        self._developer_index: Dict[str, set] = {}
-        self._publisher_index: Dict[str, set] = {}
-        self._genre_index: Dict[str, set] = {}
-        self._year_index: Dict[str, set] = {}
-        self._title_index: Dict[str, str] = {}
+        self._store_index: dict[str, set] = {}
+        self._tag_index: dict[str, set] = {}
+        self._game_mode_index: dict[str, set] = {}
+        self._developer_index: dict[str, set] = {}
+        self._publisher_index: dict[str, set] = {}
+        self._genre_index: dict[str, set] = {}
+        self._platform_index: dict[str, set] = {}
+        self._year_index: dict[str, set] = {}
+        self._title_index: dict[str, str] = {}
         self._adult_content_ids: set = set()
         self._family_shared_ids: set = set()
         self._orphaned_ids: set = set()  # Games with no store links
@@ -193,16 +202,16 @@ class MainWindow(QMainWindow):
         self._pending_update = None  # Optional[UpdateInfo]
 
         # Theme-aware score colors (set by _on_theme_delegate_config_changed)
-        self._score_colors: Dict[str, str] = {"positive": "#28b43c", "negative": "#c83232"}
+        self._score_colors: dict[str, str] = {"positive": "#28b43c", "negative": "#c83232"}
 
         # Incremental filtering: cache filter result to avoid rebuild on search-only changes
-        self._prev_filter_state: Optional[dict] = None  # filters without search text
+        self._prev_filter_state: dict | None = None  # filters without search text
         self._prev_filter_result_ids: set = set()  # result set from filters only
 
         # Collection filter cache (static collection game IDs)
-        self._active_collection_ids: Optional[set] = None
+        self._active_collection_ids: set | None = None
         self._random_blacklist: deque = deque()
-        self._active_collection_id: Optional[int] = None
+        self._active_collection_id: int | None = None
 
         # Sort settings (will be restored from config)
         self._current_sort_mode = SORT_MODE_NAME
@@ -400,8 +409,8 @@ class MainWindow(QMainWindow):
 
         # Launch overlay (covers central widget during game launch)
         self._launch_overlay = LaunchOverlay(central)
-        self._launch_process_timer: Optional[QTimer] = None
-        self._launch_monitor_data: Optional[Dict[str, Any]] = None
+        self._launch_process_timer: QTimer | None = None
+        self._launch_monitor_data: dict[str, Any] | None = None
 
     def _connect_signals(self) -> None:
         """Connect signals between components"""
@@ -473,7 +482,7 @@ class MainWindow(QMainWindow):
         self.content_area.set_ensure_metadata_callback(self.game_service.ensure_metadata_complete)
 
         # Cover lazy loading callback (for cover view grid)
-        self.content_area.set_cover_callback(self.game_service.get_cover)
+        self.content_area.set_cover_callback(self.game_service.lookup_cover)
 
         # Store URL callback (gets URL from plugin)
         self.content_area.set_store_url_callback(self._get_store_url)
@@ -528,6 +537,7 @@ class MainWindow(QMainWindow):
         self.content_area.filter_developer_requested.connect(self._on_filter_developers_from_context)
         self.content_area.filter_publisher_requested.connect(self._on_filter_publishers_from_context)
         self.content_area.filter_genre_requested.connect(self._on_filter_genres_from_context)
+        self.content_area.filter_platform_requested.connect(self._on_filter_platforms_from_context)
         self.content_area.filter_tag_requested.connect(self._on_filter_tags_from_detail)
         self.content_area.filter_year_requested.connect(self._on_filter_year_from_context)
 
@@ -842,7 +852,7 @@ class MainWindow(QMainWindow):
             f"Priority enrichment requested for {game_data.get('title', game_id)}"
         )
 
-    def _get_runner_info_for_store(self, store_name: str) -> Optional[str]:
+    def _get_runner_info_for_store(self, store_name: str) -> str | None:
         """Returns primary runner display name, or None if no runner available."""
         if not self.runtime_manager:
             return None
@@ -968,10 +978,10 @@ class MainWindow(QMainWindow):
     def _launch_via_runtime_manager(
         self,
         game_id: str,
-        game: Dict[str, Any],
+        game: dict[str, Any],
         store_name: str,
         store_app_id: str,
-        runner_name: Optional[str] = None,
+        runner_name: str | None = None,
     ) -> None:
         """Launch game using RuntimeManager
 
@@ -1083,7 +1093,7 @@ class MainWindow(QMainWindow):
             return dialog.get_result()
         return None
 
-    def _show_native_exe_picker(self, game_title: str) -> Optional[str]:
+    def _show_native_exe_picker(self, game_title: str) -> str | None:
         """Show file picker for native executable selection."""
         from PySide6.QtWidgets import QFileDialog
 
@@ -1095,11 +1105,41 @@ class MainWindow(QMainWindow):
         )
         return path if path else None
 
-    def _on_game_install(self, game_id: str, store_name: str) -> None:
-        """Handle game install request.
+    def _detect_existing_install(
+        self, game_id: str, store_name: str, store_app_id: str
+    ) -> bool:
+        """On a hit, record the install and switch the views to Play; True means skip the install dialog."""
+        plugin = self.plugin_manager.get_plugin(store_name)
+        if plugin is None:
+            return False
 
-        Finds the best runner for the store and opens its install URL.
-        """
+        try:
+            info = plugin.check_single_install(store_app_id)
+        except Exception as e:
+            logger.warning(
+                "Install check failed for %s/%s: %s", store_name, store_app_id, e
+            )
+            return False
+        if not info or not info.get("installed"):
+            return False
+
+        updated_id = self.game_service.update_single_install_status(
+            store_name, store_app_id, info.get("install_path")
+        )
+        if updated_id is None:
+            return False
+
+        self._installed_ids.add(game_id)
+        self._prev_filter_state = None
+        self.game_list.update_game_installed(game_id, True)
+        self.content_area.update_game_installed(game_id, True)
+        self.status_bar.show_temporary_message(
+            _("Already installed - click Play to launch")
+        )
+        return True
+
+    def _on_game_install(self, game_id: str, store_name: str) -> None:
+        """Open the store's install URL unless the game is installed already (the last sync may predate it)."""
         game = self.game_service.get_game(game_id)
         if not game:
             return
@@ -1113,6 +1153,9 @@ class MainWindow(QMainWindow):
                     store=PluginManager.get_store_display_name(store_name)
                 ),
             )
+            return
+
+        if self._detect_existing_install(game_id, store_name, store_app_id):
             return
 
         # Find a runner that can build an install URL
@@ -1139,7 +1182,7 @@ class MainWindow(QMainWindow):
     def _launch_via_plugin(
         self,
         game_id: str,
-        game: Dict[str, Any],
+        game: dict[str, Any],
         store_name: str,
         store_app_id: str
     ) -> None:
@@ -1608,7 +1651,7 @@ class MainWindow(QMainWindow):
         if not self._filtered_games:
             return
 
-        def sort_title(game: Dict[str, Any]) -> str:
+        def sort_title(game: dict[str, Any]) -> str:
             """Title lowered with leading whitespace stripped for sort."""
             return (game.get("title") or "").lower().lstrip()
 
@@ -1639,7 +1682,7 @@ class MainWindow(QMainWindow):
         end_sentinel_lo = "0000-00-00"  # sorts last in descending (after reverse)
         end_sentinel = end_sentinel_hi if not should_reverse else end_sentinel_lo
 
-        def get_sort_key(game: Dict[str, Any]):
+        def get_sort_key(game: dict[str, Any]):
             """Generate sort key for a game (value only, no favorites)."""
             if self._current_sort_mode == SORT_MODE_NAME:
                 return sort_title(game)
@@ -1770,8 +1813,8 @@ class MainWindow(QMainWindow):
                 )
 
             self.status_bar.count_label.setToolTip("\n".join(lines))
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Store count tooltip failed: %s", e)
 
     # Memory pressure threshold (MB) - trigger cache cleanup above this
     MEMORY_PRESSURE_THRESHOLD_MB = 800
@@ -1779,8 +1822,9 @@ class MainWindow(QMainWindow):
     def _log_memory_stats(self) -> None:
         """Log periodic memory statistics (DEBUG level)"""
         import gc
-        from ..utils.image_cache import get_cover_cache, get_screenshot_cache
+
         from ..ui.list_view import get_description_image_cache
+        from ..utils.image_cache import get_cover_cache, get_screenshot_cache
 
         parts = []
         rss_mb = 0
@@ -1878,7 +1922,7 @@ class MainWindow(QMainWindow):
 
     def _check_disk_health(self) -> None:
         """Periodic disk health check — only warns if status worsened."""
-        from ..core.config import get_data_dir, get_cache_dir
+        from ..core.config import get_cache_dir, get_data_dir
         from ..core.directory_health import check_directory
 
         worst = "green"
@@ -1924,6 +1968,19 @@ class MainWindow(QMainWindow):
               "Covers and screenshots will still load from the network "
               "but won't be saved locally.").format(reason=reason))
 
+    def _on_restart_for_move(self) -> None:
+        """Close normally, then start again so the recorded directory move runs.
+
+        If the close is refused, the move simply runs at the next start.
+        """
+        # Deferred: luducat.main is the entry module and runs process
+        # setup (malloc arenas, faulthandler) when first imported.
+        from luducat.main import request_restart
+
+        if self.close():
+            request_restart()
+            _quit_application()
+
     def _on_restart_after_restore(self) -> None:
         """Restart the application after a backup restore.
 
@@ -1931,8 +1988,8 @@ class MainWindow(QMainWindow):
         it up to the current schema, then re-execs the process for a
         clean restart.
         """
-        import os
-        import sys
+        # Deferred, as in _on_restart_for_move.
+        from luducat.main import restart_application
 
         logger.info("Restarting after backup restore...")
 
@@ -1948,15 +2005,7 @@ class MainWindow(QMainWindow):
             logger.error(f"Post-restore migration failed: {e}")
             # Continue with restart anyway — the app will handle it on startup
 
-        # Re-exec the process for a clean restart.
-        # When launched via "python -m luducat", sys.argv[0] is the
-        # __main__.py path which can't be exec'd directly (relative
-        # imports need the package context). Use -m instead.
-        if sys.argv and sys.argv[0].endswith("__main__.py"):
-            args = [sys.executable, "-m", "luducat"] + sys.argv[1:]
-        else:
-            args = [sys.executable] + sys.argv
-        os.execv(sys.executable, args)
+        restart_application()
 
     def _toggle_download_window(self) -> None:
         """Show or hide the download companion window."""
@@ -2222,7 +2271,7 @@ class MainWindow(QMainWindow):
         """
         self._loading_overlay.update_status(message, detail, progress)
 
-    def _on_games_loaded(self, games: List[Dict[str, Any]]) -> None:
+    def _on_games_loaded(self, games: list[dict[str, Any]]) -> None:
         """Handle games loaded successfully"""
         # Clear progressive loading state — full rebuild replaces everything
         self._progressive_ids.clear()
@@ -2280,6 +2329,10 @@ class MainWindow(QMainWindow):
             {g for game in self._all_games for g in (game.get("genres") or []) if g},
             key=str.lower
         )
+        platforms = sorted(
+            {p for game in self._all_games for p in (game.get("platforms") or []) if p},
+            key=str.lower
+        )
         years_set = set()
         for g in self._all_games:
             rd = g.get("release_date", "")
@@ -2290,6 +2343,7 @@ class MainWindow(QMainWindow):
         self.filter_bar.set_available_developers(developers)
         self.filter_bar.set_available_publishers(publishers)
         self.filter_bar.set_available_genres(genres)
+        self.filter_bar.set_available_platforms(platforms)
         self.filter_bar.set_available_years(years)
 
         # Load collections for the dropdown menu
@@ -2393,13 +2447,16 @@ class MainWindow(QMainWindow):
             has_game_modes = any(g.get("game_modes") for g in self._all_games)
             self.filter_bar.set_game_modes_available(has_game_modes)
 
-            # Update developer/publisher/year filters
             developers = sorted(
                 {d for g in self._all_games for d in (g.get("developers") or []) if d},
                 key=str.lower
             )
             publishers = sorted(
                 {p for g in self._all_games for p in (g.get("publishers") or []) if p},
+                key=str.lower
+            )
+            platforms = sorted(
+                {p for g in self._all_games for p in (g.get("platforms") or []) if p},
                 key=str.lower
             )
             years_set = set()
@@ -2411,6 +2468,7 @@ class MainWindow(QMainWindow):
 
             self.filter_bar.set_available_developers(developers)
             self.filter_bar.set_available_publishers(publishers)
+            self.filter_bar.set_available_platforms(platforms)
             self.filter_bar.set_available_years(years)
 
     def _build_filter_indexes(self) -> None:
@@ -2420,6 +2478,7 @@ class MainWindow(QMainWindow):
         calls use set intersections instead of per-game iteration.
         """
         from datetime import datetime, timedelta
+
         from ..core.constants import DEFAULT_RECENT_PLAYED_DAYS
 
         # Invalidate incremental filter cache — new data, stale IDs must go
@@ -2441,6 +2500,7 @@ class MainWindow(QMainWindow):
         self._developer_index.clear()
         self._publisher_index.clear()
         self._genre_index.clear()
+        self._platform_index.clear()
         self._year_index.clear()
         self._title_index.clear()
         self._adult_content_ids.clear()
@@ -2535,6 +2595,12 @@ class MainWindow(QMainWindow):
                         self._genre_index[genre] = set()
                     self._genre_index[genre].add(gid)
 
+            for plat in (game.get("platforms") or []):
+                if plat:
+                    if plat not in self._platform_index:
+                        self._platform_index[plat] = set()
+                    self._platform_index[plat].add(gid)
+
             # Year index
             rd = game.get("release_date", "")
             if rd and len(rd) >= 4 and rd[:4].isdigit():
@@ -2618,6 +2684,7 @@ class MainWindow(QMainWindow):
         active_developers = filters.get("developers", [])
         active_publishers = filters.get("publishers", [])
         active_genres = filters.get("genres", [])
+        active_platforms = filters.get("platforms", [])
         active_years = filters.get("years", [])
 
         # Build filter state key (everything except search text)
@@ -2630,6 +2697,7 @@ class MainWindow(QMainWindow):
             "devs": tuple(sorted(active_developers)),
             "pubs": tuple(sorted(active_publishers)),
             "genres": tuple(sorted(active_genres)),
+            "platforms": tuple(sorted(active_platforms)),
             "years": tuple(sorted(active_years)),
             "family_shared": filters.get("filter_family_shared", False),
             "orphaned": filters.get("filter_orphaned", False),
@@ -2688,7 +2756,7 @@ class MainWindow(QMainWindow):
                     # Exact match: game stores must equal selected stores exactly
                     selected = set(active_stores)
                     # Build reverse map: game_id → set of store names
-                    game_store_map: Dict[str, set] = {}
+                    game_store_map: dict[str, set] = {}
                     for store_name, gids in self._store_index.items():
                         for gid in gids:
                             game_store_map.setdefault(gid, set()).add(store_name)
@@ -2739,6 +2807,12 @@ class MainWindow(QMainWindow):
                     genre_union |= self._genre_index.get(genre, set())
                 result &= genre_union
 
+            if active_platforms:
+                plat_union = set()
+                for plat in active_platforms:
+                    plat_union |= self._platform_index.get(plat, set())
+                result &= plat_union
+
             if active_years:
                 year_union = set()
                 for year in active_years:
@@ -2787,7 +2861,7 @@ class MainWindow(QMainWindow):
             f"stores={len(active_stores)}, tags={len(active_tags)}, "
             f"modes={len(active_game_modes)}, devs={len(active_developers)}, "
             f"pubs={len(active_publishers)}, genres={len(active_genres)}, "
-            f"years={len(active_years)})"
+            f"platforms={len(active_platforms)}, years={len(active_years)})"
         )
 
         # Apply current sort to filtered results
@@ -2882,8 +2956,10 @@ class MainWindow(QMainWindow):
     def _check_startup_backup(self) -> None:
         """Check if a scheduled backup is due and run it after UI is loaded."""
         from ..core.backup_manager import (
-            is_backup_due, create_backup,
-            collect_backup_items, collect_assets_items,
+            collect_assets_items,
+            collect_backup_items,
+            create_backup,
+            is_backup_due,
         )
 
         if not is_backup_due(self.config):
@@ -3012,7 +3088,7 @@ class MainWindow(QMainWindow):
 
     def _start_sync(
         self,
-        stores: Optional[List[str]] = None,
+        stores: list[str] | None = None,
         full_resync: bool = False,
     ) -> None:
         """Start non-blocking sync operation.
@@ -3116,7 +3192,7 @@ class MainWindow(QMainWindow):
         if self._sync_worker:
             self._sync_worker.skip_current_plugin()
 
-    def _on_sync_finished(self, stats: Dict[str, Any]) -> None:
+    def _on_sync_finished(self, stats: dict[str, Any]) -> None:
         """Handle sync completed — show summary in sync widget, reload games."""
         self._sync_widget.finish(stats)
         logger.info("Sync finished")
@@ -3146,7 +3222,7 @@ class MainWindow(QMainWindow):
             self._pending_sync_warnings = []
         self._pending_sync_warnings.append((title, message))
 
-    def _on_sync_cancelled(self, stats: Dict[str, Any]) -> None:
+    def _on_sync_cancelled(self, stats: dict[str, Any]) -> None:
         """Handle sync cancelled — hide sync widget, refresh with partial data."""
         self._sync_widget.on_cancelled(stats)
         logger.info("Sync cancelled")
@@ -3431,6 +3507,11 @@ class MainWindow(QMainWindow):
             QApplication.restoreOverrideCursor()
 
         result = dialog.exec_()
+        if dialog.restart_for_move:
+            # Skip the refresh: a game reload started here would still be
+            # running against the database while the restart shuts it down.
+            self._on_restart_for_move()
+            return
         if result:
             # Settings were saved, may need to refresh UI
             logger.info("Settings saved")
@@ -3574,8 +3655,9 @@ class MainWindow(QMainWindow):
     def _on_theme_icon_changed(self) -> None:
         """Swap window icon when a Ginger Max theme is active."""
         from pathlib import Path
-        from PySide6.QtGui import QIcon
+
         from PySide6.QtCore import QSize
+        from PySide6.QtGui import QIcon
 
         theme_id = self.theme_manager.get_current_theme()
         is_ginger = theme_id in ("package:ginger-max", "package:ginger-max-light")
@@ -3676,8 +3758,8 @@ class MainWindow(QMainWindow):
 
     def _blink_selection(self, game_id: str, times: int) -> None:
         """Blink the selection in game list and active grid view simultaneously."""
-        from .game_list import GameRoles
         from .cover_view import CoverRoles
+        from .game_list import GameRoles
         from .screenshot_view import ScreenshotRoles
 
         # Build list of (list_view, index) pairs to blink
@@ -3917,6 +3999,7 @@ class MainWindow(QMainWindow):
             return
 
         import threading
+
         from ..core.update_checker import check_for_update
 
         def _worker():
@@ -4320,6 +4403,7 @@ class MainWindow(QMainWindow):
         menu.filter_developers_requested.connect(self._on_filter_developers_from_context)
         menu.filter_publishers_requested.connect(self._on_filter_publishers_from_context)
         menu.filter_genres_requested.connect(self._on_filter_genres_from_context)
+        menu.filter_platforms_requested.connect(self._on_filter_platforms_from_context)
         menu.filter_year_requested.connect(self._on_filter_year_from_context)
         menu.view_screenshots_requested.connect(
             lambda gid: self._on_view_screenshots_requested(gid, 0)
@@ -4343,7 +4427,6 @@ class MainWindow(QMainWindow):
         self.filter_bar.set_game_mode_filters(modes)
 
     def _on_filter_developers_from_context(self, developers: list) -> None:
-        """Toggle developer filter. If the value is already the active filter, clear it."""
         if developers:
             current = set(self.filter_bar.get_active_filters().get("developers", []))
             if current == set(developers):
@@ -4351,7 +4434,6 @@ class MainWindow(QMainWindow):
         self.filter_bar.set_developer_filters(developers)
 
     def _on_filter_publishers_from_context(self, publishers: list) -> None:
-        """Toggle publisher filter. If the value is already the active filter, clear it."""
         if publishers:
             current = set(self.filter_bar.get_active_filters().get("publishers", []))
             if current == set(publishers):
@@ -4359,12 +4441,18 @@ class MainWindow(QMainWindow):
         self.filter_bar.set_publisher_filters(publishers)
 
     def _on_filter_genres_from_context(self, genres: list) -> None:
-        """Toggle genre filter. If the value is already the active filter, clear it."""
         if genres:
             current = set(self.filter_bar.get_active_filters().get("genres", []))
             if current == set(genres):
                 genres = []
         self.filter_bar.set_genre_filters(genres)
+
+    def _on_filter_platforms_from_context(self, platforms: list) -> None:
+        if platforms:
+            current = set(self.filter_bar.get_active_filters().get("platforms", []))
+            if current == set(platforms):
+                platforms = []
+        self.filter_bar.set_platform_filters(platforms)
 
     def _on_filter_tags_from_detail(self, tags: list) -> None:
         """Toggle tag filter from detail view tag chip click."""
@@ -4375,7 +4463,6 @@ class MainWindow(QMainWindow):
         self.filter_bar.set_tag_filters(tags)
 
     def _on_filter_year_from_context(self, years: list) -> None:
-        """Toggle year filter. If the value is already the active filter, clear it."""
         if years:
             current = set(self.filter_bar.get_active_filters().get("years", []))
             if current == set(years):
@@ -4776,7 +4863,7 @@ class MainWindow(QMainWindow):
                 return 0
             # Check if any filters beyond search text are active.
             # Default/no-op values: False, [], "all", full store set.
-            all_stores = {s for s in self.filter_bar._available_stores} if hasattr(self, "filter_bar") else set()
+            all_stores = set(self.filter_bar._available_stores) if hasattr(self, "filter_bar") else set()
             skip = {"search", "base_filter", "active_collection"}
             has_narrowing = False
             for k, v in fdata.items():

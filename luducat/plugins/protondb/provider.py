@@ -149,35 +149,38 @@ class ProtonDbProvider(AbstractMetadataProvider):
         db = self._get_db()
         rating = db.get_cached_rating(provider_id)
 
-        if rating is None:
-            # Try fetching from API
-            try:
-                api = self._get_api()
-                data = api.get_summary(provider_id)
-                if data:
-                    db.save_rating(
-                        steam_app_id=provider_id,
-                        tier=data["tier"],
-                        score=data.get("score", 0.0),
-                        confidence=data.get("confidence", ""),
-                        total_reports=data.get("total", 0),
-                        trending_tier=data.get("trending_tier", ""),
-                        best_reported_tier=data.get("best_reported_tier", ""),
-                    )
-                    return self._make_enrichment(
-                        provider_id, data["tier"], data.get("score", 0.0)
-                    )
-                else:
-                    db.save_no_match(provider_id)
-                    return None
-            except ProtonDbRateLimitError:
-                logger.warning(f"ProtonDB: Rate limited fetching {provider_id}")
-                return None
-            except ProtonDbApiError as e:
-                logger.warning(f"ProtonDB: Failed to fetch {provider_id}: {e}")
-                return None
+        if rating is not None:
+            return self._make_enrichment(provider_id, rating.tier, rating.score)
 
-        return self._make_enrichment(provider_id, rating.tier, rating.score)
+        from luducat.plugins.sdk.lookup import miss_is_valid
+        no_match = db.get_no_match(provider_id)
+        if no_match and miss_is_valid(no_match.fetched_at, timedelta(days=CACHE_TTL_DAYS)):
+            return None
+
+        try:
+            api = self._get_api()
+            data = api.get_summary(provider_id)
+            if data:
+                db.save_rating(
+                    steam_app_id=provider_id,
+                    tier=data["tier"],
+                    score=data.get("score", 0.0),
+                    confidence=data.get("confidence", ""),
+                    total_reports=data.get("total", 0),
+                    trending_tier=data.get("trending_tier", ""),
+                    best_reported_tier=data.get("best_reported_tier", ""),
+                )
+                return self._make_enrichment(
+                    provider_id, data["tier"], data.get("score", 0.0)
+                )
+            db.save_no_match(provider_id)
+            return None
+        except ProtonDbRateLimitError:
+            logger.warning("ProtonDB: rate limited fetching %s", provider_id)
+            return None
+        except ProtonDbApiError as e:
+            logger.warning("ProtonDB: failed to fetch %s: %s", provider_id, e)
+            return None
 
     # =========================================================================
     # ENRICHMENT (SYNC)

@@ -62,17 +62,7 @@ class GogApiError(Exception):
 
 
 class GogApiClient:
-    """GOG API client using browser cookies
-
-    Usage:
-        client = GogApiClient(plugin_instance, http_client=plugin.http)
-
-        # After getting cookies from browser:
-        client.store_cookies(cookies_dict)
-
-        # Fetch owned games (returns IDs + product metadata):
-        owned_ids, products = await client.get_owned_games()
-    """
+    """GOG API client authenticated with browser cookies (store_cookies first)."""
 
     def __init__(self, plugin, http_client=None):
         """Initialize API client
@@ -244,22 +234,10 @@ class GogApiClient:
         self,
         status_callback: Optional[Any] = None,
         cancel_check: Optional[Any] = None,
-    ) -> Tuple[List[int], List[Dict[str, Any]]]:
-        """Get list of owned game IDs and their basic metadata.
-
-        Returns both the IDs and the full product dicts from getFilteredProducts,
-        which include title, slug, image, platforms, category, rating, tags, etc.
-
-        Args:
-            status_callback: Optional callback(message) for progress updates
-            cancel_check: Optional callback returning True if cancelled
-
-        Returns:
-            Tuple of (owned_ids, product_dicts)
-
-        Raises:
-            GogApiError: If request fails
-        """
+    ) -> Tuple[List[int], List[Dict[str, Any]], Dict[str, str], bool]:
+        """(owned_ids, product_dicts, tag_id_to_name, complete) from getFilteredProducts.
+        complete is False when the page walk was cancelled: the lists then hold what
+        was fetched so far and are not the library. Raises GogApiError."""
         if not self.has_cookies():
             raise GogApiError("No authentication cookies")
 
@@ -270,6 +248,8 @@ class GogApiClient:
 
         owned_ids = []
         product_dicts = []
+        tag_id_to_name: Dict[str, str] = {}
+        complete = True
 
         try:
             # GOG uses pagination, need to fetch all pages
@@ -279,6 +259,7 @@ class GogApiClient:
             while page <= total_pages:
                 if cancel_check and cancel_check():
                     logger.info(f"GOG fetch cancelled at page {page}/{total_pages}")
+                    complete = False
                     break
 
                 self._rate_limit()
@@ -305,18 +286,44 @@ class GogApiClient:
                 # Update total pages
                 total_pages = data.get("totalPages", 1)
 
+                # Top-level tags array carries user tag definitions
+                # with {id, name, productCount} - build the lookup
+                for tag_def in data.get("tags", []):
+                    if isinstance(tag_def, dict) and tag_def.get("id") and tag_def.get("name"):
+                        tag_id_to_name[str(tag_def["id"])] = tag_def["name"]
+
                 # Extract game IDs and full product data
                 products = data.get("products", [])
+                unresolved_count = 0
                 for product in products:
                     if "id" in product:
                         owned_ids.append(product["id"])
+                        # Per-product tags are numeric IDs; resolve to names.
+                        # Keep strings that are already names (non-numeric).
+                        raw_tags = product.get("tags")
+                        if raw_tags and isinstance(raw_tags, list):
+                            resolved = []
+                            for tid in raw_tags:
+                                key = str(tid)
+                                if key in tag_id_to_name:
+                                    resolved.append(tag_id_to_name[key])
+                                elif isinstance(tid, str) and not tid.isdigit():
+                                    resolved.append(tid)
+                                else:
+                                    unresolved_count += 1
+                            product["tags"] = resolved if resolved else None
                         product_dicts.append(product)
+                if unresolved_count:
+                    logger.debug(
+                        f"Page {page}: {unresolved_count} tag IDs "
+                        "could not be resolved to names"
+                    )
 
                 logger.debug(f"Page {page}/{total_pages}: {len(products)} games")
                 page += 1
 
             logger.info(f"Found {len(owned_ids)} owned games")
-            return owned_ids, product_dicts
+            return owned_ids, product_dicts, tag_id_to_name, complete
 
         except RequestException as e:
             logger.error(f"Network error fetching owned games: {e}")
@@ -911,19 +918,10 @@ class GogApiClient:
         self,
         status_callback: Optional[Any] = None,
         cancel_check: Optional[Any] = None,
-    ) -> Dict[int, Dict[str, Any]]:
-        """Paginate through the entire GOG catalog API.
-
-        Returns all products keyed by GOG ID. Fetches both "game" and "pack"
-        product types (packs are treated as games).
-
-        Args:
-            status_callback: Optional callback(message, current, total) for progress
-            cancel_check: Optional callback returning True if cancelled
-
-        Returns:
-            Dict mapping gogid -> parsed catalog product dict
-        """
+    ) -> Tuple[Dict[int, Dict[str, Any]], bool]:
+        """(catalog, complete): every "game" and "pack" product keyed by GOG id, and
+        whether every page was read. A cancelled, failed or interrupted walk returns
+        what it has with complete=False, and owned games missing from it are not delisted."""
         headers = self._get_catalog_headers()
 
         # Add auth cookies (skip csrf)
@@ -934,6 +932,7 @@ class GogApiClient:
         catalog: Dict[int, Dict[str, Any]] = {}
         page = 1
         total_pages = 1
+        complete = False
 
         try:
             while page <= total_pages:
@@ -983,14 +982,17 @@ class GogApiClient:
                     f"{len(products)} items, {len(catalog)} total"
                 )
                 page += 1
+            else:
+                complete = True
 
         except RequestException as e:
             logger.error(f"Network error during catalog scan: {e}")
         except Exception as e:
             logger.error(f"Error during catalog scan: {e}")
 
-        logger.info(f"Catalog scan complete: {len(catalog)} products fetched")
-        return catalog
+        state = "complete" if complete else "incomplete"
+        logger.info(f"Catalog scan {state}: {len(catalog)} products fetched")
+        return catalog, complete
 
     async def resolve_download_link(self, downlink: str) -> Optional[str]:
         """Resolve a GOG downlink to the actual download URL

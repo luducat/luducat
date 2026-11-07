@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "luducat"
-version = "0.8.5"
+version = "0.8.6"
 description = "Cross-platform game catalogue browser"
 readme = "README.md"
 license = {text = "GPL-3.0-or-later"}
@@ -27,7 +27,7 @@ classifiers = [
 ]
 
 dependencies = [
-    "PySide6>=6.5.0",
+    "PySide6>=6.5.0,<6.12",
     "SQLAlchemy>=2.0.0",
     "platformdirs>=3.0.0",
     "tomli-w>=1.0.0",
@@ -100,6 +100,7 @@ ignore = ["E501"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
 testpaths = ["tests"]
 addopts = "-m 'not integration'"
 filterwarnings = [
@@ -110,3 +111,18 @@ filterwarnings = [
 markers = [
     "integration: live tests requiring network and credentials",
 ]
+
+[tool.briefcase]
+bundle = "com.luducat"
+license = "GPL-3.0-or-later"
+license_files = ["LICENSE"]
+
+[tool.briefcase.app.luducat]
+formal_name = "luducat"
+sources = ["luducat"]
+icon = "luducat/assets/appicons/app_icon"
+
+[tool.briefcase.app.luducat.macOS]
+# PySide6 6.11 wheels are tagged macosx_13_0.
+min_os_version = "13.0"
+universal_build = false

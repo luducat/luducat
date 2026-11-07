@@ -11,12 +11,11 @@ Injected into plugins via ``AbstractGameStore.set_main_db_accessor()``.
 """
 
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from sqlalchemy.orm.attributes import flag_modified
 
-from .config import get_data_dir
-from .database import Database, StoreGame
+from .database import StoreGame
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +34,7 @@ class MainDbAccessor:
     # ── Metadata patching ─────────────────────────────────────────
 
     def patch_metadata_json(
-        self, store_app_id: str, patches: Dict[str, Any]
+        self, store_app_id: str, patches: dict[str, Any]
     ) -> bool:
         """Merge *patches* into a StoreGame's ``metadata_json``.
 
@@ -46,8 +45,8 @@ class MainDbAccessor:
         Returns:
             True if the store game was found and patched.
         """
+        session = self._game_service.database.get_session()
         try:
-            session = self._game_service.database.get_session()
             store_game = session.query(StoreGame).filter_by(
                 store_name=self._store_name,
                 store_app_id=str(store_app_id),
@@ -71,10 +70,11 @@ class MainDbAccessor:
                 "patch_metadata_json(%s, %s) failed: %s",
                 self._store_name, store_app_id, e,
             )
+            session.rollback()
             return False
 
     def batch_patch_metadata_json(
-        self, patches_by_id: Dict[str, Dict[str, Any]]
+        self, patches_by_id: dict[str, dict[str, Any]]
     ) -> int:
         """Patch metadata for multiple games in a single transaction.
 
@@ -87,8 +87,8 @@ class MainDbAccessor:
         if not patches_by_id:
             return 0
 
+        session = self._game_service.database.get_session()
         try:
-            session = self._game_service.database.get_session()
             updated = 0
 
             for store_app_id, patches in patches_by_id.items():
@@ -117,6 +117,7 @@ class MainDbAccessor:
                 "batch_patch_metadata_json(%s) failed: %s",
                 self._store_name, e,
             )
+            session.rollback()
             return 0
 
     # ── Query helpers ─────────────────────────────────────────────
@@ -144,12 +145,12 @@ class MainDbAccessor:
                          self._store_name, e)
             return 0
 
-    def get_store_image_urls(self) -> List[str]:
+    def get_store_image_urls(self) -> list[str]:
         """Collect all image URLs from this store's games' metadata.
 
         Extracts cover, header, hero, background, and screenshot URLs.
         """
-        urls: List[str] = []
+        urls: list[str] = []
         try:
             session = self._game_service.database.get_session()
             store_games = session.query(StoreGame).filter_by(

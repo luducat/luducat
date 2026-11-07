@@ -45,7 +45,6 @@ _DOMAIN_RATE_LIMITS: Dict[str, float] = {
     "gog-statics.com": 0.5,       # 10 req/s max to GOG CDN
     "gog.com": 0.5,
     "steamgriddb.com": 0.4,      # ~3 req/s — SGDB CDN times out under higher rates
-    "pcgamingwiki.com": 0.3,     # ~6 req/s — community wiki, be polite
 }
 _domain_last_request: Dict[str, float] = {}
 _domain_rate_lock = threading.Lock()
@@ -87,6 +86,32 @@ def register_disk_write_callback(callback) -> None:
     The callback receives a reason string (e.g. "disk full").
     """
     _disk_write_disabled_callbacks.append(callback)
+
+
+# Longest a download worker waits for a shared-budget slot before giving up for now;
+# the cache runs only MAX_CONCURRENT workers, which other domains need too.
+_MAX_SHARED_BUDGET_WAIT = 2.0
+
+
+def _shared_budget_manager(url: str):
+    """NetworkManager if the URL's domain has a budget shared with plugins, else None."""
+    try:
+        from ..core.network_manager import get_network_manager
+        manager = get_network_manager()
+    except Exception:
+        return None
+    hostname = urlparse(url).hostname or ""
+    return manager if manager.shares_request_budget(hostname) else None
+
+
+def _acquire_request_slot(url: str) -> bool:
+    """Wait for permission to download; False means skip for now (budget or pause)."""
+    manager = _shared_budget_manager(url)
+    if manager is None:
+        _domain_throttle(url)
+        return True
+    hostname = urlparse(url).hostname or ""
+    return manager.acquire_request_slot(hostname, _MAX_SHARED_BUDGET_WAIT)
 
 
 def _domain_throttle(url: str) -> None:
@@ -297,14 +322,20 @@ class ImageLoaderWorker(QThread):
                     self.image_not_found.emit(self._url, "404 (cached)")
                     return
 
-            # Per-domain rate limiting (GOG Varnish etc.)
-            _domain_throttle(self._url)
+            # Per-domain rate limiting (GOG Varnish etc., PCGamingWiki shared with plugins)
+            if not _acquire_request_slot(self._url):
+                self.image_failed.emit(self._url, "Request budget for this site spent, retry later")
+                return
 
             # Build request headers (domain-specific for sites that block hotlinking)
             headers = _build_request_headers(self._url)
 
             # Download image (uses pooled connection with context manager for cleanup)
             with _get_session().get(self._url, timeout=10, headers=headers) as response:
+                if response.status_code == 429:
+                    manager = _shared_budget_manager(self._url)
+                    if manager is not None:
+                        manager.note_response(urlparse(self._url).hostname or "", response)
                 response.raise_for_status()
                 content = response.content
 

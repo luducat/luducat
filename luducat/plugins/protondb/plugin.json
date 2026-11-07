@@ -1,7 +1,7 @@
 {
   "name": "protondb",
   "display_name": "ProtonDB",
-  "version": "1.2.3",
+  "version": "1.2.4",
   "author": "luducat",
   "description": "ProtonDB compatibility ratings for Steam games on Linux",
   "min_luducat_version": "0.2.9.24",

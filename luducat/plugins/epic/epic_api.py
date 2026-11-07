@@ -16,6 +16,7 @@ All authenticated endpoints require a valid bearer token from EpicSession.
 from __future__ import annotations
 
 import logging
+import time
 from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
@@ -26,7 +27,26 @@ _ACCOUNT_HOST = "https://account-public-service-prod03.ol.epicgames.com"
 _LAUNCHER_HOST = "https://launcher-public-service-prod06.ol.epicgames.com"
 _CATALOG_HOST = "https://catalog-public-service-prod06.ol.epicgames.com"
 _LIBRARY_HOST = "https://library-service.live.use1a.on.epicgames.com"
-_STORE_CONTENT_HOST = "https://store-content.ak.epicgames.com"
+STORE_CONTENT_HOST = "https://store-content.ak.epicgames.com"
+_STORE_CONTENT_HOST = STORE_CONTENT_HOST
+
+# A failed product mapping fetch is not retried before this; the mapping is
+# one large public document and a 403 storm on it helps nobody.
+MAPPING_RETRY_SECONDS = 600
+
+
+class EpicCatalogUnavailable(Exception):
+    """The public catalog could not be asked right now (network or
+    rate_limited). Distinct from "no such product", which is None."""
+
+    def __init__(self, reason: str):
+        super().__init__(reason)
+        self.reason = reason
+
+
+
+def _reason_for_status(status: int) -> str:
+    return "rate_limited" if status in (429, 403) else "network"
 
 
 class EpicAPI:
@@ -43,6 +63,7 @@ class EpicAPI:
     # Class-level caches — shared across instances, survives batch boundaries
     _namespace_to_slug: Optional[Dict[str, str]] = None
     _mapping_fetched: bool = False
+    _mapping_failed_at: float | None = None
 
     def __init__(
         self,
@@ -190,45 +211,43 @@ class EpicAPI:
     # ── Unauthenticated endpoints (public catalog) ──────────────────
 
     def get_product_mapping(self) -> Dict[str, str]:
-        """Fetch namespace→slug product mapping (class-level cache).
-
-        Returns:
-            Dict mapping namespace to product slug
-        """
+        """Namespace to slug mapping, cached on the class; raises EpicCatalogUnavailable
+        when it cannot be fetched or a failed fetch is still inside MAPPING_RETRY_SECONDS."""
         if EpicAPI._mapping_fetched:
             return EpicAPI._namespace_to_slug or {}
 
-        url = f"{_STORE_CONTENT_HOST}/api/content/productmapping"
+        failed_at = EpicAPI._mapping_failed_at
+        if failed_at is not None and time.monotonic() - failed_at < MAPPING_RETRY_SECONDS:
+            raise EpicCatalogUnavailable("network")
+
+        url = f"{STORE_CONTENT_HOST}/api/content/productmapping"
         try:
             response = self._http.get(url, timeout=30)
-            if response.status_code == 200:
-                EpicAPI._namespace_to_slug = response.json()
-                logger.debug(
-                    "Loaded %d namespace mappings",
-                    len(EpicAPI._namespace_to_slug),
-                )
-            else:
-                logger.debug(
-                    "Product mapping request returned HTTP %d",
-                    response.status_code,
-                )
-                EpicAPI._namespace_to_slug = {}
         except Exception as e:
+            EpicAPI._mapping_failed_at = time.monotonic()
             logger.debug("Failed to fetch product mapping: %s", e)
-            EpicAPI._namespace_to_slug = {}
+            raise EpicCatalogUnavailable("network") from e
 
+        if response.status_code != 200:
+            EpicAPI._mapping_failed_at = time.monotonic()
+            logger.debug("Product mapping request returned HTTP %d", response.status_code)
+            raise EpicCatalogUnavailable(_reason_for_status(response.status_code))
+
+        try:
+            mapping = response.json()
+        except ValueError as e:
+            EpicAPI._mapping_failed_at = time.monotonic()
+            logger.debug("Product mapping body is not JSON: %s", e)
+            raise EpicCatalogUnavailable("network") from e
+        EpicAPI._namespace_to_slug = mapping
         EpicAPI._mapping_fetched = True
+        EpicAPI._mapping_failed_at = None
+        logger.debug("Loaded %d namespace mappings", len(EpicAPI._namespace_to_slug))
         return EpicAPI._namespace_to_slug
 
     def get_product_data(self, namespace: str) -> Optional[Dict[str, Any]]:
-        """Fetch product page data by namespace (via slug lookup).
-
-        Args:
-            namespace: Epic namespace
-
-        Returns:
-            Full product data dict, or None if not found
-        """
+        """Product page data, or None when Epic has no page for the namespace;
+        raises EpicCatalogUnavailable when the mapping or product request failed."""
         mapping = self.get_product_mapping()
         slug = mapping.get(namespace)
         if not slug:
@@ -236,24 +255,27 @@ class EpicAPI:
             return None
 
         url = (
-            f"{_STORE_CONTENT_HOST}/api/{self._locale}"
+            f"{STORE_CONTENT_HOST}/api/{self._locale}"
             f"/content/products/{slug}"
         )
         try:
             response = self._http.get(url, timeout=30)
-            if response.status_code == 404:
-                logger.debug("Product not found: %s", slug)
-                return None
-            if response.status_code != 200:
-                logger.debug(
-                    "Product request returned HTTP %d for %s",
-                    response.status_code, slug,
-                )
-                return None
-            return response.json()
         except Exception as e:
             logger.debug("Failed to fetch product %s: %s", slug, e)
+            raise EpicCatalogUnavailable("network") from e
+
+        if response.status_code == 404:
+            logger.debug("Product not found: %s", slug)
             return None
+        if response.status_code != 200:
+            logger.debug("Product request returned HTTP %d for %s",
+                         response.status_code, slug)
+            raise EpicCatalogUnavailable(_reason_for_status(response.status_code))
+        try:
+            return response.json()
+        except ValueError as e:
+            logger.debug("Product body for %s is not JSON: %s", slug, e)
+            raise EpicCatalogUnavailable("network") from e
 
     # ── Metadata extraction ─────────────────────────────────────────
 
@@ -361,6 +383,7 @@ class EpicAPI:
         """Reset all class-level caches (for testing)."""
         cls._namespace_to_slug = None
         cls._mapping_fetched = False
+        cls._mapping_failed_at = None
 
     # ── Private helpers ─────────────────────────────────────────────
 

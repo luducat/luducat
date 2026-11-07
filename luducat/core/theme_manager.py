@@ -11,6 +11,7 @@ Handles:
 
 import hashlib
 import logging
+import re
 import shutil
 from datetime import datetime
 from pathlib import Path
@@ -399,6 +400,11 @@ QDialog QGroupBox::title {
     color: palette(text);
     padding: 2px 8px;
     background: palette(window);
+}
+
+QGroupBox#wizardStoreGroup {
+    margin-top: 4px;
+    padding-top: 8px;
 }
 
 /* ========================================
@@ -1078,6 +1084,31 @@ DEFAULT_DELEGATE_CONFIG = {
 }
 
 
+# Bundled themes set point sizes tuned on a 10 pt Linux desktop.
+THEME_DESIGN_POINT_SIZE = 10
+
+_FONT_SIZE_PT = re.compile(r"(font-size\s*:\s*)(\d+(?:\.\d+)?)pt")
+
+
+def font_scale_factor(system_point_size: int) -> float:
+    """Scale for theme font sizes; 1.0 at or below the design size (a pixel-sized
+    system font reports -1 and lands there too)."""
+    if system_point_size <= THEME_DESIGN_POINT_SIZE:
+        return 1.0
+    return system_point_size / THEME_DESIGN_POINT_SIZE
+
+
+def scale_font_sizes(qss: str, factor: float) -> str:
+    """Multiply every point-based font-size in a stylesheet, rounded to whole points."""
+    if factor <= 0:
+        raise ValueError(f"font scale factor must be positive, got {factor}")
+    if factor == 1.0:
+        return qss
+    return _FONT_SIZE_PT.sub(
+        lambda m: f"{m.group(1)}{max(1, round(float(m.group(2)) * factor))}pt", qss
+    )
+
+
 def get_themes_dir() -> Path:
     """Get themes directory path"""
     return get_config_dir() / "themes"
@@ -1396,6 +1427,8 @@ class ThemeManager(QObject):
         # Save system font for reset during theme switching
         # This captures the font before any theme stylesheet modifies it
         self._system_font = QFont(app.font())  # Deep copy of system font
+
+        self._font_scale = font_scale_factor(self._system_font.pointSize())
 
         self._base_font_size = app.font().pointSize()
         if self._base_font_size <= 0:
@@ -1840,7 +1873,7 @@ class ThemeManager(QObject):
             # Reset to system palette
             self.app.setPalette(self.app.style().standardPalette())
             # Apply minimal embedded stylesheet for essential styling
-            self.app.setStyleSheet(SYSTEM_DEFAULT_QSS)
+            self.app.setStyleSheet(scale_font_sizes(SYSTEM_DEFAULT_QSS, self._font_scale))
             logger.info("Applied system theme with minimal styling")
             self.theme_changed.emit()
             return True
@@ -1887,6 +1920,7 @@ class ThemeManager(QObject):
 
                 # Resolve relative url() paths to absolute paths
                 qss_content = self._resolve_theme_urls(qss_content)
+                qss_content = scale_font_sizes(qss_content, self._font_scale)
 
                 if logger.isEnabledFor(logging.DEBUG):
                     log_dir = get_config_dir() / "logs"
@@ -1924,6 +1958,7 @@ class ThemeManager(QObject):
                 # Resolve relative url() paths to package assets directory
                 assets_dir = get_themes_dir() / "assets" / package_name
                 qss_content = self._resolve_theme_urls(qss_content, assets_dir)
+                qss_content = scale_font_sizes(qss_content, self._font_scale)
 
                 self.app.setStyleSheet(qss_content)
                 self._sync_app_font(qss_content)
@@ -1956,6 +1991,7 @@ class ThemeManager(QObject):
 
                 # Resolve relative url() paths to absolute paths
                 qss_content = self._resolve_theme_urls(qss_content)
+                qss_content = scale_font_sizes(qss_content, self._font_scale)
 
                 self.app.setStyleSheet(qss_content)
                 self._sync_app_font(qss_content)

@@ -14,7 +14,7 @@ not in this class — keeps the data structure clean and interning explicit.
 
 import sys
 from dataclasses import dataclass, field, fields
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 _intern = sys.intern
 
@@ -26,6 +26,7 @@ _INTERN_FIELDS = frozenset({
 # List fields where CONTENTS should be interned (each string in the list)
 _INTERN_LIST_FIELDS = frozenset({
     "stores", "developers", "publishers", "genres", "themes", "game_modes",
+    "platforms",
 })
 
 
@@ -58,8 +59,8 @@ class GameEntry:
     tags: list = field(default_factory=list)
 
     # Timestamps & usage
-    added_at: Optional[str] = None
-    last_launched: Optional[str] = None
+    added_at: str | None = None
+    last_launched: str | None = None
     launch_count: int = 0
     playtime_minutes: int = 0
     notes: str = ""
@@ -76,6 +77,7 @@ class GameEntry:
     franchise: str = ""
     game_modes: list = field(default_factory=list)
     themes: list = field(default_factory=list)
+    platforms: list = field(default_factory=list)
 
     # Steam status flags
     is_private_app: bool = False

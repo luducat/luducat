@@ -217,11 +217,13 @@ class WelcomePage(QWizardPage):
 
         self.quick_combo = QComboBox()
         self.quick_combo.setToolTip(
-            _("{app_name} pre-configures backups, a default theme, and update "
-              "checks. You will still choose your game stores and enter "
-              "credentials. Consent is required for reading browser cookies and "
-              "local launcher data (tags, favorites, playtime) from other "
-              "applications on your machine.").format(app_name=APP_NAME)
+            "<p>"
+            + _("{app_name} pre-configures backups, a default theme, and update "
+                "checks. You will still choose your game stores and enter "
+                "credentials. Consent is required for reading browser cookies and "
+                "local launcher data (tags, favorites, playtime) from other "
+                "applications on your machine.").format(app_name=APP_NAME)
+            + "</p>"
         )
         self.quick_combo.addItem(_("No, full wizard"), False)
         self.quick_combo.addItem(_("Yes, use defaults (recommended)"), True)
@@ -252,11 +254,13 @@ class WelcomePage(QWizardPage):
         )
         self._lbl_quick.setText(_("Quick Setup:"))
         self.quick_combo.setToolTip(
-            _("{app_name} pre-configures backups, a default theme, and update "
-              "checks. You will still choose your game stores and enter "
-              "credentials. Consent is required for reading browser cookies and "
-              "local launcher data (tags, favorites, playtime) from other "
-              "applications on your machine.").format(app_name=APP_NAME)
+            "<p>"
+            + _("{app_name} pre-configures backups, a default theme, and update "
+                "checks. You will still choose your game stores and enter "
+                "credentials. Consent is required for reading browser cookies and "
+                "local launcher data (tags, favorites, playtime) from other "
+                "applications on your machine.").format(app_name=APP_NAME)
+            + "</p>"
         )
         self.quick_combo.setItemText(0, _("No, full wizard"))
         self.quick_combo.setItemText(1, _("Yes, use defaults (recommended)"))
@@ -708,6 +712,7 @@ class StoreSelectionPage(QWizardPage):
 
         # Store selection in a group box for visual grouping
         store_group = QGroupBox()
+        store_group.setObjectName("wizardStoreGroup")
         store_layout = QVBoxLayout(store_group)
         store_layout.setSpacing(8)
 

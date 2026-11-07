@@ -31,6 +31,7 @@ from typing import Any
 from luducat.core.path_safety import safe_tar_extract
 from luducat.plugins.sdk.datetime import utc_now
 from luducat.plugins.sdk.json import json
+from luducat.plugins.sdk.network import RequestException
 
 from .database import GogDatabase, GogGame
 
@@ -46,6 +47,14 @@ ESTIMATED_COMPRESSED_SIZE_MB = 150  # ~150MB compressed
 ESTIMATED_DECOMPRESSED_SIZE_MB = 1500  # ~1.5GB decompressed
 ESTIMATED_DB_GROWTH_MB = 200  # ~200MB database growth
 DISK_SPACE_SAFETY_MARGIN = 1.2  # 20% safety margin
+
+
+class GogdbUnavailable(Exception):
+    """GOGdb could not be asked (server error, throttle, network); never a miss."""
+
+    def __init__(self, reason: str, message: str = ""):
+        super().__init__(message or reason)
+        self.reason = reason
 
 
 class PreflightError(Exception):
@@ -953,57 +962,59 @@ class GogdbImporter:
             return None
 
     def fetch_product_from_api(self, gogid: int) -> GogGame | None:
-        """Fetch a single product from GOGdb API
-
-        Used for cache misses - when a game isn't in the local catalog but
-        we need its metadata (e.g., during sync with owned games).
+        """Fetch a single product from GOGdb.org.
 
         Endpoint: https://www.gogdb.org/data/products/{gogid}/product.json
         Prices: https://www.gogdb.org/data/products/{gogid}/prices.json
 
-        Args:
-            gogid: GOG product ID
-
         Returns:
-            GogGame instance or None if not found/invalid
+            GogGame, or None when GOGdb has no such product or it is not
+            a game (DLC, pack, soundtrack).
+
+        Raises:
+            GogdbUnavailable: GOGdb could not be asked; the caller must
+            not record this as a miss.
         """
         base_url = "https://www.gogdb.org/data/products"
         product_url = f"{base_url}/{gogid}/product.json"
         prices_url = f"{base_url}/{gogid}/prices.json"
 
+        logger.debug(f"Fetching product from GOGdb API: {gogid}")
         try:
-            # Fetch product.json
-            logger.debug(f"Fetching product from GOGdb API: {gogid}")
             response = self._http.get(product_url, timeout=15)
+        except RequestException as e:
+            raise GogdbUnavailable("network", f"GOGdb request for {gogid} failed: {e}") from e
 
-            if response.status_code == 404:
-                logger.debug(f"Product not found in GOGdb: {gogid}")
-                return None
+        if response.status_code == 404:
+            logger.debug(f"Product not found in GOGdb: {gogid}")
+            return None
+        if response.status_code in (429, 403):
+            raise GogdbUnavailable(
+                "rate_limited", f"GOGdb throttled product {gogid} ({response.status_code})"
+            )
+        if response.status_code != 200:
+            raise GogdbUnavailable(
+                "network", f"GOGdb returned {response.status_code} for product {gogid}"
+            )
 
-            response.raise_for_status()
+        try:
             product_data = response.json()
+        except ValueError as e:
+            raise GogdbUnavailable("network", f"Invalid JSON for product {gogid}: {e}") from e
 
-            # Try to fetch prices.json (optional)
-            price_data = None
-            try:
-                price_response = self._http.get(prices_url, timeout=10)
-                if price_response.status_code == 200:
-                    price_data = price_response.json()
-            except Exception:
-                pass  # Prices are optional
+        # Prices are optional; a missing or broken prices.json never fails the record
+        price_data = None
+        try:
+            price_response = self._http.get(prices_url, timeout=10)
+            if price_response.status_code == 200:
+                price_data = price_response.json()
+        except (RequestException, ValueError):
+            pass
 
-            # Parse and return
-            game = self._parse_product(product_data, price_data)
-            if game:
-                logger.info(f"Fetched product from GOGdb API: {gogid} - {game.title}")
-            return game
-
-        except json.JSONDecodeError as e:
-            logger.warning(f"Invalid JSON for product {gogid}: {e}")
-            return None
-        except Exception as e:
-            logger.warning(f"Failed to fetch product {gogid} from GOGdb API: {e}")
-            return None
+        game = self._parse_product(product_data, price_data)
+        if game:
+            logger.info(f"Fetched product from GOGdb API: {gogid} - {game.title}")
+        return game
 
     def fetch_and_cache_product(self, gogid: int) -> GogGame | None:
         """Fetch a product from API and save to local cache DB

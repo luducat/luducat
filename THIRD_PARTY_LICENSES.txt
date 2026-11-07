@@ -504,7 +504,8 @@ licensed under LGPLv2.1, but this does not apply to the main PySide6 bindings.
 ================================================================================
 LGPL 2.1 LICENSE
 ================================================================================
-Used by: Some third-party components within Qt (e.g., Qt WebEngine via Chromium)
+Used by: Some third-party components within Qt (e.g., Qt WebEngine via Chromium);
+         7-Zip (7za.exe, Windows source installer only, https://www.7-zip.org/license.txt)
 
                   GNU LESSER GENERAL PUBLIC LICENSE
                        Version 2.1, February 1999

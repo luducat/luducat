@@ -8,15 +8,15 @@ Handles configuration migration across versions.
 """
 
 import logging
+import platform
 import shutil
+import tomllib
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
 import platformdirs
-
-import tomllib
-
 import tomli_w
 
 from .constants import (
@@ -38,27 +38,103 @@ from .constants import (
 logger = logging.getLogger(__name__)
 
 # Directory overrides — set once during startup via apply_dir_overrides()
-_data_dir_override: Optional[Path] = None
-_cache_dir_override: Optional[Path] = None
+_data_dir_override: Path | None = None
+_cache_dir_override: Path | None = None
+
+
+@dataclass(frozen=True)
+class DirLayout:
+    config: Path
+    data: Path
+    cache: Path
+
+
+class LayoutError(RuntimeError):
+    """The config, data and cache directories overlap."""
+
+
+def platform_layout(system: str | None = None) -> DirLayout:
+    """platformdirs merges config into data on Windows and macOS (and nests the
+    cache in data on Windows), so those two get explicit sibling dirs. Nothing
+    else derives base paths.
+    """
+    system = system or platform.system()
+    if system == "Windows":
+        from platformdirs.windows import Windows
+        base = Path(Windows(appname=APP_NAME, appauthor=False).user_data_dir)
+        return DirLayout(base / "config", base / "data", base / "cache")
+    if system == "Darwin":
+        from platformdirs.macos import MacOS
+        mac = MacOS(appname=APP_NAME)
+        base = Path(mac.user_data_dir)
+        return DirLayout(base / "config", base / "data", Path(mac.user_cache_dir))
+    from platformdirs.unix import Unix
+    xdg = Unix(appname=APP_NAME)
+    return DirLayout(
+        Path(xdg.user_config_dir), Path(xdg.user_data_dir), Path(xdg.user_cache_dir),
+    )
+
+
+def _path_key(path: Path, case_insensitive: bool) -> tuple:
+    parts = path.resolve().parts
+    return tuple(p.casefold() for p in parts) if case_insensitive else parts
+
+
+def path_contains(outer: Path, inner: Path, case_insensitive: bool) -> bool:
+    """True if inner is outer or lies anywhere below it."""
+    outer_key = _path_key(outer, case_insensitive)
+    return _path_key(inner, case_insensitive)[:len(outer_key)] == outer_key
+
+
+def is_case_insensitive_platform() -> bool:
+    return platform.system() in ("Windows", "Darwin")
+
+
+def check_layout(layout: DirLayout, case_insensitive: bool) -> None:
+    """Raise LayoutError unless config, data and cache are distinct and non-nested."""
+    named = [("config", layout.config), ("data", layout.data), ("cache", layout.cache)]
+    for i, (name_a, path_a) in enumerate(named):
+        for name_b, path_b in named[i + 1:]:
+            a_in_b = path_contains(path_b, path_a, case_insensitive)
+            b_in_a = path_contains(path_a, path_b, case_insensitive)
+            if a_in_b and b_in_a:
+                raise LayoutError(
+                    f"The {name_a} and {name_b} directories are the same: {path_a}"
+                )
+            if a_in_b:
+                raise LayoutError(
+                    f"The {name_a} directory {path_a} is inside the {name_b} directory {path_b}"
+                )
+            if b_in_a:
+                raise LayoutError(
+                    f"The {name_b} directory {path_b} is inside the {name_a} directory {path_a}"
+                )
+
+
+def check_current_layout() -> None:
+    """check_layout() for the directories in effect, overrides included."""
+    check_layout(
+        DirLayout(get_config_dir(), get_data_dir(), get_cache_dir()),
+        case_insensitive=is_case_insensitive_platform(),
+    )
 
 
 def get_config_dir() -> Path:
-    """Get XDG config directory for luducat"""
-    return Path(platformdirs.user_config_dir(APP_NAME))
+    return platform_layout().config
 
 
 def get_data_dir() -> Path:
     """Get data directory for luducat (respects custom_data_dir override)"""
     if _data_dir_override:
         return _data_dir_override
-    return Path(platformdirs.user_data_dir(APP_NAME))
+    return platform_layout().data
 
 
 def get_cache_dir() -> Path:
     """Get cache directory for luducat (respects custom_cache_dir override)"""
     if _cache_dir_override:
         return _cache_dir_override
-    return Path(platformdirs.user_cache_dir(APP_NAME))
+    return platform_layout().cache
 
 
 def get_default_archive_path() -> Path:
@@ -91,7 +167,7 @@ def apply_dir_overrides(config: "Config") -> None:
 
 
 # Default configuration structure
-DEFAULT_CONFIG: Dict[str, Any] = {
+DEFAULT_CONFIG: dict[str, Any] = {
     "app": {
         "version": APP_VERSION,
         "config_version": CONFIG_VERSION,
@@ -180,7 +256,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "show_first_run_dialog": True,  # Show config dialog on first launch
     },
     "downloads": {
-        "archive_path": "",              # Empty = default (XDG data dir / archive)
+        "archive_path": "",              # Empty = default (~/Downloads/luducat)
         "folder_organization": "store-slug",  # flat, store-slug, store-title, custom
         "custom_layout": "%library%/%slug%",  # template for "custom" organization
         "max_concurrent": 3,             # Max parallel downloads
@@ -232,7 +308,7 @@ class Config:
         ui_settings = config.get("ui")
     """
 
-    def __init__(self, config_path: Optional[Path] = None):
+    def __init__(self, config_path: Path | None = None):
         """Initialize config manager
 
         Args:
@@ -249,7 +325,7 @@ class Config:
         self.data_dir = get_data_dir()
         self.cache_dir = get_cache_dir()
 
-        self._config: Dict[str, Any] = {}
+        self._config: dict[str, Any] = {}
         self._dirty = False
 
     def load(self) -> None:
@@ -281,8 +357,9 @@ class Config:
                             )
                             self._permission_warnings.append((d, current))
                         oschmod.set_mode(d, 0o700)
-                except Exception:
-                    pass  # Best effort — don't block startup
+                except Exception as e:
+                    # Best effort: don't block startup
+                    logger.debug("Could not tighten permissions of %s: %s", d, e)
 
         # Health warnings for data/cache directories
         from .directory_health import check_directory
@@ -377,7 +454,7 @@ class Config:
             config[parts[-1]] = value
         self._dirty = True
 
-    def get_section(self, section: str) -> Dict[str, Any]:
+    def get_section(self, section: str) -> dict[str, Any]:
         """Get entire configuration section
 
         Args:
@@ -388,7 +465,7 @@ class Config:
         """
         return self._deep_copy(self._config.get(section, {}))
 
-    def set_section(self, section: str, values: Dict[str, Any]) -> None:
+    def set_section(self, section: str, values: dict[str, Any]) -> None:
         """Set entire configuration section
 
         Args:
@@ -425,7 +502,7 @@ class Config:
         self.set("app.last_news_version", version)
         self.save()
 
-    def get_plugin_settings(self, plugin_name: str) -> Dict[str, Any]:
+    def get_plugin_settings(self, plugin_name: str) -> dict[str, Any]:
         """Get settings for a specific plugin
 
         Args:
@@ -437,7 +514,7 @@ class Config:
         plugins = self._config.get("plugins", {})
         return self._deep_copy(plugins.get(plugin_name, {}))
 
-    def set_plugin_settings(self, plugin_name: str, settings: Dict[str, Any]) -> None:
+    def set_plugin_settings(self, plugin_name: str, settings: dict[str, Any]) -> None:
         """Set settings for a specific plugin
 
         Args:
@@ -450,7 +527,7 @@ class Config:
         self._config["plugins"][plugin_name] = cleaned
         self._dirty = True
 
-    def get_metadata_priorities(self) -> Dict[str, list]:
+    def get_metadata_priorities(self) -> dict[str, list]:
         """Get metadata priority settings for all fields
 
         Returns:
@@ -460,7 +537,7 @@ class Config:
         priorities = self._config.get("metadata_priority", {})
         return self._deep_copy(priorities)
 
-    def set_metadata_priorities(self, priorities: Dict[str, list]) -> None:
+    def set_metadata_priorities(self, priorities: dict[str, list]) -> None:
         """Set metadata priority settings for all fields
 
         Args:
@@ -706,7 +783,7 @@ class Config:
         This ensures new config keys are added when upgrading
         without overwriting existing user values.
         """
-        def merge(target: Dict, source: Dict) -> None:
+        def merge(target: dict, source: dict) -> None:
             for key, value in source.items():
                 if key not in target:
                     target[key] = self._deep_copy(value)

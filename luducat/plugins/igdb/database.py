@@ -591,9 +591,10 @@ class IgdbStoreMatch(Base):
     igdb_id = Column(Integer, ForeignKey("igdb_games.igdb_id"), nullable=True)
 
     # Match metadata
-    match_method = Column(String(50))  # external_games, title_search, manual
+    match_method = Column(String(50))  # external_games, title_search, manual, no_match
     match_confidence = Column(Float, default=1.0)  # 0.0-1.0
     user_confirmed = Column(Boolean, default=False)
+    title_searched = Column(Boolean, default=False)
 
     # Tracking
     created_at = Column(DateTime, default=utc_now)
@@ -670,6 +671,18 @@ class IgdbDatabase:
                     ))
                     conn.commit()
                 logger.info("IGDB database migration: added normalized_title column")
+            if "title_searched" not in columns:
+                with self.engine.connect() as conn:
+                    conn.execute(text(
+                        "ALTER TABLE igdb_store_matches "
+                        "ADD COLUMN title_searched BOOLEAN DEFAULT 0"
+                    ))
+                    conn.execute(text(
+                        "UPDATE igdb_store_matches SET title_searched = 1 "
+                        "WHERE match_method = 'title_search'"
+                    ))
+                    conn.commit()
+                logger.info("IGDB database migration: added title_searched column")
 
     def get_session(self) -> Session:
         """Get a new database session"""
@@ -780,7 +793,8 @@ class IgdbDatabase:
         match_method: str = "external_games",
         confidence: float = 1.0,
         normalized_title: Optional[str] = None,
-        session: Optional[Session] = None
+        title_searched: bool = False,
+        session: Optional[Session] = None,
     ) -> IgdbStoreMatch:
         """Save or update a store match
 
@@ -810,8 +824,8 @@ class IgdbDatabase:
                 existing.igdb_id = igdb_id
                 existing.match_method = match_method
                 existing.match_confidence = confidence
+                existing.title_searched = title_searched or existing.title_searched
                 existing.updated_at = utc_now()
-                # Only update title if provided and not already set
                 if normalized_title and not existing.normalized_title:
                     existing.normalized_title = normalized_title
                 match = existing
@@ -823,6 +837,7 @@ class IgdbDatabase:
                     match_method=match_method,
                     match_confidence=confidence,
                     normalized_title=normalized_title,
+                    title_searched=title_searched,
                 )
                 session.add(match)
 
@@ -838,6 +853,22 @@ class IgdbDatabase:
         finally:
             if own_session:
                 session.close()
+
+    def mark_title_searched(self, store_name: str, store_app_id: str) -> None:
+        """Flag a no_match entry as title-searched without resetting updated_at.
+
+        Raw SQL: ORM Query.update() fires the onupdate=utc_now on updated_at.
+        """
+        from sqlalchemy import text
+        with self.get_session() as session:
+            session.execute(
+                text(
+                    "UPDATE igdb_store_matches SET title_searched = 1"
+                    " WHERE store_name = :sn AND store_app_id = :sid"
+                ),
+                {"sn": store_name, "sid": str(store_app_id)},
+            )
+            session.commit()
 
     def get_matches_for_store(self, store_name: str) -> List[IgdbStoreMatch]:
         """Get all matches for a store"""

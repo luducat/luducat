@@ -8,21 +8,24 @@ and metadata completion via MetadataResolver.
 Extracted from GameService to reduce its responsibilities.
 """
 
+import dataclasses
 import logging
 import re
 from collections import OrderedDict
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from sqlalchemy.orm import selectinload
 from sqlalchemy.orm.attributes import flag_modified
 
 from .database import (
     Database,
-    Game as DbGame,
     StoreGame,
 )
-from .metadata_resolver import MetadataResolver
+from .database import (
+    Game as DbGame,
+)
+from .metadata_resolver import ChainWalk, MetadataResolver
 from .plugin_manager import PluginManager
 
 logger = logging.getLogger(__name__)
@@ -47,6 +50,15 @@ def _strip_game_type_suffix(title: str) -> str:
     return stripped if stripped else title
 
 
+@dataclasses.dataclass(frozen=True, slots=True)
+class CoverLookup:
+    """Answer of lookup_cover: the url, or why there is none. retry_later
+    marks an empty walk a view must not remember as coverless."""
+
+    url: str
+    retry_later: bool = False
+
+
 class LazyMetadata:
     """Handles on-demand metadata fetching: screenshots, covers, descriptions."""
 
@@ -58,7 +70,7 @@ class LazyMetadata:
         description_cache_max: int,
         resolver: MetadataResolver,
         plugin_manager: PluginManager,
-        detail_cache: Optional[OrderedDict] = None,
+        detail_cache: OrderedDict | None = None,
         detail_cache_max: int = 50,
     ):
         self.database = database
@@ -125,8 +137,8 @@ class LazyMetadata:
     def get_screenshots(
         self,
         game_id: str,
-        exclude_sources: Optional[List[str]] = None,
-    ) -> List[str]:
+        exclude_sources: list[str] | None = None,
+    ) -> list[str]:
         """Get screenshots for a game, with lazy loading from plugins.
 
         Uses MetadataResolver to fetch from plugins in priority order
@@ -200,8 +212,8 @@ class LazyMetadata:
     def invalidate_screenshots(
         self,
         game_id: str,
-        failed_urls: List[str],
-    ) -> List[str]:
+        failed_urls: list[str],
+    ) -> list[str]:
         """Remove broken screenshot URLs and retry with next priority source.
 
         Called when image loading gets HTTP 404 for a screenshot URL.
@@ -268,44 +280,42 @@ class LazyMetadata:
         return self.get_screenshots(game_id, exclude_sources=[failed_source])
 
     def get_cover(self, game_id: str) -> str:
-        """Get cover URL for a game, with lazy loading from plugins.
+        """Cover URL for a game, lazily resolved; "" when there is none."""
+        return self.lookup_cover(game_id).url
 
-        Uses MetadataResolver to fetch from plugins in priority order
-        (store plugins first, then metadata plugins as fallback).
-        Updates both cache and database with the result.
+    def lookup_cover(self, game_id: str) -> CoverLookup:
+        """Cover URL for a game, lazily fetched through the cover chain.
 
-        Args:
-            game_id: Game UUID
-
-        Returns:
-            Cover image URL or empty string if not found
+        An empty answer carries retry_later when a source was only paused,
+        so views do not cache a rate-limited walk as "no cover".
         """
         if game_id in self._games_cache:
             cover = self._games_cache[game_id].cover_image
             if cover:
-                return cover
+                return CoverLookup(cover)
 
         game_data = self._games_cache.get(game_id)
         if not game_data:
             logger.debug(f"get_cover: No game data in cache for game_id={game_id}")
-            return ""
+            return CoverLookup("")
 
         store_app_ids = game_data.store_app_ids
         normalized_title = game_data.normalized_title
         title = game_data.title or "Unknown"
 
-        cover, source = self._resolver.get_cover_on_demand(store_app_ids, normalized_title)
+        walk: ChainWalk = self._resolver.cover_walk(store_app_ids, normalized_title)
+        retry_later = walk.retry_later
 
-        if not cover:
+        if not walk.found:
             stripped_title = _strip_game_type_suffix(normalized_title)
             if stripped_title and stripped_title != normalized_title:
-                cover, source = self._resolver.get_cover_on_demand(
-                    store_app_ids, stripped_title
-                )
+                walk = self._resolver.cover_walk(store_app_ids, stripped_title)
+                retry_later = retry_later or walk.retry_later
 
-        if not cover:
-            return ""
+        if not walk.found or not walk.value:
+            return CoverLookup("", retry_later=retry_later)
 
+        cover, source = walk.value, walk.source
         if game_id in self._games_cache:
             self._games_cache[game_id].cover_image = cover
 
@@ -315,7 +325,7 @@ class LazyMetadata:
         )
 
         logger.info(f"get_cover: Lazy-loaded cover for '{title}' from {source}: {cover[:60]}...")
-        return cover
+        return CoverLookup(cover)
 
     def update_game_description(self, game_id: str, description: str) -> bool:
         """Update description for a game in the main database.
@@ -490,7 +500,7 @@ class LazyMetadata:
         finally:
             session.close()
 
-    def ensure_metadata_complete(self, game_id: str) -> Dict[str, Any]:
+    def ensure_metadata_complete(self, game_id: str) -> dict[str, Any]:
         """Ensure all metadata fields are populated for a game.
 
         Called when displaying game details.  On the very first click all
@@ -526,20 +536,21 @@ class LazyMetadata:
         metadata, source_map = result  # type: ignore[misc]
 
         if metadata:
-            db_updates: Dict[str, Any] = {}
+            db_updates: dict[str, Any] = {}
 
             # Full enrichment: persist ALL resolved fields to DB
             # (including detail fields like background_url, franchise, etc.)
             for db_key, value in metadata.items():
                 if db_key.startswith("_"):
                     continue  # Skip internal keys
-                if value:
+                # Resolver's rule: 0/False are data, blank strings and empty containers are not
+                if MetadataResolver._is_non_empty(value):
                     db_updates[db_key] = value
 
             # Update _games_cache with LIST_FIELDS only
             for cache_key, db_key in self._FIELD_MAPPING.items():
                 value = metadata.get(db_key)
-                if value:
+                if MetadataResolver._is_non_empty(value):
                     if cache_key == "release_date":
                         if isinstance(value, dict):
                             value = min(value.values()) if value else ""
@@ -590,7 +601,7 @@ class LazyMetadata:
 
         return game_data
 
-    def get_detail_fields(self, game_id: str) -> Dict[str, Any]:
+    def get_detail_fields(self, game_id: str) -> dict[str, Any]:
         """Get detail fields for a game on demand (LRU cached).
 
         Queries StoreGame.metadata_json from the main DB for the given game,
@@ -655,11 +666,14 @@ class LazyMetadata:
 
             # Extract detail fields using the same mapping as _db_game_to_ui
             detail = {
+                "install_info": {
+                    sg.store_name: sg.install_path
+                    for sg in store_games if sg.is_installed
+                },
                 "background_image": metadata.get("hero") or metadata.get("background_url", ""),
                 "series": _as_str(metadata.get("series")),
                 "engine": _as_str(metadata.get("engine")),
                 "perspectives": metadata.get("perspectives", []),
-                "platforms": metadata.get("platforms", []),
                 "age_ratings": metadata.get("age_ratings", []),
                 "user_rating": metadata.get("user_rating"),
                 "rating_positive": metadata.get("rating_positive"),
@@ -739,8 +753,8 @@ class LazyMetadata:
     def _persist_metadata_updates(
         self,
         game_id: str,
-        updates: Dict[str, Any],
-        source_map: Optional[Dict[str, str]] = None,
+        updates: dict[str, Any],
+        source_map: dict[str, str] | None = None,
     ) -> None:
         """Persist metadata updates to the database.
 
@@ -779,7 +793,7 @@ class LazyMetadata:
 
             metadata = store_game.metadata_json or {}
             for key, value in updates.items():
-                if not value:
+                if not MetadataResolver._is_non_empty(value):
                     continue
                 metadata[key] = value
 

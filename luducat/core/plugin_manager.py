@@ -11,49 +11,50 @@ Handles:
 """
 
 import importlib.util
-from luducat.core.json_compat import json
 import logging
 import shutil
 import sys
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Type
+from typing import Any, Optional
 
 from packaging import version
 
+from luducat.core.json_compat import json
+
 from ..plugins.base import (
-    AbstractRunnerPlugin,
     AbstractGameStore,
     AbstractMetadataProvider,
     AbstractPlatformProvider,
-    RunnerPlugin,
+    AbstractRunnerPlugin,
     MetadataPlugin,
+    PlatformPlugin,
     PluginError,
     PluginMetadata,
     PluginType,
-    PlatformPlugin,
+    RunnerPlugin,
     StorePlugin,
 )
+from ..plugins.sdk import _registry as sdk_registry
+from ..plugins.sdk.network import PluginHttpClient
+from ..plugins.sdk.storage import PluginStorage
 from .config import Config, get_cache_dir, get_config_dir, get_data_dir
 from .constants import APP_VERSION, COMPILED_BUILD
 from .credentials import CredentialManager
 from .directory_health import check_directory
-from ..plugins.sdk import _registry as sdk_registry
-from ..plugins.sdk.storage import PluginStorage
-from ..plugins.sdk.network import PluginHttpClient
 from .network_manager import get_network_manager
 
 logger = logging.getLogger(__name__)
 
 # Default brand colors for unknown stores (avoids dict allocation on every miss)
-_DEFAULT_BRAND_COLORS: Dict[str, str] = {"bg": "#2a2a2a", "text": "#ffffff"}
+_DEFAULT_BRAND_COLORS: dict[str, str] = {"bg": "#2a2a2a", "text": "#ffffff"}
 
 # Fields already warned about (warn once per field per session)
 _warned_non_canonical: set = set()
 
 # Mapping from declarative store engine ruleset field names to standard metadata
 # field names used by MetadataResolver (matches _to_plugin_game() in store.py).
-_RULESET_TO_STANDARD: Dict[str, str] = {
+_RULESET_TO_STANDARD: dict[str, str] = {
     "title": "title",
     "short_description": "short_description",
     "description": "description",
@@ -87,8 +88,8 @@ def validate_metadata_fields(metadata: dict, plugin_name: str) -> None:
         metadata: Metadata dict produced by the plugin
         plugin_name: Name of the plugin for logging context
     """
-    from ..plugins.base import CANONICAL_METADATA_FIELDS, PER_STORE_FIELDS
     from ..core.metadata_resolver import _INTERNAL_FIELDS
+    from ..plugins.base import CANONICAL_METADATA_FIELDS, PER_STORE_FIELDS
 
     for key in metadata:
         if key.startswith("_"):
@@ -117,11 +118,11 @@ class LoadedPlugin:
     metadata: PluginMetadata
     instance: Any  # AbstractGameStore or AbstractMetadataProvider
     enabled: bool = True
-    error: Optional[str] = None
+    error: str | None = None
     # Plugin integrity verification state (set by verify_plugins)
-    trust_state: Optional[str] = None   # TrustState value
-    trust_tier: Optional[str] = None    # TrustTier value
-    fingerprint: Optional[str] = None   # SHA-256 Merkle hash
+    trust_state: str | None = None   # one of the TrustState constants
+    trust_tier: str | None = None    # one of the TrustTier constants
+    fingerprint: str | None = None   # SHA-256 Merkle hash
 
     def is_store_plugin(self) -> bool:
         """Check if this is a store plugin"""
@@ -160,15 +161,15 @@ class PluginManager:
 
     # Class-level registry populated during discover_plugins()
     # Maps plugin name → display_name (e.g., "gog" → "GOG")
-    _display_names: Dict[str, str] = {}
+    _display_names: dict[str, str] = {}
     # Maps plugin name → {"bg": "#hex", "text": "#hex"}
-    _brand_colors: Dict[str, Dict[str, str]] = {}
+    _brand_colors: dict[str, dict[str, str]] = {}
     # Maps plugin name → list of plugin types (e.g., ["store"])
-    _plugin_types: Dict[str, List[str]] = {}
+    _plugin_types: dict[str, list[str]] = {}
     # Maps plugin name → badge label (e.g., "steam" → "STM")
-    _badge_labels: Dict[str, str] = {}
+    _badge_labels: dict[str, str] = {}
     # Maps plugin name → capabilities dict from plugin.json
-    _plugin_capabilities: Dict[str, Dict[str, bool]] = {}
+    _plugin_capabilities: dict[str, dict[str, bool]] = {}
     # Set of hidden plugin names (excluded from UI store lists)
     _hidden_plugins: set = set()
 
@@ -182,7 +183,7 @@ class PluginManager:
         return cls._display_names.get(store.lower(), store.capitalize())
 
     @classmethod
-    def get_store_brand_colors(cls, store: str) -> Dict[str, str]:
+    def get_store_brand_colors(cls, store: str) -> dict[str, str]:
         """Get brand colors for a store/plugin.
 
         Returns {"bg": "#hex", "text": "#hex"} or a default.
@@ -190,7 +191,7 @@ class PluginManager:
         return cls._brand_colors.get(store.lower(), _DEFAULT_BRAND_COLORS)
 
     @classmethod
-    def get_store_plugin_names(cls) -> List[str]:
+    def get_store_plugin_names(cls) -> list[str]:
         """Get names of all discovered visible store-type plugins."""
         return [
             name for name, types in cls._plugin_types.items()
@@ -198,7 +199,7 @@ class PluginManager:
         ]
 
     @classmethod
-    def get_metadata_plugin_names(cls) -> List[str]:
+    def get_metadata_plugin_names(cls) -> list[str]:
         """Get names of all plugins that provide metadata (store + enrichment).
 
         Store plugins are metadata providers too — they provide title,
@@ -210,7 +211,7 @@ class PluginManager:
         ]
 
     @classmethod
-    def get_enrichment_plugin_names(cls) -> List[str]:
+    def get_enrichment_plugin_names(cls) -> list[str]:
         """Get names of enrichment-capable metadata plugins.
 
         Returns only metadata-typed plugins with enrich_metadata=true.
@@ -224,7 +225,7 @@ class PluginManager:
         ]
 
     @classmethod
-    def get_tag_sync_plugin_names(cls) -> List[str]:
+    def get_tag_sync_plugin_names(cls) -> list[str]:
         """Get names of metadata plugins with tag_sync capability.
 
         These are plugins like Lutris, Heroic that import tags/favourites
@@ -278,12 +279,12 @@ class PluginManager:
         self.credential_manager = CredentialManager(config_dir=self.config_dir)
 
         # Plugin storage
-        self._discovered: Dict[str, PluginMetadata] = {}
-        self._loaded: Dict[str, LoadedPlugin] = {}
+        self._discovered: dict[str, PluginMetadata] = {}
+        self._loaded: dict[str, LoadedPlugin] = {}
 
         # Plugin integrity verification
         self._verifier = None  # Initialized lazily in verify_plugins()
-        self._verification_results: Dict[str, Any] = {}
+        self._verification_results: dict[str, Any] = {}
 
         # Initialize SDK registry (one-time, populates shim modules)
         self._init_sdk()
@@ -312,7 +313,8 @@ class PluginManager:
         def _register_dialog_helpers():
             try:
                 from ..ui.dialogs.oauth_dialog import (
-                    BrowserLoginConfig, get_login_status,
+                    BrowserLoginConfig,
+                    get_login_status,
                 )
                 sdk_registry.register_dialogs(
                     browser_login_config_class=BrowserLoginConfig,
@@ -364,25 +366,6 @@ class PluginManager:
         # doesn't exist yet.
 
         logger.debug("SDK registry initialized")
-
-    def cleanup_legacy_directories(self) -> None:
-        """Remove legacy plugin data directories
-
-        Previously, plugin data was stored in ~/.local/share/luducat/plugins/
-        but this has been moved to ~/.local/share/luducat/plugins-data/
-        to avoid confusion with plugin code in config/plugins/.
-
-        This method removes the old stale directory if it exists.
-        """
-        legacy_plugins_dir = self.data_dir / "plugins"
-
-        if legacy_plugins_dir.exists():
-            logger.info(f"Removing legacy plugin data directory: {legacy_plugins_dir}")
-            try:
-                shutil.rmtree(legacy_plugins_dir)
-                logger.info("Legacy plugin data directory removed")
-            except Exception as e:
-                logger.warning(f"Failed to remove legacy plugin data directory: {e}")
 
     def _cleanup_user_plugin_dirs(self) -> None:
         """Remove bundled plugin directories from user config dir.
@@ -441,9 +424,6 @@ class PluginManager:
         Returns:
             Number of plugins installed/updated
         """
-
-        # Clean up legacy directories first
-        self.cleanup_legacy_directories()
 
         # In compiled builds, plugins are loaded directly from bundled dir
         # No installation/copying needed — also clean up any stale user dirs
@@ -551,7 +531,7 @@ class PluginManager:
 
         return installed_count
 
-    def _backup_plugin(self, plugin_dir: Path) -> Optional[Path]:
+    def _backup_plugin(self, plugin_dir: Path) -> Path | None:
         """Backup a plugin directory before updating
 
         Args:
@@ -583,7 +563,7 @@ class PluginManager:
             logger.error(f"Failed to backup plugin {plugin_dir.name}: {e}")
             return None
 
-    def discover_plugins(self) -> Dict[str, PluginMetadata]:
+    def discover_plugins(self) -> dict[str, PluginMetadata]:
         """Discover all available plugins
 
         Scans plugins directory for valid plugin.json files.
@@ -642,7 +622,7 @@ class PluginManager:
         logger.info(f"Discovered {len(self._discovered)} plugin(s)")
         return self._discovered
 
-    def verify_plugins(self) -> Dict[str, Any]:
+    def verify_plugins(self) -> dict[str, Any]:
         """Verify integrity of all discovered plugins.
 
         Computes Merkle fingerprints and compares against the keyring
@@ -656,8 +636,10 @@ class PluginManager:
             Dict of plugin_name -> VerificationResult
         """
         from .plugin_verifier import (
-            PluginVerifier, TrustStore,
-            detect_distribution_format, log_trust_state,
+            PluginVerifier,
+            TrustStore,
+            detect_distribution_format,
+            log_trust_state,
         )
 
         # Initialize trust store (keyring-backed)
@@ -1321,7 +1303,7 @@ class PluginManager:
 
         # Derive provides_fields from ruleset field declarations so
         # build_from_plugins() adds this store to FIELD_SOURCE_CAPABILITIES
-        vs_provides_fields: Dict[str, Dict[str, Any]] = {}
+        vs_provides_fields: dict[str, dict[str, Any]] = {}
         lib_fields = set(ruleset.library.get("fields", {}).keys())
         det_fields = set(ruleset.detail.get("fields", {}).keys()) if ruleset.detail else set()
         for rf in lib_fields | det_fields:
@@ -1453,7 +1435,7 @@ class PluginManager:
             pass
 
     # Keep old method name for backwards compatibility
-    def _import_store_class(self, plugin_dir: Path, class_path: str) -> Type[AbstractGameStore]:
+    def _import_store_class(self, plugin_dir: Path, class_path: str) -> type[AbstractGameStore]:
         """Import store class from plugin (backwards compatibility)"""
         return self._import_plugin_class(plugin_dir, class_path, AbstractGameStore)
 
@@ -1508,13 +1490,13 @@ class PluginManager:
 
         return getattr(module, class_name)
 
-    def load_enabled_plugins(self) -> Dict[str, LoadedPlugin]:
+    def load_enabled_plugins(self) -> dict[str, LoadedPlugin]:
         """Load all enabled plugins
 
         Returns:
             Dict of loaded plugins
         """
-        for name, metadata in list(self._discovered.items()):
+        for name in list(self._discovered):
             plugin_settings = self.config.get_plugin_settings(name)
             enabled = plugin_settings.get("enabled", True)
 
@@ -1540,7 +1522,7 @@ class PluginManager:
         """
         return self._loaded.get(plugin_name)
 
-    def get_plugin(self, plugin_name: str) -> Optional[AbstractGameStore]:
+    def get_plugin(self, plugin_name: str) -> AbstractGameStore | None:
         """Get a loaded plugin instance
 
         Args:
@@ -1559,7 +1541,7 @@ class PluginManager:
         loaded = self._loaded.get(plugin_name)
         return loaded is not None and loaded.enabled
 
-    def get_all_plugins(self) -> Dict[str, AbstractGameStore]:
+    def get_all_plugins(self) -> dict[str, AbstractGameStore]:
         """Get all loaded and enabled plugin instances
 
         Returns:
@@ -1571,7 +1553,7 @@ class PluginManager:
             if loaded.enabled and loaded.instance
         }
 
-    def get_plugins_by_type(self, plugin_type: PluginType) -> Dict[str, AbstractGameStore]:
+    def get_plugins_by_type(self, plugin_type: PluginType) -> dict[str, AbstractGameStore]:
         """Get all loaded plugins that implement a specific type
 
         Args:
@@ -1593,7 +1575,7 @@ class PluginManager:
 
         return result
 
-    def get_store_plugins(self) -> Dict[str, StorePlugin]:
+    def get_store_plugins(self) -> dict[str, StorePlugin]:
         """Get all loaded store plugins (convenience method)
 
         Returns:
@@ -1601,7 +1583,7 @@ class PluginManager:
         """
         return self.get_plugins_by_type(PluginType.STORE)
 
-    def get_metadata_plugins(self) -> Dict[str, MetadataPlugin]:
+    def get_metadata_plugins(self) -> dict[str, MetadataPlugin]:
         """Get all loaded metadata plugins (convenience method)
 
         Returns:
@@ -1609,7 +1591,7 @@ class PluginManager:
         """
         return self.get_plugins_by_type(PluginType.METADATA)
 
-    def get_platform_plugins(self) -> Dict[str, PlatformPlugin]:
+    def get_platform_plugins(self) -> dict[str, PlatformPlugin]:
         """Get all loaded platform plugins (convenience method)
 
         Returns:
@@ -1617,7 +1599,7 @@ class PluginManager:
         """
         return self.get_plugins_by_type(PluginType.PLATFORM)
 
-    def get_runner_plugins(self) -> Dict[str, RunnerPlugin]:
+    def get_runner_plugins(self) -> dict[str, RunnerPlugin]:
         """Get all loaded runner plugins (convenience method).
 
         Returns:
@@ -1679,7 +1661,7 @@ class PluginManager:
             self.config.set_plugin_settings(plugin_name, merged)
             logger.debug(f"Persisted settings for plugin {plugin_name}")
 
-    def get_discovered_plugins(self) -> Dict[str, PluginMetadata]:
+    def get_discovered_plugins(self) -> dict[str, PluginMetadata]:
         """Get all discovered plugin metadata
 
         Returns:

@@ -1,29 +1,20 @@
 # This file is part of luducat. License: GPL-3.0-or-later. Contact: luducat@trinity2k.net
 # vdf_scanner.py
 
-"""Steam VDF file scanner
-
-Parses Steam's local VDF/ACF configuration files to extract:
-- User tags/categories from sharedconfig.vdf
-- Favorites and hidden games
-- Library folder locations from libraryfolders.vdf
-- App manifests (installation data) from appmanifest_*.acf
-
-Reuses find_steam_path() and STEAM64_TO_STEAM3_OFFSET from family_sharing.py.
-"""
+"""Reads Steam's local VDF/ACF files: tags, favorites, hidden games, libraries, app manifests."""
 
 import logging
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set
+from typing import Any
 
 import vdf
 
-from .family_sharing import STEAM64_TO_STEAM3_OFFSET, find_steam_path
+from .family_sharing import STEAM64_TO_STEAM3_OFFSET
 
 logger = logging.getLogger(__name__)
 
 
-def parse_login_users(steam_path: Path) -> List[Dict[str, Any]]:
+def parse_login_users(steam_path: Path) -> list[dict[str, Any]]:
     """Parse loginusers.vdf to find Steam accounts.
 
     Args:
@@ -56,7 +47,7 @@ def parse_login_users(steam_path: Path) -> List[Dict[str, Any]]:
 
 def parse_user_config(
     steam_path: Path, steam_id: str
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Parse sharedconfig.vdf to extract user tags, favorites, and hidden games.
 
     Steam stores user categories/tags under:
@@ -121,9 +112,9 @@ def parse_user_config(
             .get("Apps", {})
         )
 
-    tags: Dict[str, List[str]] = {}
-    favorites: Set[str] = set()
-    hidden: Set[str] = set()
+    tags: dict[str, list[str]] = {}
+    favorites: set[str] = set()
+    hidden: set[str] = set()
 
     for app_id, app_data in apps_section.items():
         if not isinstance(app_data, dict):
@@ -156,7 +147,7 @@ def parse_user_config(
     return {"tags": tags, "favorites": favorites, "hidden": hidden}
 
 
-def parse_library_folders(steam_path: Path) -> List[Dict[str, Any]]:
+def parse_library_folders(steam_path: Path) -> list[dict[str, Any]]:
     """Parse libraryfolders.vdf to find all Steam library locations.
 
     Args:
@@ -187,7 +178,7 @@ def parse_library_folders(steam_path: Path) -> List[Dict[str, Any]]:
     folders_section = data.get("libraryfolders", data.get("LibraryFolders", {}))
     result = []
 
-    for key, info in folders_section.items():
+    for info in folders_section.values():
         if not isinstance(info, dict):
             continue
         folder_path = info.get("path", "")
@@ -214,7 +205,7 @@ def parse_library_folders(steam_path: Path) -> List[Dict[str, Any]]:
     return result
 
 
-def parse_app_manifest(manifest_path: Path) -> Optional[Dict[str, Any]]:
+def parse_app_manifest(manifest_path: Path) -> dict[str, Any] | None:
     """Parse an appmanifest_*.acf file.
 
     Args:
@@ -248,7 +239,45 @@ def parse_app_manifest(manifest_path: Path) -> Optional[Dict[str, Any]]:
     }
 
 
-def scan_installed_games(steam_path: Path) -> Dict[str, Dict[str, Any]]:
+# EAppState bit; Steam writes the manifest when a download starts, long
+# before this is set. Bit layout per Lutris lutris/util/steam/appmanifest.py.
+_STATE_FULLY_INSTALLED = 4
+
+
+def is_fully_installed(manifest: dict[str, Any]) -> bool:
+    try:
+        flags = int(manifest.get("state_flags") or 0)
+    except (ValueError, TypeError):
+        return False
+    return bool(flags & _STATE_FULLY_INSTALLED)
+
+
+def _with_full_path(manifest: dict[str, Any], steamapps: Path) -> dict[str, Any]:
+    install_dir = manifest.get("installdir", "")
+    if install_dir:
+        manifest["full_path"] = str(steamapps / "common" / install_dir)
+    return manifest
+
+
+def find_app_manifest(steam_path: Path, app_id: str) -> dict[str, Any] | None:
+    """Stat one appmanifest per library instead of globbing, cheap enough for the UI thread.
+
+    Returns the manifest (with full_path when installdir is set) or None.
+    """
+    # The id becomes part of a filename; nothing but digits may get there.
+    if not (isinstance(app_id, str) and app_id.isascii() and app_id.isdigit()):
+        raise ValueError(f"Invalid Steam app id: {app_id!r}")
+
+    for folder in parse_library_folders(steam_path):
+        steamapps = Path(folder["path"]) / "steamapps"
+        manifest = parse_app_manifest(steamapps / f"appmanifest_{app_id}.acf")
+        if manifest and manifest.get("app_id") == app_id and is_fully_installed(manifest):
+            return _with_full_path(manifest, steamapps)
+
+    return None
+
+
+def scan_installed_games(steam_path: Path) -> dict[str, dict[str, Any]]:
     """Scan all library folders for installed games.
 
     Combines parse_library_folders() + parse_app_manifest() across all libraries.
@@ -269,12 +298,10 @@ def scan_installed_games(steam_path: Path) -> Dict[str, Dict[str, Any]]:
 
         for manifest_file in steamapps.glob("appmanifest_*.acf"):
             manifest = parse_app_manifest(manifest_file)
+            # Any manifest counts here: whether Steam clears bit 4 during an
+            # update is unverified, and dropping updating games would be worse.
             if manifest and manifest.get("app_id"):
-                # Add full install path (steamapps/common/{installdir})
-                install_dir = manifest.get("installdir", "")
-                if install_dir:
-                    manifest["full_path"] = str(steamapps / "common" / install_dir)
-                result[manifest["app_id"]] = manifest
+                result[manifest["app_id"]] = _with_full_path(manifest, steamapps)
 
     logger.info(f"Found {len(result)} installed games across {len(folders)} libraries")
     return result
