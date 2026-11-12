@@ -2,7 +2,7 @@
 
 # GUI framework
 # 6.12.0 segfaults at interpreter exit while destroying widgets (lud-eb2u)
-PySide6>=6.5.0,<6.12
+PySide6>=6.5.0,<6.13
 #PySide6-QtWebEngine>=6.5.0
 
 # Database
